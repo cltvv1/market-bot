@@ -33,6 +33,36 @@ const reg = [{
   ofd: 'Платформа ОФД',
   isDone: true,
   pdfLink: 'https://docs.google.com/open?id=1fkun88i5lpqcg8-buM7DL1Vovsj5yBAL-O77-9Lm5QQ',
+  isStopped: false,
+  isProcessed: true
+}]
+
+const user = [{
+  chatId: '401218967',
+  talkingTo: '458834668',
+  fmDate: '14.10.2025',
+  name: 'Данила',
+  username: 'cMHEavLMRmrHJKv',
+  sendNews: true,
+  sendImportant: true
+}
+]
+
+const ticket = [{
+  id: 1,
+  chatId: '401218967',
+  dateCreated: '25.09.2025',
+  username: 'cMHEavLMRmrHJKv',
+  ticketText: 'Как у кого дела',
+  answerText: 'Все нормально'
+}]
+
+const admin = [{
+  name: 'Данила',
+  chatId: '401218967',
+  talkingTo: '458834668',
+  isAdmin: true,
+  isOperator: true
 }]
 
 
@@ -46,7 +76,12 @@ export class AppUpdate {
   }
 
   @Action('credits')
-  async sendCredints(ctx: Context) {
-    await ctx.sendMessage('Наши страницы:', creditsButtons());
+  async sendCredits(ctx: Context) {
+    await ctx.editMessageText('Наши страницы:', creditsButtons());
+  }
+
+  @Action('main_menu')
+  async sendMainMenu(ctx: Context) {
+    await ctx.editMessageText('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
   }
 }
