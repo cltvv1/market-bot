@@ -1,9 +1,10 @@
+import { TG_TEXTS } from "src/texts/telegram.texts";
 import { Markup } from "telegraf";
 
 export function menuButtons() {
     return Markup.inlineKeyboard(
         [
-            Markup.button.callback('Оставить заявку на регистрацию кассы', 'registration'),
+            Markup.button.callback('Оставить заявку на регистрацию кассы', 'wantToRegister'),
             Markup.button.callback('Задать вопрос оператору', 'create_ticket'),
             Markup.button.callback('Часто задаваемые вопросы', 'faq_root'),
             Markup.button.callback('Наши страницы на маркетплейсах', 'credits'),
@@ -12,6 +13,18 @@ export function menuButtons() {
             columns: 1
         }
     )
+}
+
+export function startRegButtons() {
+    return Markup.keyboard(
+        [
+            Markup.button.text(TG_TEXTS.START_REG_TEXT),
+            Markup.button.text(TG_TEXTS.STOP_REG_TEXT)
+        ],
+        {
+            columns: 1
+        }
+    ).resize()
 }
 
 export function creditsButtons() {

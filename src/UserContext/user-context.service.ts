@@ -1,0 +1,27 @@
+import { Injectable } from '@nestjs/common';
+
+export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR';
+
+interface UserContext {
+    mode: UserMode;
+    step: number | null;
+    talkingTo?: string | null;
+}
+
+@Injectable()
+export class UserContextService {
+    private contexts = new Map<string, UserContext>();
+
+    get(chatId: string): UserContext {
+        return this.contexts.get(chatId) || { mode: 'IDLE', step: null };
+    }
+
+    set(chatId: string, context: Partial<UserContext>) {
+        const existing = this.get(chatId);
+        this.contexts.set(chatId, { ...existing, ...context });
+    }
+
+    reset(chatId: string) {
+        this.contexts.set(chatId, { mode: 'IDLE', step: null });
+    }
+}
