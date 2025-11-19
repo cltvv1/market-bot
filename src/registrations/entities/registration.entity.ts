@@ -33,6 +33,9 @@ export class RegistrationRequestEntity {
     phone?: string;
 
     @Column({ nullable: true })
+    phoneToCall?: string;
+
+    @Column({ nullable: true })
     email?: string;
 
     @Column({ type: 'varchar', default: 'Нет', nullable: true })

@@ -9,22 +9,12 @@ export class RegistrationsController {
     // Старт регистрации или получение текущей
     @Post('start')
     async start(@Body('chatId') chatId: string) {
-        return this.registrationsService.startRegistration(chatId);
-    }
-
-    // Обновление текущего шага с частичными данными
-    @Post('update/:chatId/:step')
-    async updateStep(
-        @Param('chatId') chatId: string,
-        @Param('step') step: number,
-        @Body() partialData: Partial<CreateRegistrationDto>
-    ) {
-        return this.registrationsService.updateStep(chatId, step, partialData);
+        return this.registrationsService.getOrCreateRegistration(chatId);
     }
 
     // Получить текущую регистрацию по chatId
     @Get(':chatId')
     async getRegistration(@Param('chatId') chatId: string) {
-        return this.registrationsService.getRegistration(chatId);
+        return this.registrationsService.getOrCreateRegistration(chatId);
     }
 }
