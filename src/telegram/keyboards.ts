@@ -39,3 +39,15 @@ export function creditsButtons() {
         }
     )
 }
+
+
+export function mainMenuButton() {
+    return Markup.inlineKeyboard(
+        [
+            Markup.button.callback('Вернуться в главное меню', 'main_menu'),
+        ],
+        {
+            columns: 1
+        }
+    )
+}

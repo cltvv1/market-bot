@@ -18,19 +18,37 @@ export class RegistrationsService {
     async getAllRegs() {
         return this.registrationRepo.find({ order: { id: 'ASC' } })
     }
-    async getOrCreateRegistration(chatId: string) {
-        let reg = await this.registrationRepo.findOne({ where: { chatId } });
 
-        if (!reg) {
-            reg = this.registrationRepo.create({
-                chatId,
-                currentStep: 1,
-                isFilled: false,
-            });
-            await this.registrationRepo.save(reg);
-        }
+    // async getOrCreateRegistration(chatId: string) {
+    //     let reg = await this.registrationRepo.findOne({ where: { chatId } });
+
+    //     if (!reg) {
+    //         reg = this.registrationRepo.create({
+    //             chatId,
+    //             currentStep: 2,
+    //             isFilled: false,
+    //         });
+    //         await this.registrationRepo.save(reg);
+    //     }
+
+    //     return reg;
+    // }
+
+    async getRegistration(chatId: string) {
+        let reg = await this.registrationRepo.findOne({ where: { chatId, isFilled: false } });
 
         return reg;
+    }
+
+    async createRegistration(chatId: string) {
+        const reg = this.registrationRepo.create({
+            chatId,
+            currentStep: 2,
+            isFilled: false,
+        });
+        await this.registrationRepo.save(reg);
+
+        return reg
     }
 
     async getAllFields() {
@@ -40,7 +58,7 @@ export class RegistrationsService {
     }
 
     async saveFieldValue(chatId: string, value: string) {
-        const reg = await this.getOrCreateRegistration(chatId);
+        const reg = await this.getRegistration(chatId);
         if (!reg) return null;
 
         const field = await this.getFieldNameByStep(reg.currentStep);

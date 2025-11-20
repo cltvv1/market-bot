@@ -1,8 +1,8 @@
 import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
 import { Context } from 'telegraf';
 import { RegistrationsService } from '../registrations/registrations.service';
-import { menuButtons, startRegButtons, creditsButtons } from './keyboards';
-import { showRegs, wantToRegisterMsg } from 'src/common/utils';
+import { menuButtons, startRegButtons, creditsButtons, mainMenuButton } from './keyboards';
+import { showFields, showRegs, wantToRegisterMsg } from 'src/common/utils';
 import { TG_TEXTS } from 'src/texts/telegram.texts';
 import { removeKeyboard } from 'telegraf/markup';
 import { UserContextService } from 'src/UserContext/user-context.service';
@@ -21,11 +21,29 @@ export class TelegramUpdate {
 
     @Action('wantToRegister')
     async handleWantToReg(@Ctx() ctx: Context) {
-        if (!ctx.chat || !ctx.chat.id) return;
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
 
-        const fields = await this.regService.getAllFields();
+        let reg = await this.regService.getRegistration(chatId)
 
-        await ctx.reply(wantToRegisterMsg(fields), startRegButtons());
+        if (!reg) {
+            const fields = await this.regService.getAllFields();
+
+            await ctx.reply(wantToRegisterMsg(fields), startRegButtons());
+        } else {
+            const context = await this.ctxService.get(chatId);
+            context.mode = 'REGISTER';
+            await this.ctxService.set(chatId, context)
+
+            await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
+            const nextFieldText = await this.regService.getNextFieldText(reg.currentStep)
+            if (!nextFieldText) {
+                await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
+                this.startCommand(ctx)
+                return
+            }
+            await ctx.reply(`Введите ${nextFieldText}`)
+        }
     }
 
     @Action('credits')
@@ -41,6 +59,7 @@ export class TelegramUpdate {
 
     @On('text')
     async handleText(@Message('text') msgText: string, @Ctx() ctx: Context) {
+
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
@@ -49,33 +68,38 @@ export class TelegramUpdate {
             ctx.reply(showRegs(regs))
             return
         }
+        if (msgText == '/allfields') {
+            const fields = await this.regService.getAllFields();
+            ctx.reply(showFields(fields))
+            return
+        }
 
         const context = this.ctxService.get(chatId);
 
         switch (context.mode) {
             case 'IDLE':
+                //проверить если есть активная заявка то конктест на reg если пустой вопрос то ticket если у админа есть талкинг ту с этим айдишником то оператор(forwardmessage)
                 switch (msgText) {
                     case TG_TEXTS.START_REG_TEXT:
 
                         context.mode = 'REGISTER';
                         this.ctxService.set(chatId, context)
 
-                        let reg = await this.regService.getOrCreateRegistration(chatId)
+                        let reg = await this.regService.getRegistration(chatId)
 
                         if (!reg) {
                             ctx.reply('Заявка создана', removeKeyboard())
-                            reg = await this.regService.getOrCreateRegistration(chatId)
-                            const nextFieldText = await this.regService.getNextFieldText(reg?.currentStep)
-                            ctx.reply(`Введите ${nextFieldText}`)
-
-                            return
+                            reg = await this.regService.createRegistration(chatId)
+                        } else {
+                            await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
                         }
 
                         const nextFieldText = await this.regService.getNextFieldText(reg.currentStep)
-                        await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
+                        if (!nextFieldText) {
+                            ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
+                            return
+                        }
                         await ctx.reply(`Введите ${nextFieldText}`)
-
-                        //startReg Flow
                         break;
                     case TG_TEXTS.STOP_REG_TEXT:
                         await ctx.reply(TG_TEXTS.NO_PERSONAL_DATA, removeKeyboard())
@@ -90,9 +114,13 @@ export class TelegramUpdate {
                 const reg = await this.regService.saveFieldValue(chatId, msgText)
                 if (!reg) return
                 const nextFieldText = await this.regService.getNextFieldText(reg.currentStep)
+                if (!nextFieldText) {
+                    await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется', mainMenuButton())
+                    context.mode = 'IDLE'
+                    await this.ctxService.set(chatId, context)
+                    return
+                }
                 await ctx.reply(`Введите ${nextFieldText}`)
-
-                //save msgtext to db as reg field
                 break;
             case 'TICKET':
                 //save msgtext as ticket text
