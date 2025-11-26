@@ -14,3 +14,4 @@ export const showFields = (fields) =>
     `Все поля заявки: \n\n${fields
         .map(field => (`·${field.label} | ${field.step}`))
         .join('\n')}`
+

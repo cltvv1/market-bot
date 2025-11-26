@@ -36,13 +36,42 @@ export class TelegramUpdate {
             await this.ctxService.set(chatId, context)
 
             await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
+
             const nextFieldText = await this.regService.getNextFieldText(reg.currentStep)
+
             if (!nextFieldText) {
-                await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
+                await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется по указанному номеру телефона для связи')
                 this.startCommand(ctx)
                 return
-            }
-            await ctx.reply(`Введите ${nextFieldText}`)
+            } else await ctx.reply(`${nextFieldText}:`)
+        }
+    }
+
+    @Action('wantToOfd')
+    async handleWantToOfd(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        let reg = await this.regService.getRegistration(chatId)
+
+        if (!reg) {
+            const fields = await this.regService.getAllFields();
+
+            await ctx.reply(wantToRegisterMsg(fields), startRegButtons());
+        } else {
+            const context = await this.ctxService.get(chatId);
+            context.mode = 'REGISTER';
+            await this.ctxService.set(chatId, context)
+
+            await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
+
+            const nextFieldText = await this.regService.getNextFieldText(reg.currentStep)
+
+            if (!nextFieldText) {
+                await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется по указанному номеру телефона для связи')
+                this.startCommand(ctx)
+                return
+            } else await ctx.reply(`${nextFieldText}:`)
         }
     }
 
@@ -113,14 +142,15 @@ export class TelegramUpdate {
             case 'REGISTER':
                 const reg = await this.regService.saveFieldValue(chatId, msgText)
                 if (!reg) return
+
                 const nextFieldText = await this.regService.getNextFieldText(reg.currentStep)
+
                 if (!nextFieldText) {
                     await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется', mainMenuButton())
                     context.mode = 'IDLE'
                     await this.ctxService.set(chatId, context)
                     return
-                }
-                await ctx.reply(`Введите ${nextFieldText}`)
+                } else await ctx.reply(`${nextFieldText}:`)
                 break;
             case 'TICKET':
                 //save msgtext as ticket text
