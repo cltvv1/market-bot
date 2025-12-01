@@ -4,7 +4,6 @@ export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR';
 
 interface UserContext {
     mode: UserMode;
-    step: number | null;
     talkingTo?: string | null;
 }
 
@@ -13,7 +12,7 @@ export class UserContextService {
     private contexts = new Map<string, UserContext>();
 
     get(chatId: string): UserContext {
-        return this.contexts.get(chatId) || { mode: 'IDLE', step: null };
+        return this.contexts.get(chatId) || { mode: 'IDLE' };
     }
 
     set(chatId: string, context: Partial<UserContext>) {
@@ -22,6 +21,6 @@ export class UserContextService {
     }
 
     reset(chatId: string) {
-        this.contexts.set(chatId, { mode: 'IDLE', step: null });
+        this.contexts.set(chatId, { mode: 'IDLE' });
     }
 }

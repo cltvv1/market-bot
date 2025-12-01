@@ -30,6 +30,6 @@ export class UserEntity {
     @Column({ default: false })
     isOperator: boolean;
 
-    @Column({ nullable: true })
+    @Column({ type: 'varchar', nullable: true })
     talkingTo: string | null;
 }

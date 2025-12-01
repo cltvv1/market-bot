@@ -19,21 +19,6 @@ export class RegistrationsService {
         return this.registrationRepo.find({ order: { id: 'ASC' } })
     }
 
-    // async getOrCreateRegistration(chatId: string) {
-    //     let reg = await this.registrationRepo.findOne({ where: { chatId } });
-
-    //     if (!reg) {
-    //         reg = this.registrationRepo.create({
-    //             chatId,
-    //             currentStep: 2,
-    //             isFilled: false,
-    //         });
-    //         await this.registrationRepo.save(reg);
-    //     }
-
-    //     return reg;
-    // }
-
     async getRegistration(chatId: string) {
         let reg = await this.registrationRepo.findOne({ where: { chatId, isFilled: false } });
 
@@ -63,7 +48,6 @@ export class RegistrationsService {
 
         const field = await this.getFieldNameByStep(reg.currentStep);
         if (!field) {
-            // Значит шаг превышает количество полей → заявка заполнена
             reg.isFilled = true;
             await this.registrationRepo.save(reg);
             return null;
@@ -85,7 +69,7 @@ export class RegistrationsService {
         return reg.currentStep > fields.length;
     }
 
-    async getNextFieldText(step: number) {
+    async getFieldTextByStep(step: number) {
         const nextField = await this.fieldsRepo.findOne({ where: { step } });
         return nextField?.label
     }
