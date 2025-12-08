@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
 import { TicketEntity } from './entities/ticket.entity';
 
 @Injectable()
@@ -11,20 +10,21 @@ export class TicketsService {
         private readonly ticketRepo: Repository<TicketEntity>,
     ) { }
 
-    /** Создание тикета при первом тексте */
-    async createTicket(data: {
-        userChatId: string;
-        username?: string;
-        name?: string;
-        text: string;
-    }) {
+    async createTicket(
+        userChatId: string,
+        username?: string,
+        name?: string,
+        text?: string,
+    ) {
         const ticket = this.ticketRepo.create({
-            ...data,
+            userChatId,
+            username: username,
+            name: name,
+            text: text
         });
         return this.ticketRepo.save(ticket);
     }
 
-    /** Получить незакрытый тикет пользователя */
     async getActiveTicket(chatId: string) {
         return this.ticketRepo.findOne({
             where: {
@@ -35,7 +35,6 @@ export class TicketsService {
         });
     }
 
-    /** Закрыть тикет */
     async closeTicket(ticketId: number, operatorChatId: string) {
         await this.ticketRepo.update(ticketId, {
             isAnswered: true,
@@ -45,8 +44,26 @@ export class TicketsService {
         return this.ticketRepo.findOne({ where: { id: ticketId } });
     }
 
-    /** Получить тикет по ID */
-    async getById(id: number) {
+    async getTicketById(id: number) {
         return this.ticketRepo.findOne({ where: { id } });
     }
+
+    async saveTicketText(chatId: string, value: string) {
+        const ticket = await this.getActiveTicket(chatId);
+        if (!ticket) return null;
+
+        ticket.text = value
+
+        await this.ticketRepo.save(ticket);
+
+        return ticket
+    }
+
+    async getActualTickets() {
+        return this.ticketRepo.find({
+            where: { isAnswered: false },
+            order: { createdAt: 'ASC' },
+        });
+    }
 }
+

@@ -14,7 +14,7 @@ export class TicketEntity {
     @Column({ nullable: true })
     name: string;
 
-    @Column()
+    @Column({ nullable: true })
     text: string;
 
     @CreateDateColumn()

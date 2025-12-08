@@ -11,7 +11,6 @@ export class UsersService {
         private readonly usersRepo: Repository<UserEntity>,
     ) { }
 
-    /** Находит пользователя или создаёт */
     async getOrCreate(chatId: string, name?: string, username?: string) {
         let user = await this.usersRepo.findOne({ where: { chatId } });
 
@@ -28,12 +27,10 @@ export class UsersService {
         return user;
     }
 
-    /** Получить пользователя */
     async getByChatId(chatId: string) {
         return this.usersRepo.findOne({ where: { chatId } });
     }
 
-    /** Проверка ролей */
     async isAdmin(chatId: string) {
         const user = await this.getByChatId(chatId);
         return user?.isAdmin === true;
@@ -44,40 +41,42 @@ export class UsersService {
         return user?.isOperator === true;
     }
 
-    /** Обновить любые поля */
     async update(chatId: string, partial: Partial<UserEntity>) {
         await this.usersRepo.update({ chatId }, partial);
         return this.getByChatId(chatId);
     }
 
-    /** Установить, с кем сейчас ведёт диалог */
-    async setTalkingTo(operatorId: string, clientId: string | null) {
-        await this.usersRepo.update(
-            { chatId: operatorId },
-            { talkingTo: clientId },
-        );
+    async setTalkingTo(operatorChatId: string, clientChatId: string) {
+        await this.usersRepo.update({ chatId: operatorChatId }, { talkingTo: clientChatId });
+        await this.usersRepo.update({ chatId: clientChatId }, { talkingTo: operatorChatId });
     }
 
-    /** Получить, с кем оператор сейчас разговаривает */
+
     async getTalkingTo(operatorId: string) {
         const user = await this.getByChatId(operatorId);
         return user?.talkingTo || null;
     }
 
-    /** Найти операторов, которые сейчас разговаривают с конкретным клиентом */
     async findOperatorByClient(clientId: string) {
         return this.usersRepo.findOne({
             where: { talkingTo: clientId },
         });
     }
 
-    /** Начать операторский диалог */
     async startDialog(operatorId: string, clientId: string) {
         await this.setTalkingTo(operatorId, clientId);
     }
 
-    /** Завершить операторский диалог */
-    async stopDialog(operatorId: string) {
-        await this.setTalkingTo(operatorId, null);
+    async stopDialog(operatorId: string, clientId: string) {
+        await this.usersRepo.update({ chatId: operatorId }, { talkingTo: null });
+        await this.usersRepo.update({ chatId: clientId }, { talkingTo: null });
+    }
+
+    async getOperators() {
+        return this.usersRepo.find({ where: { isOperator: true } });
+    }
+
+    async getAdmins() {
+        return this.usersRepo.find({ where: { isAdmin: true } });
     }
 }

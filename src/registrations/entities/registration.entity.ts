@@ -77,6 +77,9 @@ export class RegistrationRequestEntity {
     @Column({ default: false })
     isProcessed: boolean;
 
+    @Column({ nullable: true })
+    pdfPath: string;
+
     @CreateDateColumn()
     createdAt: Date;
 
