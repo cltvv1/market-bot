@@ -1,10 +1,22 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import PdfPrinter from 'pdfmake';
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RegistrationRequestEntity } from '../registrations/entities/registration.entity';
 import { RegistrationFieldEntity } from '../registrations/entities/registration-field.entity';
 
+@Injectable()
 export class PdfGeneratorService {
+    private readonly pdfDir: string;
+
+
+
+    constructor(
+        private configService: ConfigService,
+    ) {
+        this.pdfDir = this.configService.get<string>('PDF_DIR')!;
+    }
 
     private fonts = {
         Roboto: {
@@ -22,7 +34,6 @@ export class PdfGeneratorService {
 
         const printer = new PdfPrinter(this.fonts);
 
-        // формируем строки таблицы
         const tableBody = [
             [
                 { text: 'Поле', style: 'tableHeader' },
@@ -73,7 +84,7 @@ export class PdfGeneratorService {
         // Генерация PDF
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
-        const filePath = path.join(__dirname, '..', '..', 'src', 'pdf', 'registrationsFiles', `registration_${request.id}.pdf`);
+        const filePath = path.join(process.cwd(), this.pdfDir, `registration_${request.id}.pdf`);
         const writeStream = fs.createWriteStream(filePath);
 
         pdfDoc.pipe(writeStream);

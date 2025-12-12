@@ -2,12 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TicketEntity } from './entities/ticket.entity';
+import { UsersService } from 'src/users/users.service';
+import { formatTicket } from 'src/common/utils';
+import { connectToButton } from 'src/telegram/keyboards';
+import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
 
 @Injectable()
 export class TicketsService {
     constructor(
         @InjectRepository(TicketEntity)
         private readonly ticketRepo: Repository<TicketEntity>,
+
+        private usersService: UsersService,
+        private telegramSenderService: TelegramSenderService
     ) { }
 
     async createTicket(
@@ -64,6 +71,20 @@ export class TicketsService {
             where: { isAnswered: false },
             order: { createdAt: 'ASC' },
         });
+    }
+
+    async notifyOperatorsAboutNewTicket(ticket: TicketEntity) {
+        const operators = await this.usersService.getOperators();
+
+        const message = formatTicket(ticket);
+
+        for (const op of operators) {
+            await this.telegramSenderService.sendMessage(
+                op.chatId,
+                message,
+                connectToButton(ticket.userChatId)
+            );
+        }
     }
 }
 

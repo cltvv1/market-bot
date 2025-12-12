@@ -79,4 +79,8 @@ export class UsersService {
     async getAdmins() {
         return this.usersRepo.find({ where: { isAdmin: true } });
     }
+
+    async isAlreadyTalking(chatId: string) {
+        return !!(await this.getByChatId(chatId))?.talkingTo;
+    }
 }

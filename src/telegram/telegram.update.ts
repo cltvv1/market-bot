@@ -1,14 +1,14 @@
-import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
-import { Context, Telegraf } from 'telegraf';
-import { RegistrationsService } from '../registrations/registrations.service';
-import { menuButtons, startRegButtons, creditsButtons, mainMenuButton, connectToButton, adminButtons, actualRegsButtons, actualTicketsButtons } from './keyboards';
-import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
-import { TG_TEXTS } from 'src/texts/telegram.texts';
-import { removeKeyboard } from 'telegraf/markup';
-import { UserContextService } from 'src/userContext/user-context.service';
-import { TicketsService } from 'src/tickets/tickets.service';
-import { UsersService } from 'src/users/users.service';
 import * as fs from 'fs';
+import { Context } from 'telegraf';
+import { removeKeyboard } from 'telegraf/markup';
+import { TG_TEXTS } from 'src/texts/telegram.texts';
+import { UsersService } from 'src/users/users.service';
+import { TicketsService } from 'src/tickets/tickets.service';
+import { UserContextService } from 'src/userContext/user-context.service';
+import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
+import { RegistrationsService } from '../registrations/registrations.service';
+import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
+import { menuButtons, startRegButtons, creditsButtons, mainMenuButton, connectToButton, adminButtons, actualRegsButtons, actualTicketsButtons, disconnectFromButton } from './keyboards';
 
 
 @Update()
@@ -42,6 +42,8 @@ export class TelegramUpdate {
             'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
             menuButtons()
         );
+
+        await ctx.deleteMessage(ctx.message?.message_id)
     }
 
     @Action('wantToRegister')
@@ -51,9 +53,9 @@ export class TelegramUpdate {
 
         let reg = await this.regService.getRegistration(chatId)
 
-        if (!reg) {
-            reg = await this.regService.createRegistration(chatId);
+        await this.ctxService.set(chatId, { mode: 'REGISTER' })
 
+        if (!reg) {
             const fields = await this.regService.getAllFields();
             await ctx.reply(
                 wantToRegisterMsg(fields),
@@ -63,13 +65,7 @@ export class TelegramUpdate {
             return;
         }
 
-
-        const context = await this.ctxService.get(chatId);
-        context.mode = 'REGISTER';
-        await this.ctxService.set(chatId, context);
-
         const fieldText = await this.regService.getFieldTextByStep(reg.currentStep);
-
         await ctx.reply(
             `Найдена незаполненная заявка.\nПродолжим.\n\n${fieldText}:`,
             removeKeyboard()
@@ -102,7 +98,21 @@ export class TelegramUpdate {
 
         const reg = await this.regService.getRegistrationById(regId)
 
-        await ctx.editMessageText(formatRegistrationRequest(reg), mainMenuButton()); //replywithfile
+        if (!reg) {
+            return
+        }
+        await ctx.deleteMessage(ctx.message?.message_id)
+        await ctx.reply(formatRegistrationRequest(reg), mainMenuButton());
+
+
+        if (reg.pdfPath) {
+            await ctx.replyWithDocument({
+                source: fs.createReadStream(reg.pdfPath),
+                filename: `registration_${reg.id}.pdf`
+            });
+            return
+        }
+        await ctx.reply('Pdf-файл не найден')
     }
 
     @Action('actualTickets')
@@ -147,9 +157,7 @@ export class TelegramUpdate {
                 ctx.from?.first_name
             )
 
-            const context = await this.ctxService.get(chatId);
-            context.mode = 'TICKET';
-            await this.ctxService.set(chatId, context)
+            await this.ctxService.set(chatId, { mode: 'TICKET' })
 
             await ctx.editMessageText('Введите текст вопроса:')
             return
@@ -160,9 +168,7 @@ export class TelegramUpdate {
             return
         }
 
-        const context = await this.ctxService.get(chatId);
-        context.mode = 'TICKET';
-        await this.ctxService.set(chatId, context)
+        await this.ctxService.set(chatId, { mode: 'TICKET' })
 
         await ctx.editMessageText('Введите текст вопроса:')
     }
@@ -182,15 +188,18 @@ export class TelegramUpdate {
             ctx.from?.first_name,
             ctx.from?.username
         );
+
+        ctx.deleteMessage(ctx.message?.message_id)
+
         if (user.isAdmin) {
-            await ctx.editMessageText(
-                'Хелёу админ',
+            await ctx.reply(
+                'Панель администратора:',
                 adminButtons()
             );
             return
         }
 
-        await ctx.editMessageText('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
+        await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
     }
 
     @Action(/connectTo:\d+/)
@@ -200,27 +209,66 @@ export class TelegramUpdate {
         if (!query || !('data' in query)) {
             return;
         }
-
-        const data = query.data;
-
-        const [, clientChatId] = data.split(':');
-
-        let clientContext = this.ctxService.get(clientChatId)
-        clientContext.mode = 'OPERATOR'
-        this.ctxService.set(clientChatId, clientContext)
-
         if (!ctx.from) return
 
+        const [, clientChatId] = query.data.split(':');
         const operatorChatId = String(ctx.from.id);
 
-        let operatorContext = this.ctxService.get(operatorChatId)
-        operatorContext.mode = 'OPERATOR'
-        this.ctxService.set(operatorChatId, operatorContext)
+        if (await this.usersService.isAlreadyTalking(clientChatId)) {
+            await ctx.reply('К чату с этим клиентом уже подключен оператор')
+            return
+        }
+
+        await this.ctxService.set(clientChatId, { mode: 'OPERATOR' })
+        await this.ctxService.set(operatorChatId, { mode: 'OPERATOR' })
 
         await this.usersService.setTalkingTo(operatorChatId, clientChatId);
 
         ctx.telegram.sendMessage(clientChatId, 'К чату с вами присоединился оператор,  он будет видеть все ваши сообщения.')
         await ctx.reply('Вы подключены к чату с клиентом, все ваши сообщения будут отправлены клиенту.');
+    }
+
+    @Action(/disconnectFrom:\d+/)
+    async onDisconnectFrom(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+
+        if (!query || !('data' in query)) {
+            return;
+        }
+        if (!ctx.from) return
+
+        const data = query.data;
+
+        const [, talkingToChatId] = data.split(':');
+        const initChatId = String(ctx.from.id);
+
+        let operatorChatId
+        let clientChatId
+        if (await this.usersService.isOperator(initChatId)) {
+            operatorChatId = initChatId
+            clientChatId = talkingToChatId
+        }
+        else {
+            operatorChatId = talkingToChatId
+            clientChatId = initChatId
+        }
+
+        let closedTicket = await this.ticketService.getActiveTicket(clientChatId)
+
+        if (!closedTicket) {
+            ctx.reply('Этот вопрос больше недоступен, скорее всего, он уже был закрыт ранее')
+            return
+        }
+        await this.ticketService.closeTicket(closedTicket.id, operatorChatId)
+
+
+        await this.ctxService.set(clientChatId, { mode: 'IDLE' })
+        await this.ctxService.set(operatorChatId, { mode: 'IDLE' })
+
+        await this.usersService.stopDialog(operatorChatId, clientChatId);
+
+        await ctx.telegram.sendMessage(clientChatId, 'Оператор отключился от чата с вами.')
+        await ctx.telegram.sendMessage(operatorChatId, 'Вы отключились от чата с клиентом.')
     }
 
     @On('text')
@@ -237,14 +285,13 @@ export class TelegramUpdate {
                 switch (msgText) {
                     case TG_TEXTS.START_REG_TEXT:
 
-                        context.mode = 'REGISTER';
-                        this.ctxService.set(chatId, context)
+                        await this.ctxService.set(chatId, { mode: 'REGISTER' })
 
-                        if (!reg) {
-                            ctx.reply('Заявка создана', removeKeyboard())
-                            reg = await this.regService.createRegistration(chatId)
-                        } else {
+                        if (reg) {
                             await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
+                        } else {
+                            reg = await this.regService.createRegistration(chatId)
+                            await ctx.reply('Заявка создана', removeKeyboard())
                         }
 
                         const nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
@@ -261,8 +308,7 @@ export class TelegramUpdate {
                     default:
                         reg = await this.regService.getRegistration(chatId)
                         if (reg) {
-                            context.mode = 'REGISTER';
-                            this.ctxService.set(chatId, context)
+                            await this.ctxService.set(chatId, { mode: 'REGISTER' })
 
                             const reg = await this.regService.saveFieldValue(chatId, msgText)
                             if (!reg) return
@@ -271,8 +317,8 @@ export class TelegramUpdate {
 
                             if (!nextFieldText) {
                                 await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется', mainMenuButton())
-                                context.mode = 'IDLE'
-                                await this.ctxService.set(chatId, context)
+
+                                await this.ctxService.set(chatId, { mode: 'IDLE' })
                                 return
                             } else await ctx.reply(`${nextFieldText}:`)
                         } else {
@@ -284,39 +330,96 @@ export class TelegramUpdate {
                 }
                 break;
             case 'REGISTER':
-                reg = await this.regService.saveFieldValue(chatId, msgText)
-                if (!reg) return
+                let nextFieldText;
+                switch (msgText) {
+                    case TG_TEXTS.START_REG_TEXT:
+                        if (reg) {
+                            await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
+                        } else {
+                            reg = await this.regService.createRegistration(chatId)
+                            await ctx.reply('Заявка создана', removeKeyboard())
+                        }
 
-                const nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
+                        nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
+                        if (!nextFieldText) {
+                            ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
+                            return
+                        }
+                        await ctx.reply(`${nextFieldText}:`)
+                        break;
+                    case TG_TEXTS.STOP_REG_TEXT:
+                        await ctx.reply(TG_TEXTS.NO_PERSONAL_DATA, removeKeyboard())
+                        await this.startCommand(ctx)
 
-                if (!nextFieldText) {
-                    const filePath = await this.regService.finishReg(reg);
-                    await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется', mainMenuButton())
+                        await this.ctxService.set(chatId, { mode: 'IDLE' })
 
-                    await ctx.replyWithDocument({
-                        source: fs.createReadStream(filePath),
-                        filename: `registration_${reg.id}.pdf`
-                    });
+                        break;
+                    default:
+                        reg = await this.regService.saveFieldValue(chatId, msgText)
+                        if (!reg) return
 
-                    context.mode = 'IDLE'
-                    await this.ctxService.set(chatId, context)
-                    return
-                } else await ctx.reply(`${nextFieldText}:`)
+                        nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
+
+                        if (!nextFieldText) {
+                            const filePath = await this.regService.finishReg(reg);
+                            await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется', mainMenuButton())
+
+                            await ctx.replyWithDocument({
+                                source: fs.createReadStream(filePath),
+                                filename: `registration_${reg.id}.pdf`
+                            });
+
+                            await this.ctxService.set(chatId, { mode: 'IDLE' })
+                            return
+                        } else await ctx.reply(`${nextFieldText}:`)
+                        break;
+                }
                 break;
             case 'TICKET':
                 const ticket = await this.ticketService.saveTicketText(chatId, msgText)
-                if (!ticket) return
+                if (!ticket) {
+                    await ctx.reply('У вас нет созданного вопроса', mainMenuButton())
 
-                context.mode = 'IDLE'
-                await this.ctxService.set(chatId, context)
-                ctx.reply(formatTicket(ticket), connectToButton(chatId))
+                    await this.ctxService.set(chatId, { mode: 'IDLE' })
 
-                ctx.reply('Ваш вопрос принят, оператор ответит в ближайшее время')
+                    return
+                }
+
+                await this.ctxService.set(chatId, { mode: 'IDLE' })
+
+                await this.ticketService.notifyOperatorsAboutNewTicket(ticket)
+
+                await ctx.reply('Ваш вопрос принят, оператор ответит в ближайшее время')
                 break;
             case 'OPERATOR':
+                const talkingToId = await this.usersService.getTalkingTo(chatId);
+                if (!talkingToId) {
+                    await ctx.reply('К вам сейчас не подключен оператор', mainMenuButton())
 
-                //save msgtext as msg to operator
+                    await this.ctxService.set(chatId, { mode: 'IDLE' })
+
+                    return
+                }
+                await ctx.copyMessage(talkingToId, disconnectFromButton(chatId));
                 break;
         }
+    }
+
+    @On('message')
+    async onMedia(@Ctx() ctx: Context) {
+
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        if (!ctx.message) return
+
+        const talkingToId = await this.usersService.getTalkingTo(chatId);
+        if (!talkingToId) return
+
+        if ('text' in ctx.message) return;
+
+        //await ctx.forwardMessage(talkingToId);
+        await ctx.copyMessage(talkingToId, disconnectFromButton(chatId));
+
     }
 }

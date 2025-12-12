@@ -33,7 +33,7 @@ export function creditsButtons() {
         [
             Markup.button.url('Wildberries', 'https://www.wildberries.ru/seller/4232548'),
             //Markup.button.url('Ozon', 'https://www.ozon.ru/seller/vitmamarket-2650110/?miniapp=seller_2650110'),
-            Markup.button.callback('Вернуться в главное меню', 'main_menu'),
+            Markup.button.callback('Вернуться в главное меню', 'mainMenu'),
         ],
         {
             columns: 1
@@ -52,10 +52,22 @@ export function mainMenuButton() {
         }
     )
 }
+
 export function connectToButton(chatId: string) {
     return Markup.inlineKeyboard(
         [
             Markup.button.callback('Подключиться в чат к клиенту', 'connectTo:' + chatId),
+        ],
+        {
+            columns: 1
+        }
+    )
+}
+
+export function disconnectFromButton(chatId: string) {
+    return Markup.inlineKeyboard(
+        [
+            Markup.button.callback('Вопрос закрыт, закрыть чат.', 'disconnectFrom:' + chatId),
         ],
         {
             columns: 1

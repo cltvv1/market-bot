@@ -96,7 +96,6 @@ export class RegistrationsService {
         reg.isFilled = true;
         await this.registrationRepo.save(reg);
 
-        // Генерация PDF
         const fields = await this.fieldsRepo.find();
         const pdfPath = await this.pdfService.generateRegistrationPdf(reg, fields);
 
