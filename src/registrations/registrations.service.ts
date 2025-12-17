@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -5,6 +6,10 @@ import { Repository } from 'typeorm';
 import { RegistrationRequestEntity } from './entities/registration.entity';
 import { RegistrationFieldEntity } from './entities/registration-field.entity';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
+import { UsersService } from 'src/users/users.service';
+import { formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
+import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
+import { regDoneButton } from 'src/telegram/keyboards';
 
 @Injectable()
 export class RegistrationsService {
@@ -15,7 +20,9 @@ export class RegistrationsService {
         @InjectRepository(RegistrationFieldEntity)
         private readonly fieldsRepo: Repository<RegistrationFieldEntity>,
 
-        private readonly pdfService: PdfGeneratorService
+        private readonly pdfService: PdfGeneratorService,
+        private usersService: UsersService,
+        private telegramSenderService: TelegramSenderService
     ) { }
 
     async getAllRegs() {
@@ -29,7 +36,7 @@ export class RegistrationsService {
     }
 
     async getRegistrationById(regId) {
-        let reg = await this.registrationRepo.findOne({ where: { id: regId } });
+        let reg = await this.registrationRepo.findOne({ where: { id: regId, isProcessed: false } });
 
         return reg;
     }
@@ -103,5 +110,44 @@ export class RegistrationsService {
         await this.registrationRepo.save(reg);
 
         return pdfPath
+    }
+
+    async notifyAdminssAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
+        const admins = await this.usersService.getAdmins();
+
+        const message = formatRegistrationRequest(reg);
+
+        for (const admin of admins) {
+            await this.telegramSenderService.sendMessage(
+                admin.chatId,
+                message,
+                regDoneButton(reg.id)
+            );
+
+            await this.telegramSenderService.sendDocument(admin.chatId, {
+                source: fs.createReadStream(filePath),
+                filename: `registration_${reg.id}.pdf`
+            }
+
+            )
+        }
+    }
+
+    async notifyAdminssAboutRegDone(reg: RegistrationRequestEntity) {
+        const admins = await this.usersService.getAdmins();
+
+        const message = formatRegistrationDone(reg);
+
+        for (const admin of admins) {
+            await this.telegramSenderService.sendMessage(
+                admin.chatId,
+                message,
+            );
+        }
+    }
+
+    async doReg(reg: RegistrationRequestEntity) {
+        reg.isProcessed = true;
+        await this.registrationRepo.save(reg);
     }
 }

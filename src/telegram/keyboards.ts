@@ -4,11 +4,11 @@ import { Markup } from "telegraf";
 export function menuButtons() {
     return Markup.inlineKeyboard(
         [
-            Markup.button.callback('Оставить заявку на регистрацию кассы', 'wantToRegister'),
-            Markup.button.callback('Оставить заявку на активацию ОФД', 'wantToOfd'),
-            Markup.button.callback('Задать вопрос оператору', 'createTicket'),
-            Markup.button.callback('Часто задаваемые вопросы', 'faqRoot'),
-            Markup.button.callback('Наши страницы на маркетплейсах', 'credits'),
+            Markup.button.callback('📝 Регистрация кассы', 'wantToRegister'),
+            Markup.button.callback('🔌 Активация ОФД', 'wantToOfd'),
+            Markup.button.callback('💬 Вопрос оператору', 'createTicket'),
+            Markup.button.callback('❓ Часто задаваемые вопросы', 'faqRoot'),
+            Markup.button.callback('🛒 Наши страницы на маркетплейсах', 'credits'),
         ],
         {
             columns: 1
@@ -32,7 +32,6 @@ export function creditsButtons() {
     return Markup.inlineKeyboard(
         [
             Markup.button.url('Wildberries', 'https://www.wildberries.ru/seller/4232548'),
-            //Markup.button.url('Ozon', 'https://www.ozon.ru/seller/vitmamarket-2650110/?miniapp=seller_2650110'),
             Markup.button.callback('Вернуться в главное меню', 'mainMenu'),
         ],
         {
@@ -78,9 +77,9 @@ export function disconnectFromButton(chatId: string) {
 export function adminButtons() {
     return Markup.inlineKeyboard(
         [
-            Markup.button.callback('Необработанные заявки на регистрацию', 'actualRegs'),
-            Markup.button.callback('Необработанные заявки на активацию ОФД', 'actualOfds'),
-            Markup.button.callback('Неотвеченные вопросы', 'actualTickets')
+            Markup.button.callback('📋 Заявки на регистрацию (в работе)', 'actualRegs'),
+            Markup.button.callback('🔌 Заявки на активацию ОФД (в работе)', 'actualOfds'),
+            Markup.button.callback('❗ Неотвеченные вопросы', 'actualTickets')
         ],
         {
             columns: 1
@@ -112,4 +111,15 @@ export function actualTicketsButtons(tickets) {
     buttons.push(Markup.button.callback('Вернуться в главное меню', 'mainMenu'))
 
     return Markup.inlineKeyboard(buttons, { columns: 1 });
+}
+
+export function regDoneButton(regId: number) {
+    return Markup.inlineKeyboard(
+        [
+            Markup.button.callback('Заявка обработана', 'regDone:' + regId),
+        ],
+        {
+            columns: 1
+        }
+    )
 }

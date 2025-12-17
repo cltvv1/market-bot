@@ -47,8 +47,4 @@ export const formatRegistrationRequest = (reg) =>
     `Банковские реквизиты:\n` +
     `${reg.bankReqs ?? 'не указаны'}\n\n`
 
-// `Статусы:\n` +
-// `• Заполнена: ${reg.isFilled ? 'Да' : 'Нет'}\n` +
-// `• Остановлена: ${reg.isStopped ? 'Да' : 'Нет'}\n` +
-// `• Обработана: ${reg.isProcessed ? 'Да' : 'Нет'}\n` +
-// `• PDF файл: ${reg.pdfPath ?? 'нет'}\n`;
+export const formatRegistrationDone = (reg) => `Заявка на регистрацию #${reg.id} от ${reg.orgName ?? 'не указано'} обработана\n\n`

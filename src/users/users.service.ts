@@ -83,4 +83,9 @@ export class UsersService {
     async isAlreadyTalking(chatId: string) {
         return !!(await this.getByChatId(chatId))?.talkingTo;
     }
+
+    async isTalking(initChatId: string, talkingToChatId: string) {
+        const user = await this.getByChatId(initChatId);
+        return user?.talkingTo === talkingToChatId;
+    }
 }

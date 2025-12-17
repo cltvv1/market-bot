@@ -81,7 +81,6 @@ export class PdfGeneratorService {
             }
         };
 
-        // Генерация PDF
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
         const filePath = path.join(process.cwd(), this.pdfDir, `registration_${request.id}.pdf`);

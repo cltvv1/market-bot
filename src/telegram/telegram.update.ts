@@ -8,7 +8,7 @@ import { UserContextService } from 'src/userContext/user-context.service';
 import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
 import { RegistrationsService } from '../registrations/registrations.service';
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
-import { menuButtons, startRegButtons, creditsButtons, mainMenuButton, connectToButton, adminButtons, actualRegsButtons, actualTicketsButtons, disconnectFromButton } from './keyboards';
+import { menuButtons, startRegButtons, creditsButtons, mainMenuButton, adminButtons, actualRegsButtons, actualTicketsButtons, disconnectFromButton } from './keyboards';
 
 
 @Update()
@@ -115,6 +115,29 @@ export class TelegramUpdate {
         await ctx.reply('Pdf-файл не найден')
     }
 
+    @Action(/regDone:\d+/)
+    async onRegDone(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+
+        if (!query || !('data' in query)) {
+            return;
+        }
+
+        const data = query.data;
+
+        const [, regId] = data.split(':');
+
+        const reg = await this.regService.getRegistrationById(regId)
+
+        if (!reg) {
+            await ctx.reply('Эта заявка уже обработана!')
+            return
+        }
+        await this.regService.doReg(reg)
+        await ctx.deleteMessage(ctx.message?.message_id)
+        await this.regService.notifyAdminssAboutRegDone(reg)
+    }
+
     @Action('actualTickets')
     async handleActualTickets(@Ctx() ctx: Context) {
         const actualTickets = await this.ticketService.getActualTickets();
@@ -214,7 +237,13 @@ export class TelegramUpdate {
         const [, clientChatId] = query.data.split(':');
         const operatorChatId = String(ctx.from.id);
 
+        if (!(await this.usersService.isOperator(operatorChatId))) {
+            await ctx.reply('Недостаточно прав');
+            return;
+        }
+
         if (await this.usersService.isAlreadyTalking(clientChatId)) {
+            await ctx.deleteMessage(ctx.message?.message_id)
             await ctx.reply('К чату с этим клиентом уже подключен оператор')
             return
         }
@@ -224,8 +253,8 @@ export class TelegramUpdate {
 
         await this.usersService.setTalkingTo(operatorChatId, clientChatId);
 
-        ctx.telegram.sendMessage(clientChatId, 'К чату с вами присоединился оператор,  он будет видеть все ваши сообщения.')
-        await ctx.reply('Вы подключены к чату с клиентом, все ваши сообщения будут отправлены клиенту.');
+        await ctx.telegram.sendMessage(clientChatId, 'К чату с вами присоединился оператор,  он будет видеть все ваши сообщения. Вы так же можете отправить медиафайлы (Изображения/Видео).')
+        await ctx.reply('Вы подключены к чату с клиентом, все ваши сообщения будут отправлены клиенту. Вы так же можете отправить медиафайлы (Изображения/Видео).');
     }
 
     @Action(/disconnectFrom:\d+/)
@@ -242,6 +271,13 @@ export class TelegramUpdate {
         const [, talkingToChatId] = data.split(':');
         const initChatId = String(ctx.from.id);
 
+        const isTalking = await this.usersService.isTalking(initChatId, talkingToChatId);
+        if (!isTalking) {
+            await ctx.deleteMessage(ctx.message?.message_id)
+            await ctx.reply('Диалог уже завершён или недоступен');
+            return;
+        }
+
         let operatorChatId
         let clientChatId
         if (await this.usersService.isOperator(initChatId)) {
@@ -256,7 +292,8 @@ export class TelegramUpdate {
         let closedTicket = await this.ticketService.getActiveTicket(clientChatId)
 
         if (!closedTicket) {
-            ctx.reply('Этот вопрос больше недоступен, скорее всего, он уже был закрыт ранее')
+            await ctx.deleteMessage(ctx.message?.message_id)
+            await ctx.reply('Этот вопрос больше недоступен, скорее всего, он уже был закрыт ранее')
             return
         }
         await this.ticketService.closeTicket(closedTicket.id, operatorChatId)
@@ -362,12 +399,12 @@ export class TelegramUpdate {
 
                         if (!nextFieldText) {
                             const filePath = await this.regService.finishReg(reg);
-                            await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется', mainMenuButton())
 
-                            await ctx.replyWithDocument({
-                                source: fs.createReadStream(filePath),
-                                filename: `registration_${reg.id}.pdf`
+                            await ctx.reply(
+                                TG_TEXTS.REG_FILLED, {
+                                parse_mode: 'HTML', ...mainMenuButton()
                             });
+                            await this.regService.notifyAdminssAboutNewReg(reg, filePath)
 
                             await this.ctxService.set(chatId, { mode: 'IDLE' })
                             return
@@ -407,18 +444,19 @@ export class TelegramUpdate {
 
     @On('message')
     async onMedia(@Ctx() ctx: Context) {
+        if (!ctx.message) return
+        if ('text' in ctx.message) return;
 
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        if (!ctx.message) return
+        const context = await this.ctxService.get(chatId);
+        if (context.mode !== 'OPERATOR') return
 
         const talkingToId = await this.usersService.getTalkingTo(chatId);
         if (!talkingToId) return
 
-        if ('text' in ctx.message) return;
 
-        //await ctx.forwardMessage(talkingToId);
         await ctx.copyMessage(talkingToId, disconnectFromButton(chatId));
 
     }
