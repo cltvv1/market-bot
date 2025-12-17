@@ -8,7 +8,7 @@ import { UserContextService } from 'src/userContext/user-context.service';
 import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
 import { RegistrationsService } from '../registrations/registrations.service';
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
-import { menuButtons, startRegButtons, creditsButtons, mainMenuButton, adminButtons, actualRegsButtons, actualTicketsButtons, disconnectFromButton } from './keyboards';
+import { menuButtons, startRegButtons, creditsButtons, mainMenuButton, adminButtons, actualRegsButtons, actualTicketsButtons, disconnectFromButton, serviceButtons } from './keyboards';
 
 
 @Update()
@@ -201,6 +201,12 @@ export class TelegramUpdate {
         await ctx.editMessageText(TG_TEXTS.CREDITS_TEXT, creditsButtons());
     }
 
+    @Action('serviceMenu')
+    async sendServiceMenu(ctx: Context) {
+        await ctx.editMessageText(TG_TEXTS.SERVICE_TEXT, serviceButtons());
+    }
+
+
     @Action('mainMenu')
     async returnToMainMenu(ctx: Context) {
         const chatId = String(ctx.chat?.id);
@@ -358,10 +364,7 @@ export class TelegramUpdate {
                                 await this.ctxService.set(chatId, { mode: 'IDLE' })
                                 return
                             } else await ctx.reply(`${nextFieldText}:`)
-                        } else {
-                            //если есть тикет не заполненный, то полученный текст в тикет
-                        }// else если открыт чат с оператором то контекст сеттим и полученный мсг оператору отправляем
-                        //else
+                        }
                         await ctx.reply('Выберете команду из меню, сейчас вы не заполняете анкету и не переписываетесь с оператором', menuButtons())
                         break;
                 }

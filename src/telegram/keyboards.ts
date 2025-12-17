@@ -4,10 +4,8 @@ import { Markup } from "telegraf";
 export function menuButtons() {
     return Markup.inlineKeyboard(
         [
-            Markup.button.callback('📝 Регистрация кассы', 'wantToRegister'),
-            Markup.button.callback('🔌 Активация ОФД', 'wantToOfd'),
+            Markup.button.callback('🛠 Заявка по сервису', 'serviceMenu'),
             Markup.button.callback('💬 Вопрос оператору', 'createTicket'),
-            Markup.button.callback('❓ Часто задаваемые вопросы', 'faqRoot'),
             Markup.button.callback('🛒 Наши страницы на маркетплейсах', 'credits'),
         ],
         {
@@ -15,7 +13,21 @@ export function menuButtons() {
         }
     )
 }
+// Markup.button.callback('Часто задаваемые вопросы', 'faqRoot'),
 
+export function serviceButtons() {
+    return Markup.inlineKeyboard(
+        [
+            Markup.button.callback('📝 Регистрация кассы', 'wantToRegister'),
+            Markup.button.callback('🔌 Активация ОФД', 'wantToOfd'),
+            Markup.button.callback('🔄 Замена ФН', 'fnReplacement'),
+            Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'),
+        ],
+        {
+            columns: 1
+        }
+    )
+}
 export function startRegButtons() {
     return Markup.keyboard(
         [
@@ -31,8 +43,8 @@ export function startRegButtons() {
 export function creditsButtons() {
     return Markup.inlineKeyboard(
         [
-            Markup.button.url('Wildberries', 'https://www.wildberries.ru/seller/4232548'),
-            Markup.button.callback('Вернуться в главное меню', 'mainMenu'),
+            Markup.button.url('🛒Wildberries', 'https://www.wildberries.ru/seller/4232548'),
+            Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'),
         ],
         {
             columns: 1
@@ -44,7 +56,7 @@ export function creditsButtons() {
 export function mainMenuButton() {
     return Markup.inlineKeyboard(
         [
-            Markup.button.callback('Вернуться в главное меню', 'mainMenu'),
+            Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'),
         ],
         {
             columns: 1
@@ -66,7 +78,7 @@ export function connectToButton(chatId: string) {
 export function disconnectFromButton(chatId: string) {
     return Markup.inlineKeyboard(
         [
-            Markup.button.callback('Вопрос закрыт, закрыть чат.', 'disconnectFrom:' + chatId),
+            Markup.button.callback('❌Вопрос закрыт, закрыть чат.', 'disconnectFrom:' + chatId),
         ],
         {
             columns: 1
@@ -95,7 +107,7 @@ export function actualRegsButtons(regs) {
         )
     );
 
-    buttons.push(Markup.button.callback('Вернуться в главное меню', 'mainMenu'))
+    buttons.push(Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'))
 
     return Markup.inlineKeyboard(buttons, { columns: 1 });
 }
@@ -108,7 +120,7 @@ export function actualTicketsButtons(tickets) {
         )
     );
 
-    buttons.push(Markup.button.callback('Вернуться в главное меню', 'mainMenu'))
+    buttons.push(Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'))
 
     return Markup.inlineKeyboard(buttons, { columns: 1 });
 }
@@ -116,7 +128,7 @@ export function actualTicketsButtons(tickets) {
 export function regDoneButton(regId: number) {
     return Markup.inlineKeyboard(
         [
-            Markup.button.callback('Заявка обработана', 'regDone:' + regId),
+            Markup.button.callback('✅Заявка обработана', 'regDone:' + regId),
         ],
         {
             columns: 1

@@ -1,5 +1,10 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
+export enum RegistrationType {
+    REGISTRATION = 'REGISTRATION',
+    FISCAL_REPLACEMENT = 'FISCAL_REPLACEMENT',
+}
+
 @Entity('registration_requests')
 export class RegistrationRequestEntity {
     @PrimaryGeneratedColumn()
@@ -7,6 +12,13 @@ export class RegistrationRequestEntity {
 
     @Column({ type: 'bigint' })
     chatId: string;
+
+    @Column({
+        type: 'enum',
+        enum: RegistrationType,
+        default: RegistrationType.REGISTRATION,
+    })
+    type: RegistrationType;
 
     @Column({ default: 1 })
     currentStep: number;
