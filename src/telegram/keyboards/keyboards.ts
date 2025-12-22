@@ -1,18 +1,6 @@
 import { TG_TEXTS } from "src/texts/telegram.texts";
 import { Markup } from "telegraf";
 
-export function menuButtons() {
-    return Markup.inlineKeyboard(
-        [
-            Markup.button.callback('🛠 Заявка по сервису', 'serviceMenu'),
-            Markup.button.callback('💬 Вопрос оператору', 'createTicket'),
-            Markup.button.callback('🛒 Наши страницы на маркетплейсах', 'credits'),
-        ],
-        {
-            columns: 1
-        }
-    )
-}
 // Markup.button.callback('Часто задаваемые вопросы', 'faqRoot'),
 
 export function serviceButtons() {
@@ -44,18 +32,6 @@ export function creditsButtons() {
     return Markup.inlineKeyboard(
         [
             Markup.button.url('🛒Wildberries', 'https://www.wildberries.ru/seller/4232548'),
-            Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'),
-        ],
-        {
-            columns: 1
-        }
-    )
-}
-
-
-export function mainMenuButton() {
-    return Markup.inlineKeyboard(
-        [
             Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'),
         ],
         {

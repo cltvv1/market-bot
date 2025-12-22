@@ -9,7 +9,8 @@ import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { UsersService } from 'src/users/users.service';
 import { formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
 import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
-import { regDoneButton } from 'src/telegram/keyboards';
+import { regDoneButton } from 'src/telegram/keyboards/keyboards';
+import { RegistrationField } from './registration.types';
 
 @Injectable()
 export class RegistrationsService {
@@ -63,18 +64,13 @@ export class RegistrationsService {
         if (!reg) return null;
 
         const field = await this.getFieldNameByStep(reg.currentStep);
-        if (!field) {
-            reg.isFilled = true;
-            await this.registrationRepo.save(reg);
-            return null;
-        }
+        if (!field) return reg;
 
-        (reg as any)[field] = value;
+        reg[field] = value;
         reg.currentStep++;
 
         await this.registrationRepo.save(reg);
-
-        return reg
+        return reg;
     }
 
     async isCompleted(reg: RegistrationRequestEntity) {
@@ -87,10 +83,17 @@ export class RegistrationsService {
         return nextField?.label
     }
 
-    async getFieldNameByStep(step: number) {
-        const nextField = await this.fieldsRepo.findOne({ where: { step } });
-        return nextField?.name
+    async getFieldNameByStep(step: number): Promise<RegistrationField | null> {
+        const field = await this.fieldsRepo.findOne({ where: { step } });
+        if (!field) return null;
+
+        if (!this.isRegistrationField(field.name)) {
+            throw new Error(`Invalid registration field from DB: ${field.name}`);
+        }
+
+        return field.name;
     }
+
 
     async getActualRegs() {
         return this.registrationRepo.find({
@@ -112,42 +115,87 @@ export class RegistrationsService {
         return pdfPath
     }
 
-    async notifyAdminssAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
+    async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
         const admins = await this.usersService.getAdmins();
+        if (!admins.length) return;
 
         const message = formatRegistrationRequest(reg);
 
-        for (const admin of admins) {
-            await this.telegramSenderService.sendMessage(
-                admin.chatId,
-                message,
-                regDoneButton(reg.id)
-            );
+        await Promise.all(
+            admins.map(async (admin) => {
+                try {
+                    await this.telegramSenderService.sendMessage(
+                        admin.chatId,
+                        message,
+                        regDoneButton(reg.id),
+                    );
 
-            await this.telegramSenderService.sendDocument(admin.chatId, {
-                source: fs.createReadStream(filePath),
-                filename: `registration_${reg.id}.pdf`
-            }
-
-            )
-        }
+                    await this.telegramSenderService.sendDocument(
+                        admin.chatId,
+                        {
+                            source: fs.createReadStream(filePath),
+                            filename: `registration_${reg.id}.pdf`,
+                        },
+                    );
+                } catch (e) {
+                    console.error(
+                        `Failed to notify admin ${admin.chatId}:`,
+                        e,
+                    );
+                }
+            })
+        );
     }
-
-    async notifyAdminssAboutRegDone(reg: RegistrationRequestEntity) {
+    
+    async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
         const admins = await this.usersService.getAdmins();
+        if (!admins.length) return;
 
         const message = formatRegistrationDone(reg);
 
-        for (const admin of admins) {
-            await this.telegramSenderService.sendMessage(
-                admin.chatId,
-                message,
-            );
-        }
+        await Promise.all(
+            admins.map(async (admin) => {
+                try {
+                    await this.telegramSenderService.sendMessage(
+                        admin.chatId,
+                        message,
+                    );
+                } catch (e) {
+                    console.error(
+                        `Failed to notify admin ${admin.chatId}`,
+                        e,
+                    );
+                }
+            }),
+        );
     }
 
     async doReg(reg: RegistrationRequestEntity) {
         reg.isProcessed = true;
         await this.registrationRepo.save(reg);
     }
+
+    private isRegistrationField(value: string): value is RegistrationField {
+        return [
+            'orgName',
+            'ogrn',
+            'innKpp',
+            'urAdress',
+            'kktAdress',
+            'kktName',
+            'phone',
+            'phoneToCall',
+            'email',
+            'nds',
+            'excise',
+            'markirovka',
+            'services',
+            'strictReporting',
+            'taxSystem',
+            'kktModel',
+            'bankReqs',
+            'ofd',
+        ].includes(value);
+    }
+
 }

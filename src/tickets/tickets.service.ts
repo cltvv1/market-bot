@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { TicketEntity } from './entities/ticket.entity';
 import { UsersService } from 'src/users/users.service';
 import { formatTicket } from 'src/common/utils';
-import { connectToButton } from 'src/telegram/keyboards';
+import { connectToButton } from 'src/telegram/keyboards/keyboards';
 import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
 
 @Injectable()

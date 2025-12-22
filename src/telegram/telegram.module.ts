@@ -4,6 +4,7 @@ import { UsersModule } from 'src/users/users.module';
 import { TicketsModule } from 'src/tickets/tickets.module';
 import { UserContextService } from 'src/userContext/user-context.service';
 import { RegistrationsModule } from 'src/registrations/registrations.module';
+import { RegisterTextHandler } from './handlers/register/register-text.handler';
 
 
 @Module({
@@ -12,6 +13,12 @@ import { RegistrationsModule } from 'src/registrations/registrations.module';
         TicketsModule,
         UsersModule
     ],
-    providers: [TelegramUpdate, UserContextService],
+    providers: [TelegramUpdate,
+        UserContextService,
+        RegisterTextHandler,
+        //IdleTextHandler,
+        //TicketTextHandler,
+        //OperatorTextHandler,
+    ],
 })
 export class TelegramModule { }

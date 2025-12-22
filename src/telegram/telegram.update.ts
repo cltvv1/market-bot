@@ -8,8 +8,10 @@ import { UserContextService } from 'src/userContext/user-context.service';
 import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
 import { RegistrationsService } from '../registrations/registrations.service';
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
-import { menuButtons, startRegButtons, creditsButtons, mainMenuButton, adminButtons, actualRegsButtons, actualTicketsButtons, disconnectFromButton, serviceButtons } from './keyboards';
-
+import { startRegButtons, creditsButtons, adminButtons, actualRegsButtons, actualTicketsButtons, disconnectFromButton, serviceButtons } from './keyboards/keyboards';
+import { mainMenuButton } from "src/telegram/keyboards/return-to-main-menu.keyboard";
+import { menuButtons } from "src/telegram/keyboards/menu.keyboard";
+import { RegisterTextHandler } from "src/telegram/handlers/register/register-text.handler";
 
 @Update()
 export class TelegramUpdate {
@@ -18,6 +20,7 @@ export class TelegramUpdate {
         private readonly ctxService: UserContextService,
         private readonly ticketService: TicketsService,
         private readonly usersService: UsersService,
+        private readonly registerHandler: RegisterTextHandler
     ) { }
 
     @Start()
@@ -61,7 +64,6 @@ export class TelegramUpdate {
                 wantToRegisterMsg(fields),
                 startRegButtons()
             );
-
             return;
         }
 
@@ -135,7 +137,7 @@ export class TelegramUpdate {
         }
         await this.regService.doReg(reg)
         await ctx.deleteMessage(ctx.message?.message_id)
-        await this.regService.notifyAdminssAboutRegDone(reg)
+        await this.regService.notifyAdminsAboutRegDone(reg)
     }
 
     @Action('actualTickets')
@@ -217,18 +219,21 @@ export class TelegramUpdate {
             ctx.from?.first_name,
             ctx.from?.username
         );
-
-        ctx.deleteMessage(ctx.message?.message_id)
-
-        if (user.isAdmin) {
-            await ctx.reply(
-                'Панель администратора:',
-                adminButtons()
-            );
+        try {
+            await ctx.deleteMessage(ctx.message?.message_id)
+        } catch {
             return
-        }
+        } finally {
+            if (user.isAdmin) {
+                await ctx.reply(
+                    'Панель администратора:',
+                    adminButtons()
+                );
+                return
+            }
 
-        await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
+            await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
+        }
     }
 
     @Action(/connectTo:\d+/)
@@ -319,102 +324,66 @@ export class TelegramUpdate {
 
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
-        let reg = await this.regService.getRegistration(chatId)
+
 
         const context = await this.ctxService.get(chatId);
 
         switch (context.mode) {
             case 'IDLE':
-                switch (msgText) {
-                    case TG_TEXTS.START_REG_TEXT:
-
-                        await this.ctxService.set(chatId, { mode: 'REGISTER' })
-
-                        if (reg) {
-                            await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
-                        } else {
-                            reg = await this.regService.createRegistration(chatId)
-                            await ctx.reply('Заявка создана', removeKeyboard())
-                        }
-
-                        const nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
-                        if (!nextFieldText) {
-                            ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
-                            return
-                        }
-                        await ctx.reply(`${nextFieldText}:`)
-                        break;
-                    case TG_TEXTS.STOP_REG_TEXT:
-                        await ctx.reply(TG_TEXTS.NO_PERSONAL_DATA, removeKeyboard())
-                        await this.startCommand(ctx)
-                        break;
-                    default:
-                        reg = await this.regService.getRegistration(chatId)
-                        if (reg) {
-                            await this.ctxService.set(chatId, { mode: 'REGISTER' })
-
-                            const reg = await this.regService.saveFieldValue(chatId, msgText)
-                            if (!reg) return
-
-                            const nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
-
-                            if (!nextFieldText) {
-                                await ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется', mainMenuButton())
-
-                                await this.ctxService.set(chatId, { mode: 'IDLE' })
-                                return
-                            } else await ctx.reply(`${nextFieldText}:`)
-                        }
-                        await ctx.reply('Выберете команду из меню, сейчас вы не заполняете анкету и не переписываетесь с оператором', menuButtons())
-                        break;
-                }
+                await ctx.reply('Выберете команду из меню, сейчас вы не заполняете анкету и не переписываетесь с оператором:', menuButtons())
                 break;
             case 'REGISTER':
-                let nextFieldText;
-                switch (msgText) {
-                    case TG_TEXTS.START_REG_TEXT:
-                        if (reg) {
-                            await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
-                        } else {
-                            reg = await this.regService.createRegistration(chatId)
-                            await ctx.reply('Заявка создана', removeKeyboard())
-                        }
-
-                        nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
-                        if (!nextFieldText) {
-                            ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
-                            return
-                        }
-                        await ctx.reply(`${nextFieldText}:`)
-                        break;
-                    case TG_TEXTS.STOP_REG_TEXT:
-                        await ctx.reply(TG_TEXTS.NO_PERSONAL_DATA, removeKeyboard())
-                        await this.startCommand(ctx)
-
-                        await this.ctxService.set(chatId, { mode: 'IDLE' })
-
-                        break;
-                    default:
-                        reg = await this.regService.saveFieldValue(chatId, msgText)
-                        if (!reg) return
-
-                        nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
-
-                        if (!nextFieldText) {
-                            const filePath = await this.regService.finishReg(reg);
-
-                            await ctx.reply(
-                                TG_TEXTS.REG_FILLED, {
-                                parse_mode: 'HTML', ...mainMenuButton()
-                            });
-                            await this.regService.notifyAdminssAboutNewReg(reg, filePath)
-
-                            await this.ctxService.set(chatId, { mode: 'IDLE' })
-                            return
-                        } else await ctx.reply(`${nextFieldText}:`)
-                        break;
-                }
+                await this.registerHandler.handle(ctx, msgText);
                 break;
+            // let reg = await this.regService.getRegistration(chatId)
+            // let nextFieldText;
+            // switch (msgText) {
+            //     case TG_TEXTS.START_REG_TEXT:
+            //         if (reg) {
+            //             await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
+            //         } else {
+            //             reg = await this.regService.createRegistration(chatId)
+            //             await ctx.reply('Заявка создана', removeKeyboard())
+            //         }
+
+            //         nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
+            //         if (!nextFieldText) {
+            //             ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
+            //             return
+            //         }
+            //         await ctx.reply(`${nextFieldText}:`)
+            //         break;
+            //     case TG_TEXTS.STOP_REG_TEXT:
+            //         await ctx.reply(TG_TEXTS.NO_PERSONAL_DATA, removeKeyboard())
+            //         await this.startCommand(ctx)
+
+            //         await this.ctxService.set(chatId, { mode: 'IDLE' })
+
+            //         break;
+            //     default:
+            //         reg = await this.regService.saveFieldValue(chatId, msgText)
+            //         if (!reg) {
+            //             await ctx.reply('Вы не подтвердили согласие с обработкой персональных данных, заявка на регистрацию не была создана. \n\nДля продолжения нажмите на одну из кнопок внизу экрана.')
+            //             return
+            //         }
+
+            //         nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
+
+            //         if (!nextFieldText) {
+            //             const filePath = await this.regService.finishReg(reg);
+
+            //             await ctx.reply(
+            //                 TG_TEXTS.REG_FILLED, {
+            //                 parse_mode: 'HTML', ...mainMenuButton()
+            //             });
+            //             await this.regService.notifyAdminssAboutNewReg(reg, filePath)
+
+            //             await this.ctxService.set(chatId, { mode: 'IDLE' })
+            //             return
+            //         } else await ctx.reply(`${nextFieldText}:`)
+            //         break;
+            // }
+            // break;
             case 'TICKET':
                 const ticket = await this.ticketService.saveTicketText(chatId, msgText)
                 if (!ticket) {
@@ -459,8 +428,6 @@ export class TelegramUpdate {
         const talkingToId = await this.usersService.getTalkingTo(chatId);
         if (!talkingToId) return
 
-
         await ctx.copyMessage(talkingToId, disconnectFromButton(chatId));
-
     }
 }
