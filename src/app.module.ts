@@ -9,6 +9,7 @@ import { TicketsModule } from './tickets/tickets.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { validationSchema } from './app.config';
 import { TelegrafModule } from 'nestjs-telegraf';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
@@ -39,7 +40,8 @@ import { TelegrafModule } from 'nestjs-telegraf';
     RegistrationsModule,
     TelegramModule,
     UsersModule,
-    TicketsModule
+    TicketsModule,
+    AiModule
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -5,7 +5,8 @@ export function menuButtons() {
         [
             Markup.button.callback('🛠 Заявка по сервису', 'serviceMenu'),
             Markup.button.callback('💬 Вопрос оператору', 'createTicket'),
-            Markup.button.callback('🛒 Наши страницы на маркетплейсах', 'credits'),
+            Markup.button.callback('🤖 Вопрос ИИ', 'createAiRequest'),
+            //Markup.button.callback('🛒 Наши страницы на маркетплейсах', 'credits'),
         ],
         {
             columns: 1

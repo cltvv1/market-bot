@@ -17,10 +17,10 @@ export class RegistrationsService {
     constructor(
         @InjectRepository(RegistrationRequestEntity)
         private readonly registrationRepo: Repository<RegistrationRequestEntity>,
-
+    
         @InjectRepository(RegistrationFieldEntity)
         private readonly fieldsRepo: Repository<RegistrationFieldEntity>,
-
+    
         private readonly pdfService: PdfGeneratorService,
         private usersService: UsersService,
         private telegramSenderService: TelegramSenderService
@@ -30,7 +30,7 @@ export class RegistrationsService {
         return this.registrationRepo.find({ order: { id: 'ASC' } })
     }
 
-    async getRegistration(chatId: string) {
+    async getNotFilledReg(chatId: string) {
         let reg = await this.registrationRepo.findOne({ where: { chatId, isFilled: false } });
 
         return reg;
@@ -60,7 +60,7 @@ export class RegistrationsService {
     }
 
     async saveFieldValue(chatId: string, value: string) {
-        const reg = await this.getRegistration(chatId);
+        const reg = await this.getNotFilledReg(chatId);
         if (!reg) return null;
 
         const field = await this.getFieldNameByStep(reg.currentStep);
@@ -146,7 +146,7 @@ export class RegistrationsService {
             })
         );
     }
-    
+
     async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
         const admins = await this.usersService.getAdmins();
         if (!admins.length) return;
@@ -197,5 +197,4 @@ export class RegistrationsService {
             'ofd',
         ].includes(value);
     }
-
 }

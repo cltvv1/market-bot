@@ -51,17 +51,6 @@ export function connectToButton(chatId: string) {
     )
 }
 
-export function disconnectFromButton(chatId: string) {
-    return Markup.inlineKeyboard(
-        [
-            Markup.button.callback('❌Вопрос закрыт, закрыть чат.', 'disconnectFrom:' + chatId),
-        ],
-        {
-            columns: 1
-        }
-    )
-}
-
 export function adminButtons() {
     return Markup.inlineKeyboard(
         [

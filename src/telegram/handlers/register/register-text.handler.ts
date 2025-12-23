@@ -19,7 +19,7 @@ export class RegisterTextHandler implements TextHandler {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let reg = await this.regService.getRegistration(chatId)
+        let reg = await this.regService.getNotFilledReg(chatId)
         let nextFieldText;
         switch (msgText) {
             case TG_TEXTS.START_REG_TEXT:

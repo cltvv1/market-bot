@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR';
+export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR' | 'AI';
 
 interface UserContext {
     mode: UserMode;
