@@ -30,7 +30,6 @@ export class TelegramUpdate {
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
         private readonly aiService: AiService,
-
     ) { }
 
     @Start()
@@ -38,7 +37,7 @@ export class TelegramUpdate {
         const chatId = ctx.chat?.id;
         if (!chatId) return;
 
-        const user = await this.usersService.getOrCreate(
+        const user = await this.usersService.getOrCreateOrUpdate(
             String(chatId),
             ctx.from?.first_name,
             ctx.from?.username,
@@ -221,7 +220,6 @@ export class TelegramUpdate {
         return
     }
 
-
     @Action('credits')
     async sendCredits(ctx: Context) {
         await ctx.editMessageText(TG_TEXTS.CREDITS_TEXT, creditsButtons());
@@ -238,7 +236,7 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        const user = await this.usersService.getOrCreate(
+        const user = await this.usersService.getOrCreateOrUpdate(
             chatId,
             ctx.from?.first_name,
             ctx.from?.username
@@ -354,28 +352,43 @@ export class TelegramUpdate {
         const context = await this.ctxService.get(chatId);
 
         if (msgText) {
-            switch (context.mode) {
-                case 'IDLE':
-                    await this.idleHandler.handle(ctx);
-                    break;
-                case 'REGISTER':
-                    await this.registerHandler.handle(ctx, msgText);
-                    break;
-                case 'TICKET':
-                    await this.ticketHandler.handle(ctx, msgText)
-                    break;
-                case 'OPERATOR':
-                    await this.operatorHandler.handle(ctx)
-                    break;
-                case 'AI':
-                    const answer = await this.aiService.askQuestion(msgText);
-                    await ctx.reply(answer, removeKeyboard());
-                    return;
-            }
+            await this.handleTextByMode(ctx, context.mode, msgText);
             return;
         }
 
-        if (context.mode !== 'OPERATOR') return;
+        await this.handleMedia(ctx, context.mode, String(chatId));
+    }
+
+    private async handleTextByMode(
+        ctx: Context,
+        mode: string,
+        text: string,
+    ) {
+        switch (mode) {
+            case 'IDLE':
+                return this.idleHandler.handle(ctx);
+
+            case 'REGISTER':
+                return this.registerHandler.handle(ctx, text);
+
+            case 'TICKET':
+                return this.ticketHandler.handle(ctx, text);
+
+            case 'OPERATOR':
+                return this.operatorHandler.handle(ctx);
+
+            case 'AI':
+                const answer = await this.aiService.askQuestion(text);
+                return ctx.reply(answer);
+        }
+    }
+
+    private async handleMedia(
+        ctx: Context,
+        mode: string,
+        chatId: string,
+    ) {
+        if (mode !== 'OPERATOR') return;
 
         const talkingToId = await this.usersService.getTalkingTo(chatId);
         if (!talkingToId) return;
@@ -385,5 +398,4 @@ export class TelegramUpdate {
             disconnectFromButton(chatId),
         );
     }
-
 }

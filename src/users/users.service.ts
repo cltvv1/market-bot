@@ -11,16 +11,39 @@ export class UsersService {
         private readonly usersRepo: Repository<UserEntity>,
     ) { }
 
-    async getOrCreate(chatId: string, name?: string, username?: string) {
+    async getOrCreateOrUpdate(chatId: string, name?: string, username?: string) {
         let user = await this.usersRepo.findOne({ where: { chatId } });
+
+        const now = new Date();
 
         if (!user) {
             user = this.usersRepo.create({
                 chatId,
                 name,
                 username,
-                fmDate: new Date().toLocaleDateString('ru-RU'),
+                firstSeenAt: now,
+
             });
+            await this.usersRepo.save(user);
+        }
+
+        // 🔄 обновление данных существующего пользователя
+        let needUpdate = false;
+
+        if (name && user.name !== name) {
+            user.name = name;
+            needUpdate = true;
+        }
+
+        if (username && user.username !== username) {
+            user.username = username;
+            needUpdate = true;
+        }
+
+        user.lastSeenAt = now;
+        needUpdate = true;
+
+        if (needUpdate) {
             await this.usersRepo.save(user);
         }
 

@@ -134,7 +134,7 @@ export class RegistrationsService {
                         admin.chatId,
                         {
                             source: fs.createReadStream(filePath),
-                            filename: `registration_${reg.id}.pdf`,
+                            filename: `${reg.orgName}.pdf`,
                         },
                     );
                 } catch (e) {

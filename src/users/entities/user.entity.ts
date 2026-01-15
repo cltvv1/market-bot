@@ -15,8 +15,11 @@ export class UserEntity {
     @Column({ nullable: true })
     username: string;
 
-    @Column({ nullable: true })
-    fmDate: string;
+    @Column({ type: 'timestamp', nullable: true })
+    firstSeenAt: Date;
+
+    @Column({ type: 'timestamp', nullable: true })
+    lastSeenAt: Date;
 
     @Column({ default: true })
     sendNews: boolean;
@@ -29,7 +32,7 @@ export class UserEntity {
 
     @Column({ default: false })
     isOperator: boolean;
-
+    
     @Column({ type: 'varchar', nullable: true })
     talkingTo: string | null;
 }
