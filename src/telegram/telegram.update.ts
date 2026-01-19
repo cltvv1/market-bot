@@ -16,7 +16,6 @@ import { mainMenuButton } from "src/telegram/keyboards/return-to-main-menu.keybo
 import { RegisterTextHandler } from "src/telegram/handlers/register/register-text.handler";
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
 import { startRegButtons, creditsButtons, adminButtons, actualRegsButtons, actualTicketsButtons, serviceButtons } from './keyboards/keyboards';
-import { AiService } from 'src/ai/ai.service';
 
 @Update()
 export class TelegramUpdate {
@@ -29,8 +28,43 @@ export class TelegramUpdate {
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
-        private readonly aiService: AiService,
     ) { }
+
+    private async handleTextByMode(
+        ctx: Context,
+        mode: string,
+        text: string,
+    ) {
+        switch (mode) {
+            case 'IDLE':
+                return this.idleHandler.handle(ctx);
+
+            case 'REGISTER':
+                return this.registerHandler.handle(ctx, text);
+
+            case 'TICKET':
+                return this.ticketHandler.handle(ctx, text);
+
+            case 'OPERATOR':
+                return this.operatorHandler.handle(ctx);
+        }
+    }
+
+    private async handleMedia(
+        ctx: Context,
+        mode: string,
+        chatId: string,
+    ) {
+        if (mode !== 'OPERATOR') return;
+
+        const talkingToId = await this.usersService.getTalkingTo(chatId);
+        if (!talkingToId) return;
+
+        await ctx.copyMessage(
+            talkingToId,
+            disconnectFromButton(chatId),
+        );
+    }
 
     @Start()
     async startCommand(@Ctx() ctx: Context) {
@@ -209,17 +243,6 @@ export class TelegramUpdate {
         await ctx.editMessageText('Введите текст вопроса:')
     }
 
-    @Action('createAiRequest')
-    async hadleAiTicket(@Ctx() ctx: Context) {
-        const chatId = String(ctx.chat?.id);
-        if (!chatId) return;
-
-        await this.ctxService.set(chatId, { mode: 'AI' })
-
-        await ctx.editMessageText('Введите текст вопроса:')
-        return
-    }
-
     @Action('credits')
     async sendCredits(ctx: Context) {
         await ctx.editMessageText(TG_TEXTS.CREDITS_TEXT, creditsButtons());
@@ -229,7 +252,6 @@ export class TelegramUpdate {
     async sendServiceMenu(ctx: Context) {
         await ctx.editMessageText(TG_TEXTS.SERVICE_TEXT, serviceButtons());
     }
-
 
     @Action('mainMenu')
     async returnToMainMenu(ctx: Context) {
@@ -248,7 +270,7 @@ export class TelegramUpdate {
         } finally {
             if (user.isAdmin) {
                 await ctx.reply(
-                    'Панель администратора:',
+                    'Админское меню:',
                     adminButtons()
                 );
                 return
@@ -357,45 +379,5 @@ export class TelegramUpdate {
         }
 
         await this.handleMedia(ctx, context.mode, String(chatId));
-    }
-
-    private async handleTextByMode(
-        ctx: Context,
-        mode: string,
-        text: string,
-    ) {
-        switch (mode) {
-            case 'IDLE':
-                return this.idleHandler.handle(ctx);
-
-            case 'REGISTER':
-                return this.registerHandler.handle(ctx, text);
-
-            case 'TICKET':
-                return this.ticketHandler.handle(ctx, text);
-
-            case 'OPERATOR':
-                return this.operatorHandler.handle(ctx);
-
-            case 'AI':
-                const answer = await this.aiService.askQuestion(text);
-                return ctx.reply(answer);
-        }
-    }
-
-    private async handleMedia(
-        ctx: Context,
-        mode: string,
-        chatId: string,
-    ) {
-        if (mode !== 'OPERATOR') return;
-
-        const talkingToId = await this.usersService.getTalkingTo(chatId);
-        if (!talkingToId) return;
-
-        await ctx.copyMessage(
-            talkingToId,
-            disconnectFromButton(chatId),
-        );
     }
 }
