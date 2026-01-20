@@ -47,4 +47,12 @@ export const formatRegistrationRequest = (reg) =>
     `Банковские реквизиты:\n` +
     `${reg.bankReqs ?? 'не указаны'}\n\n`
 
+export const formatBid = (bid) =>
+    `Заявка на ${bid.type} #${bid.id}\n\n` +
+    `• Создана: ${bid.createdAt.toLocaleDateString()}\n\n` +
+
+    `Данные по заявке:\n` +
+    `• Описание проблемы: ${bid.problemDescription ?? 'не указано'}\n` +
+    `• Контакт для связи: ${bid.contactForCall ?? 'не указано'}\n`
+
 export const formatRegistrationDone = (reg) => `Заявка на регистрацию #${reg.id} от ${reg.orgName ?? 'не указано'} обработана\n\n`

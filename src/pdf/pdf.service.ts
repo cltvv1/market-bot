@@ -20,10 +20,10 @@ export class PdfGeneratorService {
 
     private fonts = {
         Roboto: {
-            normal: path.join(__dirname, '..', '..', 'src', 'fonts', 'Roboto-Regular.ttf'),
-            bold: path.join(__dirname, '..', '..', 'src', 'fonts', 'Roboto-Bold.ttf'),
-            italics: path.join(__dirname, '..', '..', 'src', 'fonts', 'Roboto-Italic.ttf'),
-            bolditalics: path.join(__dirname, '..', '..', 'src', 'fonts', 'Roboto-BoldItalic.ttf'),
+            normal: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-Regular.ttf'),
+            bold: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-Bold.ttf'),
+            italics: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-Italic.ttf'),
+            bolditalics: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-BoldItalic.ttf'),
         }
     };
 

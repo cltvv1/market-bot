@@ -100,3 +100,14 @@ export function regDoneButton(regId: number) {
         }
     )
 }
+
+export function bidDoneButton(bidId: number) {
+    return Markup.inlineKeyboard(
+        [
+            Markup.button.callback('✅Заявка обработана', 'bidDone:' + bidId),
+        ],
+        {
+            columns: 1
+        }
+    )
+}
