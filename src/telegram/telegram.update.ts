@@ -12,7 +12,7 @@ import { startRegButtons } from './keyboards/start-reg.keyboard';
 import { menuButtons } from "src/telegram/keyboards/menu.keyboard";
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
 import { actualRegsButtons } from './keyboards/actual-regs.keyboard';
-import { UserContextService } from 'src/userContext/user-context.service';
+import { UserContextService } from 'src/UserContext/user-context.service';
 import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
 import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { actualTicketsButtons } from './keyboards/actual-tickets.keyboard';
