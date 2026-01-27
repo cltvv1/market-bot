@@ -7,7 +7,6 @@ import { adminButtons } from './keyboards/admin.keyboard';
 import { TicketsService } from 'src/tickets/tickets.service';
 import { creditsButtons } from './keyboards/credits.keyboard';
 import { serviceButtons } from './keyboards/service.keyboard';
-import { bidDoneButton } from './keyboards/bid-done.keyboards';
 import { startRegButtons } from './keyboards/start-reg.keyboard';
 import { menuButtons } from "src/telegram/keyboards/menu.keyboard";
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
