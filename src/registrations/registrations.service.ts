@@ -8,19 +8,18 @@ import { RegistrationFieldEntity } from './entities/registration-field.entity';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { UsersService } from 'src/users/users.service';
 import { formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
+import { regDoneButton } from 'src/telegram/keyboards/reg-done.keyboard';
 import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
-import { regDoneButton } from 'src/telegram/keyboards/keyboards';
 import { RegistrationField } from './registration.types';
-
 @Injectable()
 export class RegistrationsService {
     constructor(
         @InjectRepository(RegistrationRequestEntity)
         private readonly registrationRepo: Repository<RegistrationRequestEntity>,
-    
+
         @InjectRepository(RegistrationFieldEntity)
         private readonly fieldsRepo: Repository<RegistrationFieldEntity>,
-    
+
         private readonly pdfService: PdfGeneratorService,
         private usersService: UsersService,
         private telegramSenderService: TelegramSenderService
@@ -117,9 +116,10 @@ export class RegistrationsService {
 
     async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
         const admins = await this.usersService.getAdmins();
+        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId)
         if (!admins.length) return;
 
-        const message = formatRegistrationRequest(reg);
+        const message = formatRegistrationRequest(reg, regAuthor);
 
         await Promise.all(
             admins.map(async (admin) => {

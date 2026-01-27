@@ -8,20 +8,24 @@ import { RegisterTextHandler } from './handlers/register/register-text.handler';
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
 import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
+import { BidTextHandler } from './handlers/bid/bid-text.handler';
+import { BidsModule } from 'src/bids/bids.module';
 
 
 @Module({
     imports: [
         RegistrationsModule,
         TicketsModule,
-        UsersModule
+        UsersModule,
+        BidsModule
     ],
     providers: [TelegramUpdate,
         UserContextService,
         RegisterTextHandler,
         IdleTextHandler,
         TicketTextHandler,
-        OperatorTextHandler
+        OperatorTextHandler,
+        BidTextHandler
     ],
 })
 export class TelegramModule { }

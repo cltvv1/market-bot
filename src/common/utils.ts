@@ -1,3 +1,7 @@
+import { bidTypeToText } from "src/bids/bid.types";
+import { BidEntity } from "src/bids/entities/bid.entity";
+import { UserEntity } from "src/users/entities/user.entity";
+
 export const wantToRegisterMsg = (fields) =>
     `Вот данные, которые вам необходимо будет ввести: \n\n${fields
         .map(field => (`·${field.label}`))
@@ -17,8 +21,9 @@ export const formatTicket = (ticket) =>
     `• Создан: ${ticket.createdAt.toLocaleDateString()}\n\n` +
     `Текст вопроса:\n\n${ticket.text}`;
 
-export const formatRegistrationRequest = (reg) =>
+export const formatRegistrationRequest = (reg, user: UserEntity) =>
     `Заявка на регистрацию #${reg.id}\n\n` +
+    `• От: ${user.name ?? 'имя не указано'}(@${user.username ?? 'Нет тэга'})\n\n` +
     `• Создана: ${reg.createdAt.toLocaleDateString()}\n\n` +
 
     `Организация:\n` +
@@ -47,8 +52,9 @@ export const formatRegistrationRequest = (reg) =>
     `Банковские реквизиты:\n` +
     `${reg.bankReqs ?? 'не указаны'}\n\n`
 
-export const formatBid = (bid) =>
-    `Заявка на ${bid.type} #${bid.id}\n\n` +
+export const formatBid = (bid: BidEntity, user: UserEntity) =>
+    `Заявка на ${bidTypeToText(bid.type)} #${bid.id}\n\n` +
+    `• От: ${user.name ?? 'имя не указано'}(@${user.username ?? 'Нет тэга'})\n\n` +
     `• Создана: ${bid.createdAt.toLocaleDateString()}\n\n` +
 
     `Данные по заявке:\n` +
@@ -56,3 +62,5 @@ export const formatBid = (bid) =>
     `• Контакт для связи: ${bid.contactForCall ?? 'не указано'}\n`
 
 export const formatRegistrationDone = (reg) => `Заявка на регистрацию #${reg.id} от ${reg.orgName ?? 'не указано'} обработана\n\n`
+
+export const formatBidDone = (bid) => `Заявка на ${bidTypeToText(bid.type)} #${bid.id} обработана\n\n`

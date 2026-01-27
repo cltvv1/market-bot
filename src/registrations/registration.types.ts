@@ -17,3 +17,8 @@ export type RegistrationField =
     | 'kktModel'
     | 'bankReqs'
     | 'ofd';
+
+export enum RegistrationType {
+    REGISTRATION = 'REGISTRATION',
+    FISCAL_REPLACEMENT = 'FISCAL_REPLACEMENT',
+}

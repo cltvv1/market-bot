@@ -1,9 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { RegistrationType } from '../registration.types';
 
-export enum RegistrationType {
-    REGISTRATION = 'REGISTRATION',
-    FISCAL_REPLACEMENT = 'FISCAL_REPLACEMENT',
-}
 
 @Entity('registration_requests')
 export class RegistrationRequestEntity {

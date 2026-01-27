@@ -3,19 +3,29 @@ import { Context } from 'telegraf';
 import { removeKeyboard } from 'telegraf/markup';
 import { TG_TEXTS } from 'src/texts/telegram.texts';
 import { UsersService } from 'src/users/users.service';
+import { adminButtons } from './keyboards/admin.keyboard';
 import { TicketsService } from 'src/tickets/tickets.service';
+import { creditsButtons } from './keyboards/credits.keyboard';
+import { serviceButtons } from './keyboards/service.keyboard';
+import { bidDoneButton } from './keyboards/bid-done.keyboards';
+import { startRegButtons } from './keyboards/start-reg.keyboard';
 import { menuButtons } from "src/telegram/keyboards/menu.keyboard";
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
+import { actualRegsButtons } from './keyboards/actual-regs.keyboard';
 import { UserContextService } from 'src/userContext/user-context.service';
 import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
 import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
+import { actualTicketsButtons } from './keyboards/actual-tickets.keyboard';
 import { RegistrationsService } from '../registrations/registrations.service';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
 import { disconnectFromButton } from "src/telegram/keyboards/disconnect.keyboard";
 import { mainMenuButton } from "src/telegram/keyboards/return-to-main-menu.keyboard";
 import { RegisterTextHandler } from "src/telegram/handlers/register/register-text.handler";
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
-import { startRegButtons, creditsButtons, adminButtons, actualRegsButtons, actualTicketsButtons, serviceButtons } from './keyboards/keyboards';
+import { BidTextHandler } from './handlers/bid/bid-text.handler';
+import { BidService } from 'src/bids/bids.service';
+import { BidType } from 'src/bids/bid.types';
+
 
 @Update()
 export class TelegramUpdate {
@@ -24,10 +34,12 @@ export class TelegramUpdate {
         private readonly ctxService: UserContextService,
         private readonly ticketService: TicketsService,
         private readonly usersService: UsersService,
+        private readonly bidService: BidService,
         private readonly registerHandler: RegisterTextHandler,
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
+        private readonly bidHandler: BidTextHandler,
     ) { }
 
     private async handleTextByMode(
@@ -44,6 +56,9 @@ export class TelegramUpdate {
 
             case 'TICKET':
                 return this.ticketHandler.handle(ctx, text);
+
+            case 'BID':
+                return this.bidHandler.handle(ctx, text);
 
             case 'OPERATOR':
                 return this.operatorHandler.handle(ctx);
@@ -149,7 +164,9 @@ export class TelegramUpdate {
             return
         }
         await ctx.deleteMessage(ctx.message?.message_id)
-        await ctx.reply(formatRegistrationRequest(reg), mainMenuButton());
+
+        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId)
+        await ctx.reply(formatRegistrationRequest(reg, regAuthor), mainMenuButton());
 
 
         if (reg.pdfPath) {
@@ -183,6 +200,29 @@ export class TelegramUpdate {
         await this.regService.doReg(reg)
         await ctx.deleteMessage(ctx.message?.message_id)
         await this.regService.notifyAdminsAboutRegDone(reg)
+    }
+
+    @Action(/bidDone:\d+/)
+    async onBidDone(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+
+        if (!query || !('data' in query)) {
+            return;
+        }
+
+        const data = query.data;
+
+        const [, bidId] = data.split(':');
+
+        const bid = await this.bidService.getBidById(bidId)
+
+        if (!bid) {
+            await ctx.reply('Эта заявка уже обработана!')
+            return
+        }
+        await this.bidService.doBid(bid)
+        await ctx.deleteMessage(ctx.message?.message_id)
+        await this.bidService.notifyAdminsAboutBidDone(bid)
     }
 
     @Action('actualTickets')
@@ -361,6 +401,44 @@ export class TelegramUpdate {
 
         await ctx.telegram.sendMessage(clientChatId, 'Оператор отключился от чата с вами.')
         await ctx.telegram.sendMessage(operatorChatId, 'Вы отключились от чата с клиентом.')
+    }
+
+    @Action(/^bid:.+/)
+    async onBid(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        let bid = await this.bidService.getNotFilledBid(chatId);
+
+        await this.ctxService.set(chatId, { mode: 'BID' })
+
+        if (!bid) {
+            const query = ctx.callbackQuery;
+
+            if (!query || !('data' in query)) {
+                return;
+            }
+
+            const data = query.data;
+
+            const [, rawType] = data.split(':');
+
+            if (!(rawType in BidType)) {
+                await ctx.answerCbQuery('Неизвестный тип заявки');
+                return;
+            }
+            const type = BidType[rawType as keyof typeof BidType];
+            bid = await this.bidService.createBid(chatId, type);
+        }
+
+        const fieldText = await this.bidService.getFieldTextByStep(bid.currentStep);
+
+        if (!fieldText) {
+            await this.bidService.finishBid(bid);
+            return;
+        }
+
+        await ctx.reply(`${fieldText}:`);
     }
 
     @On('message')

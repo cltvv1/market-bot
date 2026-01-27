@@ -2,7 +2,7 @@ import { BidType } from '../bid.types';
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
 
-@Entity('registration_requests')
+@Entity('bids')
 export class BidEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -33,10 +33,7 @@ export class BidEntity {
     isStopped: boolean;
 
     @Column({ default: false })
-    isProcessed: boolean;
-
-    @Column({ nullable: true })
-    pdfPath: string;
+    isProcessed: boolean;   
 
     @CreateDateColumn()
     createdAt: Date;

@@ -1,16 +1,13 @@
-import * as fs from 'fs';
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-
+import { Injectable } from '@nestjs/common';
 import { BidEntity } from './entities/bid.entity';
-import { BidFieldEntity } from './entities/bid-field.entity';
-import { PdfGeneratorService } from 'src/pdf/pdf.service';
+import { InjectRepository } from '@nestjs/typeorm';
+import { BidField, BidType, isBidField } from './bid.types';
 import { UsersService } from 'src/users/users.service';
-import { formatBid, formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
+import { formatBid, formatBidDone } from 'src/common/utils';
+import { BidFieldEntity } from './entities/bid-field.entity';
+import { bidDoneButton } from 'src/telegram/keyboards/bid-done.keyboards';
 import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
-import { bidDoneButton } from 'src/telegram/keyboards/keyboards';
-import { BidField, isBidField } from './bid.types';
 
 @Injectable()
 export class BidService {
@@ -37,11 +34,12 @@ export class BidService {
         return await this.bidsRepo.findOne({ where: { id: bidId, isProcessed: false } });
     }
 
-    async createBid(chatId: string) {
+    async createBid(chatId: string, type: BidType) {
         const bid = this.bidsRepo.create({
             chatId,
-            currentStep: 2,
+            currentStep: 1,
             isFilled: false,
+            type
         });
         await this.bidsRepo.save(bid);
 
@@ -89,7 +87,6 @@ export class BidService {
         return field.name;
     }
 
-
     async getActualBids() {
         return this.bidsRepo.find({
             where: { isProcessed: false, isFilled: true },
@@ -103,11 +100,12 @@ export class BidService {
         return bid
     }
 
-    async notifyAdminsAboutNewReg(bid: BidEntity) {
+    async notifyAdminsAboutNewBid(bid: BidEntity) {
         const admins = await this.usersService.getAdmins();
+        const bidAuthor = await this.usersService.getOrCreateOrUpdate(bid.chatId)
         if (!admins.length) return;
 
-        const message = formatBid(bid);
+        const message = formatBid(bid, bidAuthor);
 
         await Promise.all(
             admins.map(async (admin) => {
@@ -131,7 +129,7 @@ export class BidService {
         const admins = await this.usersService.getAdmins();
         if (!admins.length) return;
 
-        const message = formatRegistrationDone(bid);
+        const message = formatBidDone(bid);
 
         await Promise.all(
             admins.map(async (admin) => {

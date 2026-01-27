@@ -13,4 +13,4 @@ import { TelegramSenderModule } from 'src/telegramSender/telegram-sender.module'
     providers: [BidService],
     exports: [BidService],
 })
-export class RegistrationsModule { }
+export class BidsModule { }
