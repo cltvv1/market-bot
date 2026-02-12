@@ -12,20 +12,24 @@ import { TelegrafModule } from 'nestjs-telegraf';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      database: 'db',
-      username: 'user',
-      password: 'pass',
-      autoLoadEntities: true,
-      synchronize: true
-    }),
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema,
     }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        host: config.get<string>('DB_HOST'),
+        port: config.get<number>('DB_PORT', 5432),
+        database: config.get<string>('DB_NAME'),
+        username: config.get<string>('DB_USER'),
+        password: config.get<string>('DB_PASS'),
+        autoLoadEntities: true,
+        synchronize: true, // В PROD всегда false
+      }),
+    }),
+
     TelegrafModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
