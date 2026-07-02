@@ -4,10 +4,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TicketEntity } from './entities/ticket.entity';
 import { TicketsService } from './tickets.service';
 import { UsersModule } from 'src/users/users.module';
-import { TelegramSenderModule } from 'src/telegramSender/telegram-sender.module';
+import { MessengerModule } from 'src/messenger/messenger.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([TicketEntity]), UsersModule, TelegramSenderModule],
+    imports: [TypeOrmModule.forFeature([TicketEntity]), UsersModule, MessengerModule],
     providers: [TicketsService],
     exports: [TicketsService],
 })

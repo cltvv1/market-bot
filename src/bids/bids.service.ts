@@ -1,13 +1,14 @@
 import { Repository } from 'typeorm';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { BidEntity } from './entities/bid.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { BidField, BidType, isBidField } from './bid.types';
 import { UsersService } from 'src/users/users.service';
 import { formatBid, formatBidDone } from 'src/common/utils';
 import { BidFieldEntity } from './entities/bid-field.entity';
-import { bidDoneButton } from 'src/telegram/keyboards/bid-done.keyboards';
-import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
+import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
+import type { MessengerService } from 'src/messenger/messenger.types';
+import { bidDoneKeyboard } from 'src/messenger/messenger-keyboards';
 
 @Injectable()
 export class BidService {
@@ -19,7 +20,8 @@ export class BidService {
         private readonly fieldsRepo: Repository<BidFieldEntity>,
 
         private usersService: UsersService,
-        private telegramSenderService: TelegramSenderService
+        @Inject(MESSENGER_SERVICE)
+        private messengerService: MessengerService
     ) { }
 
     async getAllBids() {
@@ -110,10 +112,10 @@ export class BidService {
         await Promise.all(
             admins.map(async (admin) => {
                 try {
-                    await this.telegramSenderService.sendMessage(
+                    await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
-                        bidDoneButton(bid.id),
+                        { inlineKeyboard: bidDoneKeyboard(bid.id) },
                     );
                 } catch (e) {
                     console.error(
@@ -134,7 +136,7 @@ export class BidService {
         await Promise.all(
             admins.map(async (admin) => {
                 try {
-                    await this.telegramSenderService.sendMessage(
+                    await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
                     );

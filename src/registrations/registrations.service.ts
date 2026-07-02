@@ -8,9 +8,11 @@ import { RegistrationFieldEntity } from './entities/registration-field.entity';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { UsersService } from 'src/users/users.service';
 import { formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
-import { regDoneButton } from 'src/telegram/keyboards/reg-done.keyboard';
-import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
 import { RegistrationField } from './registration.types';
+import { Inject } from '@nestjs/common';
+import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
+import type { MessengerService } from 'src/messenger/messenger.types';
+import { regDoneKeyboard } from 'src/messenger/messenger-keyboards';
 @Injectable()
 export class RegistrationsService {
     constructor(
@@ -22,7 +24,8 @@ export class RegistrationsService {
 
         private readonly pdfService: PdfGeneratorService,
         private usersService: UsersService,
-        private telegramSenderService: TelegramSenderService
+        @Inject(MESSENGER_SERVICE)
+        private messengerService: MessengerService
     ) { }
 
     async getAllRegs() {
@@ -124,13 +127,13 @@ export class RegistrationsService {
         await Promise.all(
             admins.map(async (admin) => {
                 try {
-                    await this.telegramSenderService.sendMessage(
+                    await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
-                        regDoneButton(reg.id),
+                        { inlineKeyboard: regDoneKeyboard(reg.id) },
                     );
 
-                    await this.telegramSenderService.sendDocument(
+                    await this.messengerService.sendDocument(
                         admin.chatId,
                         {
                             source: fs.createReadStream(filePath),
@@ -156,7 +159,7 @@ export class RegistrationsService {
         await Promise.all(
             admins.map(async (admin) => {
                 try {
-                    await this.telegramSenderService.sendMessage(
+                    await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
                     );

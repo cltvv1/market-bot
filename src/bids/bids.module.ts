@@ -6,10 +6,10 @@ import { BidService } from './bids.service';
 import { BidFieldEntity } from './entities/bid-field.entity';
 
 import { UsersModule } from 'src/users/users.module';
-import { TelegramSenderModule } from 'src/telegramSender/telegram-sender.module';
+import { MessengerModule } from 'src/messenger/messenger.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([BidEntity, BidFieldEntity]), UsersModule, TelegramSenderModule],
+    imports: [TypeOrmModule.forFeature([BidEntity, BidFieldEntity]), UsersModule, MessengerModule],
     providers: [BidService],
     exports: [BidService],
 })

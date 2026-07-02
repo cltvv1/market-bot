@@ -83,7 +83,7 @@ export class PdfGeneratorService {
 
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
-        const filePath = path.join(process.cwd(), this.pdfDir, `${request.orgName}.pdf`);
+        const filePath = path.join(process.cwd(), this.pdfDir, `registration_${request.id}.pdf`);
         const writeStream = fs.createWriteStream(filePath);
 
         pdfDoc.pipe(writeStream);

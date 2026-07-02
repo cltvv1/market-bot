@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TicketEntity } from './entities/ticket.entity';
 import { UsersService } from 'src/users/users.service';
 import { formatTicket } from 'src/common/utils';
-import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
-import { connectToButton } from 'src/telegram/keyboards/connect.keyboard';
+import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
+import type { MessengerService } from 'src/messenger/messenger.types';
+import { connectToKeyboard } from 'src/messenger/messenger-keyboards';
 
 @Injectable()
 export class TicketsService {
@@ -14,7 +15,8 @@ export class TicketsService {
         private readonly ticketRepo: Repository<TicketEntity>,
 
         private usersService: UsersService,
-        private telegramSenderService: TelegramSenderService
+        @Inject(MESSENGER_SERVICE)
+        private messengerService: MessengerService
     ) { }
 
     async createTicket(
@@ -79,10 +81,10 @@ export class TicketsService {
         const message = formatTicket(ticket);
 
         for (const op of operators) {
-            await this.telegramSenderService.sendMessage(
+            await this.messengerService.sendMessage(
                 op.chatId,
                 message,
-                connectToButton(ticket.userChatId)
+                { inlineKeyboard: connectToKeyboard(ticket.userChatId) }
             );
         }
     }

@@ -9,22 +9,26 @@ import { TicketsModule } from './tickets/tickets.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { validationSchema } from './app.config';
 import { TelegrafModule } from 'nestjs-telegraf';
+import { MaxModule } from './max/max.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      host: 'localhost',
-      port: 5432,
-      database: 'db',
-      username: 'user',
-      password: 'pass',
-      autoLoadEntities: true,
-      synchronize: true
-    }),
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema,
+    }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        host: config.get<string>('DB_HOST'),
+        port: config.get<number>('DB_PORT'),
+        database: config.get<string>('DB_NAME'),
+        username: config.get<string>('DB_USER'),
+        password: config.get<string>('DB_PASS'),
+        autoLoadEntities: true,
+        synchronize: true,
+      }),
     }),
     TelegrafModule.forRootAsync({
       inject: [ConfigService],
@@ -38,6 +42,7 @@ import { TelegrafModule } from 'nestjs-telegraf';
     }),
     RegistrationsModule,
     TelegramModule,
+    MaxModule,
     UsersModule,
     TicketsModule
   ],
