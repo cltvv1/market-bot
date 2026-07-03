@@ -9,22 +9,28 @@ import {
 
 @Injectable()
 export class MaxMessengerService implements MessengerService {
-    private readonly bot: Bot;
+    private readonly bot?: Bot;
 
     constructor(configService: ConfigService) {
         const token = configService.get<string>('MAX_BOT_TOKEN');
-        if (!token) {
-            throw new Error('MAX_BOT_TOKEN is not defined in environment variables');
+        if (token) {
+            this.bot = new Bot(token);
         }
-
-        this.bot = new Bot(token);
     }
 
     async sendMessage(chatId: string | number, text: string, options?: MessengerMessageOptions) {
+        if (!this.bot) {
+            throw new Error('MAX_BOT_TOKEN is not defined in environment variables');
+        }
+
         return this.bot.api.sendMessageToChat(this.toMaxChatId(chatId), text, this.toMaxExtra(options));
     }
 
     async sendDocument(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions) {
+        if (!this.bot) {
+            throw new Error('MAX_BOT_TOKEN is not defined in environment variables');
+        }
+
         const attachment = await this.bot.api.uploadFile({ source: file.source as any });
 
         return this.bot.api.sendMessageToChat(

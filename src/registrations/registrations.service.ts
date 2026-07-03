@@ -13,6 +13,7 @@ import { Inject } from '@nestjs/common';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { regDoneKeyboard } from 'src/messenger/messenger-keyboards';
+import { UserPlatform } from 'src/users/entities/user.entity';
 @Injectable()
 export class RegistrationsService {
     constructor(
@@ -32,8 +33,8 @@ export class RegistrationsService {
         return this.registrationRepo.find({ order: { id: 'ASC' } })
     }
 
-    async getNotFilledReg(chatId: string) {
-        let reg = await this.registrationRepo.findOne({ where: { chatId, isFilled: false } });
+    async getNotFilledReg(chatId: string, platform: UserPlatform = 'telegram') {
+        let reg = await this.registrationRepo.findOne({ where: { chatId, platform, isFilled: false } });
 
         return reg;
     }
@@ -44,9 +45,10 @@ export class RegistrationsService {
         return reg;
     }
 
-    async createRegistration(chatId: string) {
+    async createRegistration(chatId: string, platform: UserPlatform = 'telegram') {
         const reg = this.registrationRepo.create({
             chatId,
+            platform,
             currentStep: 2,
             isFilled: false,
         });
@@ -61,8 +63,8 @@ export class RegistrationsService {
         });
     }
 
-    async saveFieldValue(chatId: string, value: string) {
-        const reg = await this.getNotFilledReg(chatId);
+    async saveFieldValue(chatId: string, value: string, platform: UserPlatform = 'telegram') {
+        const reg = await this.getNotFilledReg(chatId, platform);
         if (!reg) return null;
 
         const field = await this.getFieldNameByStep(reg.currentStep);
@@ -118,8 +120,8 @@ export class RegistrationsService {
     }
 
     async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
-        const admins = await this.usersService.getAdmins('telegram');
-        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId)
+        const admins = await this.usersService.getAdmins(reg.platform);
+        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId, undefined, undefined, reg.platform)
         if (!admins.length) return;
 
         const message = formatRegistrationRequest(reg, regAuthor);
@@ -130,7 +132,7 @@ export class RegistrationsService {
                     await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
-                        { inlineKeyboard: regDoneKeyboard(reg.id) },
+                        { inlineKeyboard: regDoneKeyboard(reg.id), platform: admin.platform },
                     );
 
                     await this.messengerService.sendDocument(
@@ -139,6 +141,7 @@ export class RegistrationsService {
                             source: fs.createReadStream(filePath),
                             filename: `${reg.orgName}.pdf`,
                         },
+                        { platform: admin.platform },
                     );
                 } catch (e) {
                     console.error(
@@ -151,7 +154,7 @@ export class RegistrationsService {
     }
 
     async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
-        const admins = await this.usersService.getAdmins('telegram');
+        const admins = await this.usersService.getAdmins(reg.platform);
         if (!admins.length) return;
 
         const message = formatRegistrationDone(reg);
@@ -162,6 +165,7 @@ export class RegistrationsService {
                     await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
+                        { platform: admin.platform },
                     );
                 } catch (e) {
                     console.error(

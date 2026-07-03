@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import type { UserPlatform } from 'src/users/entities/user.entity';
 import { RegistrationType } from '../registration.types';
 
 
@@ -9,6 +10,9 @@ export class RegistrationRequestEntity {
 
     @Column({ type: 'bigint' })
     chatId: string;
+
+    @Column({ type: 'varchar', default: 'telegram' })
+    platform: UserPlatform;
 
     @Column({
         type: 'enum',

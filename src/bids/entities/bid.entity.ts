@@ -1,5 +1,6 @@
 import { BidType } from '../bid.types';
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import type { UserPlatform } from 'src/users/entities/user.entity';
 
 
 @Entity('bids')
@@ -9,6 +10,9 @@ export class BidEntity {
 
     @Column({ type: 'text' })
     chatId: string;
+
+    @Column({ type: 'varchar', default: 'telegram' })
+    platform: UserPlatform;
 
     @Column({
         type: 'enum',

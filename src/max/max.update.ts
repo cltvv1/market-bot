@@ -169,10 +169,10 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async startRegistration(ctx: any) {
         const chatId = String(ctx.chatId);
-        let reg = await this.regService.getNotFilledReg(chatId);
+        let reg = await this.regService.getNotFilledReg(chatId, 'max');
 
         if (!reg) {
-            reg = await this.regService.createRegistration(chatId);
+            reg = await this.regService.createRegistration(chatId, 'max');
             await ctx.reply('Заявка создана.');
         } else {
             await ctx.reply('Найдена незаполненная заявка. Продолжим с места остановки.');
@@ -193,7 +193,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async handleRegistrationText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const reg = await this.regService.saveFieldValue(chatId, text);
+        const reg = await this.regService.saveFieldValue(chatId, text, 'max');
 
         if (!reg) {
             await ctx.reply('Заявка не найдена. Начните регистрацию из главного меню.');
@@ -221,7 +221,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async startBid(ctx: any, rawType?: string) {
         const chatId = String(ctx.chatId);
-        let bid = await this.bidService.getNotFilledBid(chatId);
+        let bid = await this.bidService.getNotFilledBid(chatId, 'max');
 
         if (!bid) {
             if (!rawType || !(rawType in BidType)) {
@@ -231,7 +231,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             }
 
             const type = BidType[rawType as keyof typeof BidType];
-            bid = await this.bidService.createBid(chatId, type);
+            bid = await this.bidService.createBid(chatId, type, 'max');
             await ctx.reply(`Создана заявка: ${bidTypeToText(type)}.`);
         } else {
             await ctx.reply('Найдена незаполненная сервисная заявка. Продолжим с места остановки.');
@@ -250,7 +250,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async handleBidText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const bid = await this.bidService.saveFieldValue(chatId, text);
+        const bid = await this.bidService.saveFieldValue(chatId, text, 'max');
 
         if (!bid) {
             await ctx.reply('Сервисная заявка не найдена. Создайте новую из главного меню.');
@@ -280,7 +280,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async startTicket(ctx: any) {
         const chatId = String(ctx.chatId);
-        const activeTicket = await this.ticketService.getActiveTicket(chatId);
+        const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
 
         if (activeTicket?.text) {
             await ctx.reply('У вас уже есть вопрос в работе. Ожидайте ответа оператора.');
@@ -293,6 +293,8 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                 chatId,
                 ctx.user?.username ?? undefined,
                 ctx.user?.name,
+                undefined,
+                'max',
             );
         }
 
@@ -302,7 +304,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async handleTicketText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const ticket = await this.ticketService.saveTicketText(chatId, text);
+        const ticket = await this.ticketService.saveTicketText(chatId, text, 'max');
 
         if (!ticket) {
             await ctx.reply('Вопрос не найден. Создайте новый из главного меню.');

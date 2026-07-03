@@ -1,3 +1,5 @@
+import type { UserPlatform } from 'src/users/entities/user.entity';
+
 export interface MessengerInlineButton {
     text: string;
     callbackData: string;
@@ -11,6 +13,7 @@ export interface MessengerInlineKeyboard {
 export interface MessengerMessageOptions {
     inlineKeyboard?: MessengerInlineKeyboard;
     parseMode?: 'HTML' | 'Markdown';
+    platform?: UserPlatform;
 }
 
 export interface MessengerDocument {

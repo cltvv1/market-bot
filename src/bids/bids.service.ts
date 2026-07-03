@@ -9,6 +9,7 @@ import { BidFieldEntity } from './entities/bid-field.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { bidDoneKeyboard } from 'src/messenger/messenger-keyboards';
+import { UserPlatform } from 'src/users/entities/user.entity';
 
 @Injectable()
 export class BidService {
@@ -28,17 +29,18 @@ export class BidService {
         return await this.bidsRepo.find({ order: { id: 'ASC' } })
     }
 
-    async getNotFilledBid(chatId: string) {
-        return await this.bidsRepo.findOne({ where: { chatId, isFilled: false } });
+    async getNotFilledBid(chatId: string, platform: UserPlatform = 'telegram') {
+        return await this.bidsRepo.findOne({ where: { chatId, platform, isFilled: false } });
     }
 
     async getBidById(bidId) {
         return await this.bidsRepo.findOne({ where: { id: bidId, isProcessed: false } });
     }
 
-    async createBid(chatId: string, type: BidType) {
+    async createBid(chatId: string, type: BidType, platform: UserPlatform = 'telegram') {
         const bid = this.bidsRepo.create({
             chatId,
+            platform,
             currentStep: 1,
             isFilled: false,
             type
@@ -54,8 +56,8 @@ export class BidService {
         });
     }
 
-    async saveFieldValue(chatId: string, value: string) {
-        const bid = await this.getNotFilledBid(chatId);
+    async saveFieldValue(chatId: string, value: string, platform: UserPlatform = 'telegram') {
+        const bid = await this.getNotFilledBid(chatId, platform);
         if (!bid) return null;
 
         const field = await this.getFieldNameByStep(bid.currentStep);
@@ -103,8 +105,8 @@ export class BidService {
     }
 
     async notifyAdminsAboutNewBid(bid: BidEntity) {
-        const admins = await this.usersService.getAdmins('telegram');
-        const bidAuthor = await this.usersService.getOrCreateOrUpdate(bid.chatId)
+        const admins = await this.usersService.getAdmins(bid.platform);
+        const bidAuthor = await this.usersService.getOrCreateOrUpdate(bid.chatId, undefined, undefined, bid.platform)
         if (!admins.length) return;
 
         const message = formatBid(bid, bidAuthor);
@@ -115,7 +117,7 @@ export class BidService {
                     await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
-                        { inlineKeyboard: bidDoneKeyboard(bid.id) },
+                        { inlineKeyboard: bidDoneKeyboard(bid.id), platform: admin.platform },
                     );
                 } catch (e) {
                     console.error(
@@ -128,7 +130,7 @@ export class BidService {
     }
 
     async notifyAdminsAboutBidDone(bid: BidEntity) {
-        const admins = await this.usersService.getAdmins('telegram');
+        const admins = await this.usersService.getAdmins(bid.platform);
         if (!admins.length) return;
 
         const message = formatBidDone(bid);
@@ -139,6 +141,7 @@ export class BidService {
                     await this.messengerService.sendMessage(
                         admin.chatId,
                         message,
+                        { platform: admin.platform },
                     );
                 } catch (e) {
                     console.error(

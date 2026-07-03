@@ -7,6 +7,7 @@ import { formatTicket } from 'src/common/utils';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { connectToKeyboard } from 'src/messenger/messenger-keyboards';
+import { UserPlatform } from 'src/users/entities/user.entity';
 
 @Injectable()
 export class TicketsService {
@@ -24,9 +25,11 @@ export class TicketsService {
         username?: string,
         name?: string,
         text?: string,
+        platform: UserPlatform = 'telegram',
     ) {
         const ticket = this.ticketRepo.create({
             userChatId,
+            platform,
             username: username,
             name: name,
             text: text
@@ -34,10 +37,11 @@ export class TicketsService {
         return this.ticketRepo.save(ticket);
     }
 
-    async getActiveTicket(chatId: string) {
+    async getActiveTicket(chatId: string, platform: UserPlatform = 'telegram') {
         return this.ticketRepo.findOne({
             where: {
                 userChatId: chatId,
+                platform,
                 isAnswered: false,
             },
             order: { createdAt: 'DESC' },
@@ -57,8 +61,8 @@ export class TicketsService {
         return this.ticketRepo.findOne({ where: { id } });
     }
 
-    async saveTicketText(chatId: string, value: string) {
-        const ticket = await this.getActiveTicket(chatId);
+    async saveTicketText(chatId: string, value: string, platform: UserPlatform = 'telegram') {
+        const ticket = await this.getActiveTicket(chatId, platform);
         if (!ticket) return null;
 
         ticket.text = value
@@ -76,7 +80,7 @@ export class TicketsService {
     }
 
     async notifyOperatorsAboutNewTicket(ticket: TicketEntity) {
-        const operators = await this.usersService.getOperators('telegram');
+        const operators = await this.usersService.getOperators(ticket.platform);
 
         const message = formatTicket(ticket);
 
@@ -84,7 +88,7 @@ export class TicketsService {
             await this.messengerService.sendMessage(
                 op.chatId,
                 message,
-                { inlineKeyboard: connectToKeyboard(ticket.userChatId) }
+                { inlineKeyboard: connectToKeyboard(ticket.userChatId), platform: op.platform }
             );
         }
     }
