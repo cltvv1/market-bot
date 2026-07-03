@@ -35,3 +35,15 @@ export function connectToKeyboard(chatId: string): MessengerInlineKeyboard {
         columns: 1,
     };
 }
+
+export function disconnectFromKeyboard(chatId: string): MessengerInlineKeyboard {
+    return {
+        buttons: [
+            {
+                text: 'вќЊР’РѕРїСЂРѕСЃ Р·Р°РєСЂС‹С‚, Р·Р°РєСЂС‹С‚СЊ С‡Р°С‚.',
+                callbackData: `disconnectFrom:${chatId}`,
+            },
+        ],
+        columns: 1,
+    };
+}

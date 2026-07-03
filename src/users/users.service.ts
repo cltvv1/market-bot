@@ -78,29 +78,29 @@ export class UsersService {
         return this.getByChatId(chatId, platform);
     }
 
-    async setTalkingTo(operatorChatId: string, clientChatId: string) {
-        await this.usersRepo.update({ chatId: operatorChatId, platform: 'telegram' }, { talkingTo: clientChatId });
-        await this.usersRepo.update({ chatId: clientChatId, platform: 'telegram' }, { talkingTo: operatorChatId });
+    async setTalkingTo(operatorChatId: string, clientChatId: string, platform: UserPlatform = 'telegram') {
+        await this.usersRepo.update({ chatId: operatorChatId, platform }, { talkingTo: clientChatId });
+        await this.usersRepo.update({ chatId: clientChatId, platform }, { talkingTo: operatorChatId });
     }
 
-    async getTalkingTo(operatorId: string) {
-        const user = await this.getByChatId(operatorId);
+    async getTalkingTo(operatorId: string, platform: UserPlatform = 'telegram') {
+        const user = await this.getByChatId(operatorId, platform);
         return user?.talkingTo || null;
     }
 
-    async findOperatorByClient(clientId: string) {
+    async findOperatorByClient(clientId: string, platform: UserPlatform = 'telegram') {
         return this.usersRepo.findOne({
-            where: { talkingTo: clientId, platform: 'telegram' },
+            where: { talkingTo: clientId, platform },
         });
     }
 
-    async startDialog(operatorId: string, clientId: string) {
-        await this.setTalkingTo(operatorId, clientId);
+    async startDialog(operatorId: string, clientId: string, platform: UserPlatform = 'telegram') {
+        await this.setTalkingTo(operatorId, clientId, platform);
     }
 
-    async stopDialog(operatorId: string, clientId: string) {
-        await this.usersRepo.update({ chatId: operatorId, platform: 'telegram' }, { talkingTo: null });
-        await this.usersRepo.update({ chatId: clientId, platform: 'telegram' }, { talkingTo: null });
+    async stopDialog(operatorId: string, clientId: string, platform: UserPlatform = 'telegram') {
+        await this.usersRepo.update({ chatId: operatorId, platform }, { talkingTo: null });
+        await this.usersRepo.update({ chatId: clientId, platform }, { talkingTo: null });
     }
 
     async getOperators(platform?: UserPlatform) {
@@ -121,12 +121,12 @@ export class UsersService {
         });
     }
 
-    async isAlreadyTalking(chatId: string) {
-        return !!(await this.getByChatId(chatId))?.talkingTo;
+    async isAlreadyTalking(chatId: string, platform: UserPlatform = 'telegram') {
+        return !!(await this.getByChatId(chatId, platform))?.talkingTo;
     }
 
-    async isTalking(initChatId: string, talkingToChatId: string) {
-        const user = await this.getByChatId(initChatId);
+    async isTalking(initChatId: string, talkingToChatId: string, platform: UserPlatform = 'telegram') {
+        const user = await this.getByChatId(initChatId, platform);
         return user?.talkingTo === talkingToChatId;
     }
 }
