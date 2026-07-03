@@ -5,9 +5,10 @@ import { RegistrationsModule } from 'src/registrations/registrations.module';
 import { TicketsModule } from 'src/tickets/tickets.module';
 import { UserContextService } from 'src/userContext/user-context.service';
 import { UsersModule } from 'src/users/users.module';
+import { MessengerModule } from 'src/messenger/messenger.module';
 
 @Module({
-    imports: [BidsModule, RegistrationsModule, TicketsModule, UsersModule],
+    imports: [BidsModule, RegistrationsModule, TicketsModule, UsersModule, MessengerModule],
     providers: [MaxUpdate, UserContextService],
 })
 export class MaxModule { }

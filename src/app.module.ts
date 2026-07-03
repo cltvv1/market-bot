@@ -11,6 +11,7 @@ import { validationSchema } from './app.config';
 import { TelegrafModule } from 'nestjs-telegraf';
 import { MaxModule } from './max/max.module';
 import { DatabaseSeedModule } from './database/database-seed.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { DatabaseSeedModule } from './database/database-seed.module';
     DatabaseSeedModule,
     TelegramModule,
     MaxModule,
+    AdminModule,
     UsersModule,
     TicketsModule
   ],
