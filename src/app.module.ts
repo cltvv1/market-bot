@@ -10,6 +10,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { validationSchema } from './app.config';
 import { TelegrafModule } from 'nestjs-telegraf';
 import { MaxModule } from './max/max.module';
+import { DatabaseSeedModule } from './database/database-seed.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { MaxModule } from './max/max.module';
       },
     }),
     RegistrationsModule,
+    DatabaseSeedModule,
     TelegramModule,
     MaxModule,
     UsersModule,
