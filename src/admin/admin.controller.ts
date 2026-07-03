@@ -44,6 +44,12 @@ export class AdminController {
         return this.adminService.getTickets(this.normalizeStatus(status), this.normalizePlatform(platform));
     }
 
+    @Get('api/tickets/:id')
+    getTicket(@Req() request: Request, @Param('id') id: string) {
+        this.assertAuthorized(request);
+        return this.adminService.getTicket(Number(id));
+    }
+
     @Post('api/registrations/:id/process')
     processRegistration(@Req() request: Request, @Param('id') id: string) {
         this.assertAuthorized(request);
@@ -64,6 +70,22 @@ export class AdminController {
         }
 
         return this.adminService.replyToTicket(Number(id), text.trim(), 'admin-panel');
+    }
+
+    @Post('api/tickets/:id/messages')
+    sendTicketMessage(@Req() request: Request, @Param('id') id: string, @Body('text') text?: string) {
+        this.assertAuthorized(request);
+        if (!text?.trim()) {
+            throw new BadRequestException('Message text is required');
+        }
+
+        return this.adminService.sendTicketMessage(Number(id), text.trim(), 'admin-panel');
+    }
+
+    @Post('api/tickets/:id/close')
+    closeTicket(@Req() request: Request, @Param('id') id: string) {
+        this.assertAuthorized(request);
+        return this.adminService.closeTicket(Number(id), 'admin-panel');
     }
 
     @Get('api/registrations/:id/pdf')

@@ -7,11 +7,11 @@ export const adminPageHtml = `<!doctype html>
   <style>
     :root { color-scheme: light; --bg:#f6f7f9; --panel:#fff; --line:#d9dde5; --text:#172033; --muted:#667085; --brand:#0f766e; --danger:#b42318; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--text); }
+    body { margin:0; font-family:Arial, sans-serif; background:var(--bg); color:var(--text); }
     header { display:flex; gap:16px; align-items:center; justify-content:space-between; padding:16px 24px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
     h1 { font-size:20px; margin:0; }
     main { padding:20px 24px 36px; max-width:1320px; margin:0 auto; }
-    button, input, select, textarea { font: inherit; }
+    button, input, select, textarea { font:inherit; }
     button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:8px 10px; cursor:pointer; }
     button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
     button.danger { color:var(--danger); }
@@ -34,9 +34,15 @@ export const adminPageHtml = `<!doctype html>
     .field span { display:block; color:var(--muted); font-size:12px; }
     .field b { font-weight:400; word-break:break-word; }
     .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+    .chat { border-top:1px solid var(--line); margin-top:14px; padding-top:14px; }
+    .messages { display:grid; gap:8px; max-height:340px; overflow:auto; padding:8px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; }
+    .message { max-width:78%; padding:8px 10px; border-radius:8px; background:#fff; border:1px solid var(--line); }
+    .message.operator { justify-self:end; background:#e7f5f1; border-color:#b7ded4; }
+    .message .meta { font-size:11px; margin-top:4px; }
+    .composer { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:start; margin-top:10px; }
     .empty { color:var(--muted); padding:26px; text-align:center; background:var(--panel); border:1px dashed var(--line); border-radius:8px; }
     .error { color:var(--danger); margin-left:8px; }
-    @media (max-width: 760px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields { grid-template-columns:1fr; } .token { width:100%; } }
+    @media (max-width:760px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields, .composer { grid-template-columns:1fr; } .token { width:100%; } .message { max-width:100%; } }
   </style>
 </head>
 <body>
@@ -75,7 +81,7 @@ export const adminPageHtml = `<!doctype html>
     <section id="list" class="grid"></section>
   </main>
   <script>
-    const state = { tab: 'registrations' };
+    const state = { tab: 'registrations', openTicketId: null };
     const tokenInput = document.querySelector('#token');
     const errorEl = document.querySelector('#error');
     tokenInput.value = localStorage.getItem('adminToken') || '';
@@ -90,6 +96,7 @@ export const adminPageHtml = `<!doctype html>
     document.querySelectorAll('[data-tab]').forEach((button) => {
       button.onclick = () => {
         state.tab = button.dataset.tab;
+        state.openTicketId = null;
         document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item === button));
         load();
       };
@@ -121,6 +128,7 @@ export const adminPageHtml = `<!doctype html>
         if (platform.value) params.set('platform', platform.value);
         const items = await api('/admin/api/' + state.tab + '?' + params.toString());
         render(items);
+        if (state.openTicketId) openTicketChat(state.openTicketId);
       } catch (error) {
         errorEl.textContent = 'Ошибка доступа или загрузки';
         console.error(error);
@@ -159,19 +167,40 @@ export const adminPageHtml = `<!doctype html>
     }
     function ticketCard(item) {
       return '<article class="item">' + head(item, 'Вопрос #' + item.id + ' · ' + esc(item.name || item.username || item.userChatId), item.isAnswered) +
-        '<div class="fields">' + field('Пользователь', item.username ? '@' + item.username : item.userChatId) + field('Текст', item.text) + '</div>' +
-        (!item.isAnswered ? '<div class="actions"><textarea id="reply-' + item.id + '" placeholder="Ответ клиенту"></textarea><button class="primary" onclick="replyTicket(' + item.id + ')">Ответить и закрыть</button></div>' : '') +
+        '<div class="fields">' + field('Пользователь', item.username ? '@' + item.username : item.userChatId) + field('Последнее сообщение', item.text) + '</div>' +
+        '<div class="actions"><button onclick="openTicketChat(' + item.id + ')">' + (state.openTicketId === item.id ? 'Обновить чат' : 'Открыть чат') + '</button>' +
+        (!item.isAnswered ? '<button class="danger" onclick="closeTicket(' + item.id + ')">Закрыть</button>' : '') + '</div>' +
+        '<div id="chat-' + item.id + '"></div>' +
         '</article>';
     }
     async function processItem(kind, id) {
       await api('/admin/api/' + kind + '/' + id + '/process', { method: 'POST', body: '{}' });
       load();
     }
-    async function replyTicket(id) {
+    async function openTicketChat(id) {
+      state.openTicketId = id;
+      const data = await api('/admin/api/tickets/' + id);
+      const holder = document.querySelector('#chat-' + id);
+      if (holder) holder.innerHTML = renderChat(data.ticket, data.messages || []);
+    }
+    function renderChat(ticket, messages) {
+      const rows = messages.length ? messages.map((message) =>
+        '<div class="message ' + esc(message.sender) + '"><div>' + esc(message.text) + '</div><div class="meta">' + esc(message.sender === 'operator' ? 'Оператор' : 'Клиент') + ' · ' + fmtDate(message.createdAt) + '</div></div>'
+      ).join('') : '<div class="empty">Истории сообщений пока нет</div>';
+      return '<div class="chat"><div class="messages">' + rows + '</div>' +
+        (!ticket.isAnswered ? '<div class="composer"><textarea id="reply-' + ticket.id + '" placeholder="Ответ клиенту"></textarea><button class="primary" onclick="sendTicketMessage(' + ticket.id + ')">Отправить</button><button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button></div>' : '') +
+        '</div>';
+    }
+    async function sendTicketMessage(id) {
       const textarea = document.querySelector('#reply-' + id);
       const text = textarea.value.trim();
       if (!text) return;
-      await api('/admin/api/tickets/' + id + '/reply', { method: 'POST', body: JSON.stringify({ text }) });
+      await api('/admin/api/tickets/' + id + '/messages', { method: 'POST', body: JSON.stringify({ text }) });
+      await openTicketChat(id);
+      load();
+    }
+    async function closeTicket(id) {
+      await api('/admin/api/tickets/' + id + '/close', { method: 'POST', body: '{}' });
       load();
     }
     function downloadPdf(id) {

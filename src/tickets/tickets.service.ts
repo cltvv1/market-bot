@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TicketEntity } from './entities/ticket.entity';
+import { TicketMessageEntity } from './entities/ticket-message.entity';
 import { UsersService } from 'src/users/users.service';
 import { formatTicket } from 'src/common/utils';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
@@ -14,6 +15,8 @@ export class TicketsService {
     constructor(
         @InjectRepository(TicketEntity)
         private readonly ticketRepo: Repository<TicketEntity>,
+        @InjectRepository(TicketMessageEntity)
+        private readonly messagesRepo: Repository<TicketMessageEntity>,
 
         private usersService: UsersService,
         @Inject(MESSENGER_SERVICE)
@@ -34,7 +37,13 @@ export class TicketsService {
             name: name,
             text: text
         });
-        return this.ticketRepo.save(ticket);
+        const savedTicket = await this.ticketRepo.save(ticket);
+
+        if (text?.trim()) {
+            await this.addMessage(savedTicket.id, 'user', text.trim(), userChatId, 'bot');
+        }
+
+        return savedTicket;
     }
 
     async getActiveTicket(chatId: string, platform: UserPlatform = 'telegram') {
@@ -68,8 +77,34 @@ export class TicketsService {
         ticket.text = value
 
         await this.ticketRepo.save(ticket);
+        await this.addMessage(ticket.id, 'user', value, chatId, 'bot');
 
         return ticket
+    }
+
+    getTicketMessages(ticketId: number) {
+        return this.messagesRepo.find({
+            where: { ticketId },
+            order: { createdAt: 'ASC', id: 'ASC' },
+        });
+    }
+
+    async addMessage(
+        ticketId: number,
+        sender: 'user' | 'operator',
+        text: string,
+        authorId: string | null,
+        source: 'bot' | 'admin-panel' = 'bot',
+    ) {
+        const message = this.messagesRepo.create({
+            ticketId,
+            sender,
+            text,
+            authorId,
+            source,
+        });
+
+        return this.messagesRepo.save(message);
     }
 
     async getActualTickets() {

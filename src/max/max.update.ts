@@ -125,6 +125,13 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                 return;
             }
 
+            const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
+            if (activeTicket?.text) {
+                await this.ticketService.saveTicketText(chatId, text, 'max');
+                await ctx.reply('Сообщение добавлено к вашему открытому вопросу.');
+                return;
+            }
+
             await ctx.reply('Выберите действие из меню.');
             await this.sendMainMenu(ctx);
         });

@@ -451,6 +451,15 @@ export class TelegramUpdate {
         const context = await this.ctxService.get(chatId);
 
         if (msgText) {
+            if (context.mode === 'IDLE') {
+                const activeTicket = await this.ticketService.getActiveTicket(chatId);
+                if (activeTicket?.text) {
+                    await this.ticketService.saveTicketText(chatId, msgText);
+                    await ctx.reply('Сообщение добавлено к вашему открытому вопросу.');
+                    return;
+                }
+            }
+
             await this.handleTextByMode(ctx, context.mode, msgText);
             return;
         }

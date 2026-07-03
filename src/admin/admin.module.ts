@@ -3,13 +3,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { BidEntity } from 'src/bids/entities/bid.entity';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 import { TicketEntity } from 'src/tickets/entities/ticket.entity';
+import { TicketMessageEntity } from 'src/tickets/entities/ticket-message.entity';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([RegistrationRequestEntity, BidEntity, TicketEntity]),
+        TypeOrmModule.forFeature([RegistrationRequestEntity, BidEntity, TicketMessageEntity, TicketEntity]),
         MessengerModule,
     ],
     controllers: [AdminController],
