@@ -103,7 +103,7 @@ export class BidService {
     }
 
     async notifyAdminsAboutNewBid(bid: BidEntity) {
-        const admins = await this.usersService.getAdmins();
+        const admins = await this.usersService.getAdmins('telegram');
         const bidAuthor = await this.usersService.getOrCreateOrUpdate(bid.chatId)
         if (!admins.length) return;
 
@@ -128,7 +128,7 @@ export class BidService {
     }
 
     async notifyAdminsAboutBidDone(bid: BidEntity) {
-        const admins = await this.usersService.getAdmins();
+        const admins = await this.usersService.getAdmins('telegram');
         if (!admins.length) return;
 
         const message = formatBidDone(bid);

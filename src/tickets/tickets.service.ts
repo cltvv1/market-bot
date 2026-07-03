@@ -76,7 +76,7 @@ export class TicketsService {
     }
 
     async notifyOperatorsAboutNewTicket(ticket: TicketEntity) {
-        const operators = await this.usersService.getOperators();
+        const operators = await this.usersService.getOperators('telegram');
 
         const message = formatTicket(ticket);
 

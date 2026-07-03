@@ -118,7 +118,7 @@ export class RegistrationsService {
     }
 
     async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
-        const admins = await this.usersService.getAdmins();
+        const admins = await this.usersService.getAdmins('telegram');
         const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId)
         if (!admins.length) return;
 
@@ -151,7 +151,7 @@ export class RegistrationsService {
     }
 
     async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
-        const admins = await this.usersService.getAdmins();
+        const admins = await this.usersService.getAdmins('telegram');
         if (!admins.length) return;
 
         const message = formatRegistrationDone(reg);

@@ -1,13 +1,18 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
+export type UserPlatform = 'telegram' | 'max';
 
 @Entity('users')
+@Unique(['platform', 'chatId'])
 export class UserEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ unique: true })
+    @Column()
     chatId: string;
+
+    @Column({ type: 'varchar', default: 'telegram' })
+    platform: UserPlatform;
 
     @Column({ nullable: true })
     name: string;

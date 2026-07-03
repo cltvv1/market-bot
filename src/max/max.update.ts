@@ -127,6 +127,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             String(ctx.chatId),
             ctx.user?.name,
             ctx.user?.username ?? undefined,
+            'max',
         );
     }
 
