@@ -14,6 +14,12 @@ export class BidEntity {
     @Column({ type: 'varchar', default: 'telegram' })
     platform: UserPlatform;
 
+    @Column({ nullable: true })
+    userId: number;
+
+    @Column({ nullable: true })
+    organizationId: number;
+
     @Column({
         type: 'enum',
         enum: BidType,

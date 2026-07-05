@@ -13,6 +13,12 @@ export class TicketEntity {
     platform: UserPlatform;
 
     @Column({ nullable: true })
+    userId: number;
+
+    @Column({ nullable: true })
+    organizationId: number;
+
+    @Column({ nullable: true })
     username: string;
 
     @Column({ nullable: true })

@@ -45,10 +45,12 @@ export class RegistrationsService {
         return reg;
     }
 
-    async createRegistration(chatId: string, platform: UserPlatform = 'telegram') {
+    async createRegistration(chatId: string, platform: UserPlatform = 'telegram', userId?: number, organizationId?: number) {
         const reg = this.registrationRepo.create({
             chatId,
             platform,
+            userId,
+            organizationId,
             currentStep: 2,
             isFilled: false,
         });
@@ -72,6 +74,25 @@ export class RegistrationsService {
 
         reg[field] = value;
         reg.currentStep++;
+
+        await this.registrationRepo.save(reg);
+        return reg;
+    }
+
+    async fillRegistration(chatId: string, values: Partial<Record<RegistrationField, string>>, platform: UserPlatform = 'telegram') {
+        const reg = await this.getNotFilledReg(chatId, platform);
+        if (!reg) return null;
+
+        for (const [field, value] of Object.entries(values)) {
+            if (!this.isRegistrationField(field)) continue;
+            const trimmed = value?.trim();
+            if (trimmed) {
+                reg[field] = trimmed;
+            }
+        }
+
+        const fields = await this.getAllFields();
+        reg.currentStep = Math.max(...fields.map((field) => field.step), 1) + 1;
 
         await this.registrationRepo.save(reg);
         return reg;

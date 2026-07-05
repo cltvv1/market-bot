@@ -12,6 +12,11 @@ import { TelegrafModule } from 'nestjs-telegraf';
 import { MaxModule } from './max/max.module';
 import { DatabaseSeedModule } from './database/database-seed.module';
 import { AdminModule } from './admin/admin.module';
+import { ClientModule } from './client/client.module';
+import { AssetsModule } from './assets/assets.module';
+import { SiteModule } from './site/site.module';
+import { CustomerActivityModule } from './customer-activity/customer-activity.module';
+import { ServiceRequestsModule } from './service-requests/service-requests.module';
 
 @Module({
   imports: [
@@ -47,6 +52,11 @@ import { AdminModule } from './admin/admin.module';
     TelegramModule,
     MaxModule,
     AdminModule,
+    ClientModule,
+    AssetsModule,
+    SiteModule,
+    CustomerActivityModule,
+    ServiceRequestsModule,
     UsersModule,
     TicketsModule
   ],

@@ -27,6 +27,8 @@ export class MessengerRouterService implements MessengerService {
         switch (platform) {
             case 'max':
                 return this.maxMessenger;
+            case 'web':
+                throw new Error('Web clients do not have a messenger transport');
             case 'telegram':
             default:
                 return this.telegramMessenger;

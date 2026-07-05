@@ -10,6 +10,9 @@ import { UsersService } from 'src/users/users.service';
 import { disconnectFromKeyboard } from 'src/messenger/messenger-keyboards';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
+import { ClientWorkflowService } from 'src/client/client-workflow.service';
+import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import type { TicketMediaInput } from 'src/tickets/tickets.service';
 
 @Injectable()
 export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
@@ -23,6 +26,8 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         private readonly ticketService: TicketsService,
         private readonly ctxService: UserContextService,
         private readonly usersService: UsersService,
+        private readonly clientWorkflow: ClientWorkflowService,
+        private readonly serviceRequestsService: ServiceRequestsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
     ) { }
@@ -84,6 +89,23 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.startBid(ctx, rawType);
         });
 
+        this.bot.action('fnReplacement', async (ctx) => {
+            await ctx.answerOnCallback({ notification: 'Замена ФН' });
+            await this.startFnReplacement(ctx);
+        });
+
+        this.bot.action(/^serviceRequestAnswer:\d+:.+/, async (ctx) => {
+            const [, requestId, value] = ctx.callback?.payload?.split(':') ?? [];
+            await ctx.answerOnCallback({ notification: 'Ответ сохранен' });
+            await this.answerServiceRequest(ctx, Number(requestId), value);
+        });
+
+        this.bot.action(/^serviceRequestConfirm:\d+/, async (ctx) => {
+            const [, requestId] = ctx.callback?.payload?.split(':') ?? [];
+            await ctx.answerOnCallback({ notification: 'Заявка отправлена' });
+            await this.confirmServiceRequest(ctx, Number(requestId));
+        });
+
         this.bot.action(/^connectTo:\d+/, async (ctx) => {
             const clientChatId = ctx.callback?.payload?.split(':')[1];
             await ctx.answerOnCallback({ notification: 'Подключение к чату' });
@@ -100,10 +122,18 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.upsertUser(ctx);
 
             const text = ctx.message?.body?.text?.trim();
-            if (!text || text.startsWith('/')) return;
+            const media = this.extractMaxMedia(ctx);
+            if ((!text && !media) || text?.startsWith('/')) return;
 
             const chatId = String(ctx.chatId);
             const context = await this.ctxService.get(chatId, 'max');
+
+            if (media) {
+                await this.handleMaxMedia(ctx, context.mode, media);
+                return;
+            }
+
+            if (!text) return;
 
             if (context.mode === 'REGISTER') {
                 await this.handleRegistrationText(ctx, text);
@@ -112,6 +142,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
             if (context.mode === 'BID') {
                 await this.handleBidText(ctx, text);
+                return;
+            }
+
+            if (context.mode === 'SERVICE_REQUEST') {
+                await this.handleServiceRequestText(ctx, text);
                 return;
             }
 
@@ -127,7 +162,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
             const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
             if (activeTicket?.text) {
-                await this.ticketService.saveTicketText(chatId, text, 'max');
+                await this.clientWorkflow.submitTicketMessage(this.toClientIdentity(ctx), text);
                 await ctx.reply('Сообщение добавлено к вашему открытому вопросу.');
                 return;
             }
@@ -152,12 +187,16 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
     private async upsertUser(ctx: any) {
         if (!ctx.chatId) return;
 
-        await this.usersService.getOrCreateOrUpdate(
-            String(ctx.chatId),
-            ctx.user?.name,
-            ctx.user?.username ?? undefined,
-            'max',
-        );
+        await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
+    }
+
+    private toClientIdentity(ctx: any) {
+        return {
+            chatId: String(ctx.chatId),
+            platform: 'max' as const,
+            name: ctx.user?.name,
+            username: ctx.user?.username ?? undefined,
+        };
     }
 
     private async sendMainMenu(ctx: any) {
@@ -167,6 +206,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                 attachments: [
                     Keyboard.inlineKeyboard([
                         [Keyboard.button.callback('Регистрация кассы', 'wantToRegister')],
+                        [Keyboard.button.callback('Замена ФН', 'fnReplacement')],
                         [Keyboard.button.callback('Сервисная заявка: обновление прошивки', 'bid:FIRMWARE_UPDATE')],
                         [Keyboard.button.callback('Сервисная заявка: удаленные работы с ККТ', 'bid:KKT_REMOTE_WORK')],
                         [Keyboard.button.callback('Вопрос оператору', 'createTicket')],
@@ -198,48 +238,40 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async startRegistration(ctx: any) {
         const chatId = String(ctx.chatId);
-        let reg = await this.regService.getNotFilledReg(chatId, 'max');
+        const result = await this.clientWorkflow.startRegistration(this.toClientIdentity(ctx));
 
-        if (!reg) {
-            reg = await this.regService.createRegistration(chatId, 'max');
-            await ctx.reply('Заявка создана.');
-        } else {
-            await ctx.reply('Найдена незаполненная заявка. Продолжим с места остановки.');
-        }
+        await ctx.reply(result.status === 'started'
+            ? 'Заявка создана.'
+            : 'Найдена незаполненная заявка. Продолжим с места остановки.');
 
         await this.ctxService.set(chatId, { mode: 'REGISTER' }, 'max');
-        const nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep);
 
-        if (!nextFieldText) {
+        if (!result.nextField) {
             await ctx.reply('Анкета уже заполнена.');
             await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
             await this.sendMainMenu(ctx);
             return;
         }
 
-        await ctx.reply(`${nextFieldText}:`);
+        await ctx.reply(`${result.nextField}:`);
     }
 
     private async handleRegistrationText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const reg = await this.regService.saveFieldValue(chatId, text, 'max');
+        const result = await this.clientWorkflow.submitRegistrationAnswer(this.toClientIdentity(ctx), text);
 
-        if (!reg) {
+        if (result.status === 'not_found') {
             await ctx.reply('Заявка не найдена. Начните регистрацию из главного меню.');
             await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
             await this.sendMainMenu(ctx);
             return;
         }
 
-        const nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep);
-
-        if (nextFieldText) {
-            await ctx.reply(`${nextFieldText}:`);
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
             return;
         }
 
-        const filePath = await this.regService.finishReg(reg);
-        await this.regService.notifyAdminsAboutNewReg(reg, filePath);
         await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
 
         await ctx.reply(
@@ -250,81 +282,133 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async startBid(ctx: any, rawType?: string) {
         const chatId = String(ctx.chatId);
-        let bid = await this.bidService.getNotFilledBid(chatId, 'max');
 
-        if (!bid) {
-            if (!rawType || !(rawType in BidType)) {
-                await ctx.reply('Неизвестный тип сервисной заявки.');
-                await this.sendMainMenu(ctx);
-                return;
-            }
-
-            const type = BidType[rawType as keyof typeof BidType];
-            bid = await this.bidService.createBid(chatId, type, 'max');
-            await ctx.reply(`Создана заявка: ${bidTypeToText(type)}.`);
-        } else {
-            await ctx.reply('Найдена незаполненная сервисная заявка. Продолжим с места остановки.');
-        }
-
-        await this.ctxService.set(chatId, { mode: 'BID' }, 'max');
-        const nextFieldText = await this.bidService.getFieldTextByStep(bid.currentStep);
-
-        if (!nextFieldText) {
-            await this.finishBid(ctx, bid);
+        if (!rawType || !(rawType in BidType)) {
+            await ctx.reply('Неизвестный тип сервисной заявки.');
+            await this.sendMainMenu(ctx);
             return;
         }
 
-        await ctx.reply(`${nextFieldText}:`);
+        const type = BidType[rawType as keyof typeof BidType];
+        const result = await this.clientWorkflow.startBid({ ...this.toClientIdentity(ctx), type });
+
+        await ctx.reply(result.status === 'started'
+            ? `Создана заявка: ${bidTypeToText(type)}.`
+            : 'Найдена незаполненная сервисная заявка. Продолжим с места остановки.');
+
+        await this.ctxService.set(chatId, { mode: 'BID' }, 'max');
+
+        if (!result.nextField) {
+            await this.finishBid(ctx);
+            return;
+        }
+
+        await ctx.reply(`${result.nextField}:`);
     }
 
     private async handleBidText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const bid = await this.bidService.saveFieldValue(chatId, text, 'max');
+        const result = await this.clientWorkflow.submitBidAnswer(this.toClientIdentity(ctx), text);
 
-        if (!bid) {
+        if (result.status === 'not_found') {
             await ctx.reply('Сервисная заявка не найдена. Создайте новую из главного меню.');
             await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
             await this.sendMainMenu(ctx);
             return;
         }
 
-        const nextFieldText = await this.bidService.getFieldTextByStep(bid.currentStep);
-
-        if (nextFieldText) {
-            await ctx.reply(`${nextFieldText}:`);
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
             return;
         }
 
-        await this.finishBid(ctx, bid);
+        await this.finishBid(ctx);
     }
 
-    private async finishBid(ctx: any, bid: any) {
-        await this.bidService.finishBid(bid);
-        await this.bidService.notifyAdminsAboutNewBid(bid);
+    private async finishBid(ctx: any) {
         await this.ctxService.set(String(ctx.chatId), { mode: 'IDLE' }, 'max');
 
         await ctx.reply('Сервисная заявка создана. Оператор свяжется с вами в ближайшее время.');
         await this.sendMainMenu(ctx);
     }
 
-    private async startTicket(ctx: any) {
+    private async startFnReplacement(ctx: any) {
         const chatId = String(ctx.chatId);
-        const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
+        const result = await this.serviceRequestsService.start(this.toClientIdentity(ctx), 'fn_replacement');
+        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id }, 'max');
+        await ctx.reply('Начинаем заявку на замену фискального накопителя.');
+        await this.replyServiceRequestStep(ctx, result);
+    }
 
-        if (activeTicket?.text) {
-            await ctx.reply('У вас уже есть вопрос в работе. Ожидайте ответа оператора.');
+    private async handleServiceRequestText(ctx: any, text: string) {
+        const chatId = String(ctx.chatId);
+        const context = await this.ctxService.get(chatId, 'max');
+        if (!context.serviceRequestId) {
+            await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+            await ctx.reply('Заявка не найдена. Начните новую заявку из меню.');
             await this.sendMainMenu(ctx);
             return;
         }
 
-        if (!activeTicket) {
-            await this.ticketService.createTicket(
-                chatId,
-                ctx.user?.username ?? undefined,
-                ctx.user?.name,
-                undefined,
-                'max',
-            );
+        await this.answerServiceRequest(ctx, context.serviceRequestId, text);
+    }
+
+    private async answerServiceRequest(ctx: any, requestId: number, value?: string) {
+        if (!requestId || !value) return;
+
+        const result = await this.serviceRequestsService.answer(this.toClientIdentity(ctx), requestId, value);
+        await this.ctxService.set(String(ctx.chatId), { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id }, 'max');
+        await this.replyServiceRequestStep(ctx, result);
+    }
+
+    private async confirmServiceRequest(ctx: any, requestId: number) {
+        if (!requestId) return;
+
+        const result = await this.serviceRequestsService.confirmPrice(this.toClientIdentity(ctx), requestId);
+        await this.ctxService.set(String(ctx.chatId), { mode: 'IDLE', serviceRequestId: null }, 'max');
+        await ctx.reply(`Заявка #${result.request.id} отправлена оператору. Оператор подготовит счет и пришлет его вам.`);
+        await this.sendMainMenu(ctx);
+    }
+
+    private async replyServiceRequestStep(ctx: any, result: ReturnType<ServiceRequestsService['present']>) {
+        if (result.nextStep) {
+            if (result.nextStep.options?.length) {
+                await ctx.reply(`${result.nextStep.label}:`, {
+                    attachments: [
+                        Keyboard.inlineKeyboard(
+                            result.nextStep.options.map((option) => [
+                                Keyboard.button.callback(option.label, `serviceRequestAnswer:${result.request.id}:${option.value}`),
+                            ]),
+                        ),
+                    ],
+                });
+                return;
+            }
+
+            await ctx.reply(`${result.nextStep.label}:`);
+            return;
+        }
+
+        const priceText = result.request.calculatedPrice
+            ? `${result.request.calculatedPrice} руб.`
+            : 'стоимость уточнит оператор';
+        await ctx.reply(`Стоимость замены ФН: ${priceText}\n\nЕсли все верно, подтвердите заказ счета.`, {
+            attachments: [
+                Keyboard.inlineKeyboard([
+                    [Keyboard.button.callback('Согласен, заказать счет', `serviceRequestConfirm:${result.request.id}`)],
+                ]),
+            ],
+        });
+    }
+
+    private async startTicket(ctx: any) {
+        const chatId = String(ctx.chatId);
+        const result = await this.clientWorkflow.openTicket(this.toClientIdentity(ctx));
+
+        if (result.status === 'already_open') {
+            await ctx.reply('У вас уже есть вопрос в работе. Ожидайте ответа оператора.');
+            await this.sendMainMenu(ctx);
+            return;
         }
 
         await this.ctxService.set(chatId, { mode: 'TICKET' }, 'max');
@@ -333,20 +417,82 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async handleTicketText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const ticket = await this.ticketService.saveTicketText(chatId, text, 'max');
+        const result = await this.clientWorkflow.submitTicketMessage(this.toClientIdentity(ctx), text);
 
-        if (!ticket) {
+        if (result.status === 'not_found') {
             await ctx.reply('Вопрос не найден. Создайте новый из главного меню.');
             await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
             await this.sendMainMenu(ctx);
             return;
         }
 
-        await this.ticketService.notifyOperatorsAboutNewTicket(ticket);
         await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
 
         await ctx.reply('Ваш вопрос принят. Оператор ответит в ближайшее время.');
         await this.sendMainMenu(ctx);
+    }
+
+    private extractMaxMedia(ctx: any): TicketMediaInput | null {
+        const attachment = ctx.message?.body?.attachments?.find((item: any) =>
+            item?.type === 'image' || item?.type === 'video' || item?.type === 'audio' || item?.type === 'file'
+        );
+        if (!attachment) return null;
+
+        const messageType = attachment.type === 'image'
+            ? 'image'
+            : attachment.type === 'file'
+                ? 'document'
+                : attachment.type;
+
+        return {
+            messageType,
+            text: ctx.message?.body?.text || undefined,
+            fileId: attachment.payload?.token,
+            fileName: attachment.filename,
+            fileSize: attachment.size,
+            externalUrl: attachment.payload?.url,
+        };
+    }
+
+    private async handleMaxMedia(ctx: any, mode: string, media: TicketMediaInput) {
+        const chatId = String(ctx.chatId);
+
+        if (mode === 'TICKET') {
+            await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+            await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+            await ctx.reply('Вложение принято, оператор ответит в ближайшее время.');
+            await this.sendMainMenu(ctx);
+            return;
+        }
+
+        if (mode === 'IDLE') {
+            const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
+            if (activeTicket?.text) {
+                await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+                await ctx.reply('Вложение добавлено к вашему открытому вопросу.');
+                return;
+            }
+        }
+
+        if (mode !== 'OPERATOR') {
+            await ctx.reply('Выберите действие из меню.');
+            await this.sendMainMenu(ctx);
+            return;
+        }
+
+        const talkingToId = await this.usersService.getTalkingTo(chatId, 'max');
+        if (!talkingToId) return;
+
+        const activeTicket = await this.ticketService.getActiveTicket(talkingToId, 'max');
+        if (activeTicket) {
+            await this.ticketService.addMediaMessage(activeTicket.id, 'operator', media, chatId, 'bot');
+        }
+
+        await this.messengerService.sendMessage(
+            talkingToId,
+            `Оператор отправил вложение: ${media.fileName || media.externalUrl || media.messageType}`,
+            { inlineKeyboard: disconnectFromKeyboard(chatId), platform: 'max' },
+        );
     }
 
     private async connectToClient(ctx: any, clientChatId?: string) {

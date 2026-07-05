@@ -10,6 +10,8 @@ import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
 import { BidTextHandler } from './handlers/bid/bid-text.handler';
 import { BidsModule } from 'src/bids/bids.module';
+import { ClientModule } from 'src/client/client.module';
+import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 
 
 @Module({
@@ -17,7 +19,9 @@ import { BidsModule } from 'src/bids/bids.module';
         RegistrationsModule,
         TicketsModule,
         UsersModule,
-        BidsModule
+        BidsModule,
+        ClientModule,
+        ServiceRequestsModule
     ],
     providers: [TelegramUpdate,
         UserContextService,

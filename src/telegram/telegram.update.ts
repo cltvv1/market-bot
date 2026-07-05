@@ -1,5 +1,5 @@
 import * as fs from 'fs';
-import { Context } from 'telegraf';
+import { Context, Markup } from 'telegraf';
 import { removeKeyboard } from 'telegraf/markup';
 import { TG_TEXTS } from 'src/texts/telegram.texts';
 import { UsersService } from 'src/users/users.service';
@@ -24,6 +24,9 @@ import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/
 import { BidTextHandler } from './handlers/bid/bid-text.handler';
 import { BidService } from 'src/bids/bids.service';
 import { BidType } from 'src/bids/bid.types';
+import { ClientWorkflowService } from 'src/client/client-workflow.service';
+import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import type { TicketMediaInput } from 'src/tickets/tickets.service';
 
 
 @Update()
@@ -34,12 +37,23 @@ export class TelegramUpdate {
         private readonly ticketService: TicketsService,
         private readonly usersService: UsersService,
         private readonly bidService: BidService,
+        private readonly clientWorkflow: ClientWorkflowService,
+        private readonly serviceRequestsService: ServiceRequestsService,
         private readonly registerHandler: RegisterTextHandler,
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
         private readonly bidHandler: BidTextHandler,
     ) { }
+
+    private toClientIdentity(ctx: Context) {
+        return {
+            chatId: String(ctx.chat?.id),
+            platform: 'telegram' as const,
+            name: ctx.from?.first_name,
+            username: ctx.from?.username,
+        };
+    }
 
     private async handleTextByMode(
         ctx: Context,
@@ -59,6 +73,9 @@ export class TelegramUpdate {
             case 'BID':
                 return this.bidHandler.handle(ctx, text);
 
+            case 'SERVICE_REQUEST':
+                return this.handleServiceRequestText(ctx, text);
+
             case 'OPERATOR':
                 return this.operatorHandler.handle(ctx);
         }
@@ -69,6 +86,25 @@ export class TelegramUpdate {
         mode: string,
         chatId: string,
     ) {
+        const media = await this.extractTelegramMedia(ctx);
+        if (!media) return;
+
+        if (mode === 'TICKET') {
+            await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
+            await ctx.reply('Вложение принято, оператор ответит в ближайшее время.', mainMenuButton());
+            return;
+        }
+
+        if (mode === 'IDLE') {
+            const activeTicket = await this.ticketService.getActiveTicket(chatId);
+            if (activeTicket?.text) {
+                await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+                await ctx.reply('Вложение добавлено к вашему открытому вопросу.');
+                return;
+            }
+        }
+
         if (mode !== 'OPERATOR') return;
 
         const talkingToId = await this.usersService.getTalkingTo(chatId);
@@ -78,6 +114,94 @@ export class TelegramUpdate {
             talkingToId,
             disconnectFromButton(chatId),
         );
+
+        const activeTicket = await this.ticketService.getActiveTicket(talkingToId);
+        if (activeTicket) {
+            await this.ticketService.addMediaMessage(activeTicket.id, 'operator', media, chatId, 'bot');
+        }
+    }
+
+    private async extractTelegramMedia(ctx: Context): Promise<TicketMediaInput | null> {
+        const message = ctx.message as any;
+        if (!message) return null;
+
+        const withUrl = async (media: TicketMediaInput) => {
+            if (!media.fileId) return media;
+            try {
+                media.externalUrl = String(await ctx.telegram.getFileLink(media.fileId));
+            } catch {
+                // Telegram file links are helpful for the web admin, but the bot can still work without them.
+            }
+            return media;
+        };
+
+        if (message.photo?.length) {
+            const photo = message.photo[message.photo.length - 1];
+            return withUrl({
+                messageType: 'image',
+                text: message.caption,
+                fileId: photo.file_id,
+                fileUniqueId: photo.file_unique_id,
+                fileSize: photo.file_size,
+            });
+        }
+
+        if (message.video) {
+            return withUrl({
+                messageType: 'video',
+                text: message.caption,
+                fileId: message.video.file_id,
+                fileUniqueId: message.video.file_unique_id,
+                fileName: message.video.file_name,
+                mimeType: message.video.mime_type,
+                fileSize: message.video.file_size,
+            });
+        }
+
+        if (message.voice) {
+            return withUrl({
+                messageType: 'voice',
+                fileId: message.voice.file_id,
+                fileUniqueId: message.voice.file_unique_id,
+                mimeType: message.voice.mime_type,
+                fileSize: message.voice.file_size,
+            });
+        }
+
+        if (message.audio) {
+            return withUrl({
+                messageType: 'audio',
+                text: message.caption,
+                fileId: message.audio.file_id,
+                fileUniqueId: message.audio.file_unique_id,
+                fileName: message.audio.file_name,
+                mimeType: message.audio.mime_type,
+                fileSize: message.audio.file_size,
+            });
+        }
+
+        if (message.video_note) {
+            return withUrl({
+                messageType: 'video_note',
+                fileId: message.video_note.file_id,
+                fileUniqueId: message.video_note.file_unique_id,
+                fileSize: message.video_note.file_size,
+            });
+        }
+
+        if (message.document) {
+            return withUrl({
+                messageType: 'document',
+                text: message.caption,
+                fileId: message.document.file_id,
+                fileUniqueId: message.document.file_unique_id,
+                fileName: message.document.file_name,
+                mimeType: message.document.mime_type,
+                fileSize: message.document.file_size,
+            });
+        }
+
+        return null;
     }
 
     @Start()
@@ -85,11 +209,7 @@ export class TelegramUpdate {
         const chatId = ctx.chat?.id;
         if (!chatId) return;
 
-        const user = await this.usersService.getOrCreateOrUpdate(
-            String(chatId),
-            ctx.from?.first_name,
-            ctx.from?.username,
-        );
+        const user = await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
 
         if (user.isAdmin) {
             await ctx.reply(
@@ -258,21 +378,9 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let ticket = await this.ticketService.getActiveTicket(chatId)
+        const result = await this.clientWorkflow.openTicket(this.toClientIdentity(ctx));
 
-        if (!ticket) {
-            await this.ticketService.createTicket(chatId,
-                ctx.from?.username,
-                ctx.from?.first_name
-            )
-
-            await this.ctxService.set(chatId, { mode: 'TICKET' })
-
-            await ctx.editMessageText('Введите текст вопроса:')
-            return
-        }
-
-        if (ticket.text) {
+        if (result.status === 'already_open') {
             ctx.editMessageText('У вас уже есть вопрос в работе, ожидайте, когда оператор подключится к чату с вами.', mainMenuButton())
             return
         }
@@ -292,16 +400,47 @@ export class TelegramUpdate {
         await ctx.editMessageText(TG_TEXTS.SERVICE_TEXT, serviceButtons());
     }
 
+    @Action('fnReplacement')
+    async onFnReplacement(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const result = await this.serviceRequestsService.start(this.toClientIdentity(ctx), 'fn_replacement');
+        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id });
+        await ctx.reply('Начинаем заявку на замену фискального накопителя.');
+        await this.replyServiceRequestStep(ctx, result);
+    }
+
+    @Action(/^serviceRequestAnswer:\d+:.+/)
+    async onServiceRequestButtonAnswer(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+        if (!query || !('data' in query)) return;
+
+        const [, requestId, value] = query.data.split(':');
+        await ctx.answerCbQuery();
+        const result = await this.serviceRequestsService.answer(this.toClientIdentity(ctx), Number(requestId), value);
+        await this.ctxService.set(String(ctx.chat?.id), { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id });
+        await this.replyServiceRequestStep(ctx, result);
+    }
+
+    @Action(/^serviceRequestConfirm:\d+/)
+    async onServiceRequestConfirm(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+        if (!query || !('data' in query)) return;
+
+        const [, requestId] = query.data.split(':');
+        await ctx.answerCbQuery();
+        const result = await this.serviceRequestsService.confirmPrice(this.toClientIdentity(ctx), Number(requestId));
+        await this.ctxService.set(String(ctx.chat?.id), { mode: 'IDLE', serviceRequestId: null });
+        await ctx.reply(`Заявка #${result.request.id} отправлена оператору. Оператор подготовит счет и пришлет его вам.`, mainMenuButton());
+    }
+
     @Action('mainMenu')
     async returnToMainMenu(ctx: Context) {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        const user = await this.usersService.getOrCreateOrUpdate(
-            chatId,
-            ctx.from?.first_name,
-            ctx.from?.username
-        );
+            const user = await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
         try {
             await ctx.deleteMessage(ctx.message?.message_id)
         } catch {
@@ -407,37 +546,77 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let bid = await this.bidService.getNotFilledBid(chatId);
-
         await this.ctxService.set(chatId, { mode: 'BID' })
 
-        if (!bid) {
-            const query = ctx.callbackQuery;
+        const query = ctx.callbackQuery;
 
-            if (!query || !('data' in query)) {
-                return;
-            }
-
-            const data = query.data;
-
-            const [, rawType] = data.split(':');
-
-            if (!(rawType in BidType)) {
-                await ctx.answerCbQuery('Неизвестный тип заявки');
-                return;
-            }
-            const type = BidType[rawType as keyof typeof BidType];
-            bid = await this.bidService.createBid(chatId, type);
-        }
-
-        const fieldText = await this.bidService.getFieldTextByStep(bid.currentStep);
-
-        if (!fieldText) {
-            await this.bidService.finishBid(bid);
+        if (!query || !('data' in query)) {
             return;
         }
 
-        await ctx.reply(`${fieldText}:`);
+        const data = query.data;
+
+        const [, rawType] = data.split(':');
+
+        if (!(rawType in BidType)) {
+            await ctx.answerCbQuery('Неизвестный тип заявки');
+            return;
+        }
+        const type = BidType[rawType as keyof typeof BidType];
+        const result = await this.clientWorkflow.startBid({ ...this.toClientIdentity(ctx), type });
+
+        if (!result.nextField) {
+            await this.ctxService.set(chatId, { mode: 'IDLE' })
+            await ctx.reply('Заявка создана, ожидайте ответа оператора', mainMenuButton());
+            return;
+        }
+
+        await ctx.reply(`${result.nextField}:`);
+    }
+
+    private async handleServiceRequestText(ctx: Context, text: string) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const context = await this.ctxService.get(chatId);
+        if (!context.serviceRequestId) {
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
+            await ctx.reply('Заявка не найдена. Начните новую заявку из меню.', mainMenuButton());
+            return;
+        }
+
+        const result = await this.serviceRequestsService.answer(this.toClientIdentity(ctx), context.serviceRequestId, text);
+        await this.replyServiceRequestStep(ctx, result);
+    }
+
+    private async replyServiceRequestStep(ctx: Context, result: ReturnType<ServiceRequestsService['present']>) {
+        if (result.nextStep) {
+            if (result.nextStep.options?.length) {
+                await ctx.reply(
+                    `${result.nextStep.label}:`,
+                    Markup.inlineKeyboard(
+                        result.nextStep.options.map((option) =>
+                            Markup.button.callback(option.label, `serviceRequestAnswer:${result.request.id}:${option.value}`),
+                        ),
+                        { columns: 1 },
+                    ),
+                );
+                return;
+            }
+
+            await ctx.reply(`${result.nextStep.label}:`);
+            return;
+        }
+
+        const priceText = result.request.calculatedPrice
+            ? `${result.request.calculatedPrice} руб.`
+            : 'стоимость уточнит оператор';
+        await ctx.reply(
+            `Стоимость замены ФН: ${priceText}\n\nЕсли все верно, подтвердите заказ счета.`,
+            Markup.inlineKeyboard([
+                Markup.button.callback('Согласен, заказать счет', `serviceRequestConfirm:${result.request.id}`),
+            ]),
+        );
     }
 
     @On('message')
@@ -454,7 +633,7 @@ export class TelegramUpdate {
             if (context.mode === 'IDLE') {
                 const activeTicket = await this.ticketService.getActiveTicket(chatId);
                 if (activeTicket?.text) {
-                    await this.ticketService.saveTicketText(chatId, msgText);
+                    await this.clientWorkflow.submitTicketMessage(this.toClientIdentity(ctx), msgText);
                     await ctx.reply('Сообщение добавлено к вашему открытому вопросу.');
                     return;
                 }

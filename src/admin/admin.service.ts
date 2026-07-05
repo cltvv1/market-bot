@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -5,9 +6,18 @@ import { BidEntity } from 'src/bids/entities/bid.entity';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 import { TicketEntity } from 'src/tickets/entities/ticket.entity';
 import { TicketMessageEntity } from 'src/tickets/entities/ticket-message.entity';
+import { OrganizationEntity } from 'src/organizations/entities/organization.entity';
+import { OrganizationMemberEntity } from 'src/organizations/entities/organization-member.entity';
+import { CashRegisterEntity } from 'src/assets/entities/cash-register.entity';
+import { FiscalDriveEntity } from 'src/assets/entities/fiscal-drive.entity';
+import { OfdSubscriptionEntity } from 'src/assets/entities/ofd-subscription.entity';
+import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-activity.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
+import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import type { ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
+import type { TicketMessageType } from 'src/tickets/entities/ticket-message.entity';
 
 export type AdminStatusFilter = 'all' | 'new' | 'processed';
 
@@ -22,18 +32,32 @@ export class AdminService {
         private readonly ticketsRepo: Repository<TicketEntity>,
         @InjectRepository(TicketMessageEntity)
         private readonly ticketMessagesRepo: Repository<TicketMessageEntity>,
+        @InjectRepository(OrganizationEntity)
+        private readonly organizationsRepo: Repository<OrganizationEntity>,
+        @InjectRepository(OrganizationMemberEntity)
+        private readonly organizationMembersRepo: Repository<OrganizationMemberEntity>,
+        @InjectRepository(CashRegisterEntity)
+        private readonly cashRegistersRepo: Repository<CashRegisterEntity>,
+        @InjectRepository(FiscalDriveEntity)
+        private readonly fiscalDrivesRepo: Repository<FiscalDriveEntity>,
+        @InjectRepository(OfdSubscriptionEntity)
+        private readonly ofdSubscriptionsRepo: Repository<OfdSubscriptionEntity>,
+        @InjectRepository(CustomerActivityEntity)
+        private readonly activitiesRepo: Repository<CustomerActivityEntity>,
+        private readonly serviceRequestsService: ServiceRequestsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
     ) { }
 
     async getSummary() {
-        const [newRegistrations, newBids, openTickets] = await Promise.all([
+        const [newRegistrations, newBids, openTickets, activeServiceRequests] = await Promise.all([
             this.registrationsRepo.count({ where: { isFilled: true, isProcessed: false } }),
             this.bidsRepo.count({ where: { isFilled: true, isProcessed: false } }),
             this.ticketsRepo.count({ where: { isAnswered: false } }),
+            this.serviceRequestsService.listForAdmin('active').then((items) => items.length),
         ]);
 
-        return { newRegistrations, newBids, openTickets };
+        return { newRegistrations, newBids, openTickets, activeServiceRequests };
     }
 
     getRegistrations(status: AdminStatusFilter = 'new', platform?: UserPlatform) {
@@ -76,6 +100,72 @@ export class AdminService {
         });
     }
 
+    getServiceRequests(status: ServiceRequestStatus | 'active' | 'all' = 'active', platform?: UserPlatform) {
+        return this.serviceRequestsService.listForAdmin(status, platform);
+    }
+
+    getServiceRequest(id: number) {
+        return this.serviceRequestsService.getRequestDetails(id);
+    }
+
+    attachServiceRequestInvoice(id: number, invoiceFileId: string, invoiceFileName?: string, operatorId = 'admin-panel') {
+        return this.serviceRequestsService.attachInvoice(id, invoiceFileId, invoiceFileName, operatorId);
+    }
+
+    markServiceRequestPaymentReceived(id: number, operatorId = 'admin-panel') {
+        return this.serviceRequestsService.markPaymentReceived(id, operatorId);
+    }
+
+    scheduleServiceRequestVisit(id: number, visitAddress: string, visitTime?: string, operatorComment?: string, operatorId = 'admin-panel') {
+        return this.serviceRequestsService.scheduleVisit(id, visitAddress, visitTime, operatorComment, operatorId);
+    }
+
+    completeServiceRequest(id: number, operatorId = 'admin-panel') {
+        return this.serviceRequestsService.complete(id, operatorId);
+    }
+
+    cancelServiceRequest(id: number, operatorId = 'admin-panel') {
+        return this.serviceRequestsService.cancel(id, operatorId);
+    }
+
+    getActivities(userId?: number, organizationId?: number) {
+        return this.activitiesRepo.find({
+            where: {
+                ...(userId ? { userId } : {}),
+                ...(organizationId ? { organizationId } : {}),
+            },
+            order: { createdAt: 'DESC' },
+            take: 100,
+        });
+    }
+
+    async getOrganizations() {
+        const organizations = await this.organizationsRepo.find({
+            order: { createdAt: 'DESC' },
+            take: 100,
+        });
+
+        const members = await this.organizationMembersRepo.find({
+            relations: { user: true },
+            order: { id: 'ASC' },
+        });
+
+        return organizations.map((organization) => ({
+            ...organization,
+            members: members.filter((member) => member.organizationId === organization.id),
+        }));
+    }
+
+    async getOrganizationAssets(organizationId: number) {
+        const [cashRegisters, fiscalDrives, ofdSubscriptions] = await Promise.all([
+            this.cashRegistersRepo.find({ where: { organizationId }, order: { id: 'ASC' } }),
+            this.fiscalDrivesRepo.find({ where: { organizationId }, order: { id: 'ASC' } }),
+            this.ofdSubscriptionsRepo.find({ where: { organizationId }, order: { id: 'ASC' } }),
+        ]);
+
+        return { cashRegisters, fiscalDrives, ofdSubscriptions };
+    }
+
     async getTicket(id: number) {
         const ticket = await this.ticketsRepo.findOne({ where: { id } });
         let messages = await this.getTicketMessages(id);
@@ -101,6 +191,10 @@ export class AdminService {
         });
     }
 
+    getTicketMessage(id: number) {
+        return this.ticketMessagesRepo.findOne({ where: { id } });
+    }
+
     async processRegistration(id: number) {
         await this.registrationsRepo.update(id, { isProcessed: true });
         return this.registrationsRepo.findOne({ where: { id } });
@@ -117,9 +211,11 @@ export class AdminService {
             return null;
         }
 
-        await this.messengerService.sendMessage(ticket.userChatId, text, {
-            platform: ticket.platform,
-        });
+        if (ticket.platform !== 'web') {
+            await this.messengerService.sendMessage(ticket.userChatId, text, {
+                platform: ticket.platform,
+            });
+        }
 
         await this.ticketMessagesRepo.save(this.ticketMessagesRepo.create({
             ticketId: id,
@@ -127,6 +223,50 @@ export class AdminService {
             authorId: operatorId,
             source: 'admin-panel',
             text,
+        }));
+
+        return this.getTicket(id);
+    }
+
+    async sendTicketMedia(
+        id: number,
+        media: {
+            messageType: Exclude<TicketMessageType, 'text'>;
+            localPath: string;
+            fileName: string;
+            mimeType?: string;
+            fileSize?: number;
+            text?: string;
+        },
+        operatorId = 'admin-panel',
+    ) {
+        const ticket = await this.ticketsRepo.findOne({ where: { id } });
+        if (!ticket) {
+            return null;
+        }
+
+        if (ticket.platform !== 'web') {
+            await this.messengerService.sendDocument(
+                ticket.userChatId,
+                {
+                    source: fs.createReadStream(media.localPath),
+                    filename: media.fileName,
+                },
+                { platform: ticket.platform },
+            );
+        }
+
+        await this.ticketMessagesRepo.save(this.ticketMessagesRepo.create({
+            ticketId: id,
+            sender: 'operator',
+            authorId: operatorId,
+            source: 'admin-panel',
+            messageType: media.messageType,
+            text: media.text || media.fileName,
+            fileName: media.fileName,
+            mimeType: media.mimeType ?? null,
+            fileSize: media.fileSize,
+            localPath: media.localPath,
         }));
 
         return this.getTicket(id);

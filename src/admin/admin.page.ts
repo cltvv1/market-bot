@@ -6,43 +6,66 @@ export const adminPageHtml = `<!doctype html>
   <title>Админка бота</title>
   <style>
     :root { color-scheme: light; --bg:#f6f7f9; --panel:#fff; --line:#d9dde5; --text:#172033; --muted:#667085; --brand:#0f766e; --danger:#b42318; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family:Arial, sans-serif; background:var(--bg); color:var(--text); }
-    header { display:flex; gap:16px; align-items:center; justify-content:space-between; padding:16px 24px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; }
+    * { box-sizing: border-box; min-width:0; }
+    html, body { max-width:100%; overflow-x:hidden; }
+    body { margin:0; font-family:Arial, sans-serif; background:var(--bg); color:var(--text); overflow-wrap:anywhere; }
+    header { display:flex; gap:16px; align-items:center; justify-content:space-between; padding:16px 24px; background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:2; max-width:100%; }
     h1 { font-size:20px; margin:0; }
-    main { padding:20px 24px 36px; max-width:1320px; margin:0 auto; }
+    main { padding:20px 24px 36px; width:min(1320px, 100%); margin:0 auto; overflow:hidden; }
     button, input, select, textarea { font:inherit; }
-    button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:8px 10px; cursor:pointer; }
+    button { border:1px solid var(--line); background:#fff; border-radius:6px; padding:8px 10px; cursor:pointer; white-space:normal; }
     button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
     button.danger { color:var(--danger); }
-    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; min-width:120px; }
+    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; max-width:100%; }
     textarea { width:100%; min-height:76px; resize:vertical; }
-    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; max-width:100%; }
     .token { width:260px; }
-    .stats { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin-bottom:18px; }
+    .stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:18px; }
     .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
     .stat strong { display:block; font-size:28px; margin-top:4px; }
-    .tabs { display:flex; gap:8px; margin:0 0 14px; }
+    .tabs { display:flex; gap:8px; margin:0 0 14px; flex-wrap:wrap; }
     .tabs button.active { background:#172033; color:#fff; border-color:#172033; }
     .filters { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-    .grid { display:grid; gap:12px; }
-    .item { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
+    .grid { display:grid; gap:12px; min-width:0; }
+    .item { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; min-width:0; max-width:100%; overflow:hidden; }
     .item-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; margin-bottom:10px; }
-    .title { font-weight:700; }
-    .meta { color:var(--muted); font-size:13px; margin-top:4px; }
+    .item-head > * { min-width:0; }
+    .title { font-weight:700; overflow-wrap:anywhere; }
+    .meta { color:var(--muted); font-size:13px; margin-top:4px; overflow-wrap:anywhere; }
     .fields { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px 18px; }
     .field span { display:block; color:var(--muted); font-size:12px; }
-    .field b { font-weight:400; word-break:break-word; }
+    .field, .field b { min-width:0; max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
+    .field b { display:block; font-weight:400; }
     .actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
     .chat { border-top:1px solid var(--line); margin-top:14px; padding-top:14px; }
-    .messages { display:grid; gap:8px; max-height:340px; overflow:auto; padding:8px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; }
-    .message { max-width:78%; padding:8px 10px; border-radius:8px; background:#fff; border:1px solid var(--line); }
+    .messages { display:grid; gap:8px; max-height:340px; overflow:auto; overflow-x:hidden; padding:8px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; max-width:100%; }
+    .message { max-width:min(78%, 100%); min-width:0; padding:8px 10px; border-radius:8px; background:#fff; border:1px solid var(--line); overflow-wrap:anywhere; word-break:break-word; }
     .message.operator { justify-self:end; background:#e7f5f1; border-color:#b7ded4; }
     .message .meta { font-size:11px; margin-top:4px; }
-    .composer { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:start; margin-top:10px; }
+    .message img, .message video, .message audio { max-width:100%; }
+    .composer { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px; align-items:start; margin-top:10px; max-width:100%; }
+    .composer > * { min-width:0; max-width:100%; }
+    .ticket-shell { display:flex; min-height:560px; height:calc(100vh - 260px); background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+    .ticket-sidebar { width:var(--ticket-sidebar-width, 330px); min-width:220px; max-width:min(560px, 58vw); flex:0 0 auto; overflow:auto; border-right:1px solid var(--line); background:#fbfcfe; }
+    .ticket-sidebar-head { position:sticky; top:0; z-index:1; padding:12px; font-weight:700; background:#fbfcfe; border-bottom:1px solid var(--line); }
+    .ticket-row { display:grid; grid-template-columns:1fr auto; gap:6px 8px; width:100%; padding:12px; border:0; border-bottom:1px solid var(--line); background:transparent; text-align:left; border-radius:0; }
+    .ticket-row:hover { background:#f1f5f9; }
+    .ticket-row.active { background:#e7f5f1; }
+    .ticket-row-title { font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ticket-row-preview { grid-column:1 / -1; color:var(--muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ticket-resizer { width:7px; flex:0 0 7px; cursor:col-resize; background:linear-gradient(90deg, transparent, #d8dee8, transparent); }
+    .ticket-resizer:hover { background:#cbd5e1; }
+    .ticket-main { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; background:#fff; }
+    .ticket-main-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; padding:14px 16px; border-bottom:1px solid var(--line); }
+    .ticket-main-title { font-weight:700; overflow-wrap:anywhere; }
+    .ticket-main-subtitle { color:var(--muted); font-size:13px; margin-top:4px; overflow-wrap:anywhere; }
+    .ticket-main-body { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:12px; }
+    .ticket-main-body .chat { flex:1 1 auto; min-height:0; margin-top:0; padding-top:0; border-top:0; display:flex; flex-direction:column; }
+    .ticket-main-body .messages { flex:1 1 auto; max-height:none; align-content:start; }
+    .ticket-main-body .message { max-width:min(680px, 82%); }
     .empty { color:var(--muted); padding:26px; text-align:center; background:var(--panel); border:1px dashed var(--line); border-radius:8px; }
     .error { color:var(--danger); margin-left:8px; }
-    @media (max-width:760px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields, .composer { grid-template-columns:1fr; } .token { width:100%; } .message { max-width:100%; } }
+    @media (max-width:900px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields, .composer { grid-template-columns:1fr; } .token { width:100%; } .message { max-width:100%; } .ticket-shell { height:auto; min-height:0; flex-direction:column; } .ticket-sidebar { width:100%; max-width:100%; max-height:320px; border-right:0; border-bottom:1px solid var(--line); } .ticket-resizer { display:none; } .ticket-main { min-height:520px; } .ticket-main-body .message { max-width:100%; } }
   </style>
 </head>
 <body>
@@ -59,12 +82,14 @@ export const adminPageHtml = `<!doctype html>
     <section class="stats">
       <div class="stat">Новые регистрации<strong id="regCount">0</strong></div>
       <div class="stat">Новые заявки<strong id="bidCount">0</strong></div>
+      <div class="stat">Сценарные заявки<strong id="serviceRequestCount">0</strong></div>
       <div class="stat">Открытые вопросы<strong id="ticketCount">0</strong></div>
     </section>
     <nav class="tabs">
       <button data-tab="registrations" class="active">Регистрации</button>
-      <button data-tab="bids">Сервисные заявки</button>
+      <button data-tab="service">Заявки по сервису</button>
       <button data-tab="tickets">Вопросы</button>
+      <button data-tab="organizations">Организации</button>
     </nav>
     <section class="filters">
       <select id="status">
@@ -74,6 +99,7 @@ export const adminPageHtml = `<!doctype html>
       </select>
       <select id="platform">
         <option value="">Все платформы</option>
+        <option value="web">Web</option>
         <option value="max">MAX</option>
         <option value="telegram">Telegram</option>
       </select>
@@ -81,7 +107,7 @@ export const adminPageHtml = `<!doctype html>
     <section id="list" class="grid"></section>
   </main>
   <script>
-    const state = { tab: 'registrations', openTicketId: null };
+    const state = { tab: 'registrations', openTicketId: null, openServiceRequestId: null, openServiceWorkKey: null, serviceWorkItems: [] };
     const tokenInput = document.querySelector('#token');
     const errorEl = document.querySelector('#error');
     tokenInput.value = localStorage.getItem('adminToken') || '';
@@ -97,6 +123,9 @@ export const adminPageHtml = `<!doctype html>
       button.onclick = () => {
         state.tab = button.dataset.tab;
         state.openTicketId = null;
+        state.openServiceRequestId = null;
+        state.openServiceWorkKey = null;
+        state.serviceWorkItems = [];
         document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item === button));
         load();
       };
@@ -123,28 +152,98 @@ export const adminPageHtml = `<!doctype html>
         const summary = await api('/admin/api/summary');
         regCount.textContent = summary.newRegistrations;
         bidCount.textContent = summary.newBids;
+        serviceRequestCount.textContent = summary.activeServiceRequests || 0;
         ticketCount.textContent = summary.openTickets;
         const params = new URLSearchParams({ status: status.value });
         if (platform.value) params.set('platform', platform.value);
-        const items = await api('/admin/api/' + state.tab + '?' + params.toString());
+        const items = state.tab === 'service'
+          ? await loadServiceWorkItems(params)
+          : await api('/admin/api/' + state.tab + '?' + params.toString());
         render(items);
         if (state.openTicketId) openTicketChat(state.openTicketId);
+        if (state.openServiceWorkKey) openServiceWork(state.openServiceWorkKey);
       } catch (error) {
         errorEl.textContent = 'Ошибка доступа или загрузки';
         console.error(error);
       }
     }
 
+    async function loadServiceWorkItems(params) {
+      const serviceParams = new URLSearchParams(params);
+      serviceParams.set('status', status.value === 'all' ? 'all' : status.value === 'processed' ? 'completed' : 'active');
+      const [bids, serviceRequests] = await Promise.all([
+        api('/admin/api/bids?' + params.toString()),
+        api('/admin/api/service-requests?' + serviceParams.toString()),
+      ]);
+      state.serviceWorkItems = [
+        ...bids.map((item) => ({ kind:'bid', key:'bid:' + item.id, createdAt:item.createdAt, title:'Заявка #' + item.id + ' · ' + item.type, preview:item.problemDescription || item.contactForCall || 'Без описания', item })),
+        ...serviceRequests.map((item) => ({ kind:'service-request', key:'service-request:' + item.id, createdAt:item.createdAt, title:'Сценарная заявка #' + item.id + ' · ' + item.serviceTypeTitle, preview:statusText(item.status) + (item.calculatedPrice ? ' · ' + item.calculatedPrice + ' ₽' : ''), item })),
+      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return state.serviceWorkItems;
+    }
+
     function render(items) {
+      if (state.tab === 'service') {
+        renderServiceWorkLayout(items);
+        return;
+      }
       if (!items.length) {
         list.innerHTML = '<div class="empty">Ничего не найдено</div>';
         return;
       }
+      if (state.tab === 'tickets') {
+        renderTicketsLayout(items);
+        return;
+      }
       list.innerHTML = items.map((item) => {
         if (state.tab === 'registrations') return registrationCard(item);
-        if (state.tab === 'bids') return bidCard(item);
+        if (state.tab === 'organizations') return organizationCard(item);
         return ticketCard(item);
       }).join('');
+    }
+    function renderServiceWorkLayout(items) {
+      if (items.length && (!state.openServiceWorkKey || !items.some((item) => item.key === state.openServiceWorkKey))) {
+        state.openServiceWorkKey = items[0].key;
+      }
+      const width = Number(localStorage.getItem('serviceSidebarWidth')) || 360;
+      list.innerHTML =
+        '<section class="ticket-shell" style="--ticket-sidebar-width:' + width + 'px">' +
+          '<aside class="ticket-sidebar"><div class="ticket-sidebar-head">Заявки по сервису</div>' +
+            (items.length ? items.map(serviceWorkListRow).join('') : '<div class="empty">Заявок нет</div>') +
+          '</aside>' +
+          '<div class="ticket-resizer" onmousedown="startSidebarResize(event, \\'serviceSidebarWidth\\')" title="Изменить ширину списка"></div>' +
+          '<section id="service-detail" class="ticket-main"><div class="ticket-main-body"><div class="empty">' + (items.length ? 'Выберите заявку слева' : 'Нет заявок по выбранным фильтрам') + '</div></div></section>' +
+        '</section>';
+    }
+    function serviceWorkListRow(entry) {
+      return '<button class="ticket-row ' + (state.openServiceWorkKey === entry.key ? 'active' : '') + '" data-service-key="' + esc(entry.key) + '" onclick="selectServiceWork(\\'' + entry.key + '\\')">' +
+        '<span class="ticket-row-title">' + esc(entry.title) + '</span>' +
+        '<span class="meta">' + fmtDate(entry.createdAt) + '</span>' +
+        '<span class="ticket-row-preview">' + esc(entry.preview) + '</span>' +
+        '</button>';
+    }
+    function renderTicketsLayout(items) {
+      if (!state.openTicketId || !items.some((item) => item.id === state.openTicketId)) {
+        state.openTicketId = items[0].id;
+      }
+      const width = Number(localStorage.getItem('ticketSidebarWidth')) || 330;
+      list.innerHTML =
+        '<section class="ticket-shell" style="--ticket-sidebar-width:' + width + 'px">' +
+          '<aside class="ticket-sidebar"><div class="ticket-sidebar-head">Вопросы</div>' +
+            items.map(ticketListRow).join('') +
+          '</aside>' +
+          '<div class="ticket-resizer" onmousedown="startTicketResize(event)" title="Изменить ширину списка"></div>' +
+          '<section id="ticket-detail" class="ticket-main"><div class="ticket-main-body"><div class="empty">Выберите вопрос слева</div></div></section>' +
+        '</section>';
+    }
+    function ticketListRow(item) {
+      const title = item.name || item.username || item.userChatId || ('Вопрос #' + item.id);
+      const preview = item.text || 'Без текста';
+      return '<button class="ticket-row ' + (state.openTicketId === item.id ? 'active' : '') + '" onclick="selectTicket(' + item.id + ')">' +
+        '<span class="ticket-row-title">' + esc(title) + '</span>' +
+        '<span class="meta">' + fmtDate(item.createdAt) + '</span>' +
+        '<span class="ticket-row-preview">' + esc(preview) + '</span>' +
+        '</button>';
     }
     function head(item, title, processed) {
       return '<div class="item-head"><div><div class="title">' + title + '</div><div class="meta">' + esc(item.platform) + ' · ' + fmtDate(item.createdAt) + '</div></div><div>' + (processed ? 'Обработано' : 'Новое') + '</div></div>';
@@ -173,29 +272,251 @@ export const adminPageHtml = `<!doctype html>
         '<div id="chat-' + item.id + '"></div>' +
         '</article>';
     }
+    function statusText(value) {
+      return ({
+        draft:'Черновик',
+        price_confirmed:'Цена подтверждена',
+        invoice_required:'Нужен счет',
+        waiting_payment:'Ожидает оплаты',
+        paid:'Оплачено',
+        scheduled:'Назначен визит',
+        completed:'Завершена',
+        cancelled:'Отменена'
+      })[value] || value;
+    }
+    function serviceRequestCard(item) {
+      const answers = item.answers || {};
+      return '<article class="item">' + head(item, 'Сценарная заявка #' + item.id + ' · ' + esc(item.serviceTypeTitle), item.status === 'completed' || item.status === 'cancelled') +
+        '<div class="fields">' +
+        field('Статус', statusText(item.status)) +
+        field('Стоимость', item.calculatedPrice ? item.calculatedPrice + ' ₽' : 'Не рассчитана') +
+        field('ИНН', answers.inn) +
+        field('Касса/шильдик', answers.cashRegisterIdentity) +
+        field('ФН', answers.fiscalDriveTerm ? answers.fiscalDriveTerm + ' мес.' : '') +
+        field('Контакт', answers.contactForCall) +
+        '</div><div class="actions"><button onclick="openServiceRequest(' + item.id + ')">' + (state.openServiceRequestId === item.id ? 'Обновить' : 'Открыть') + '</button></div>' +
+        '<div id="service-request-' + item.id + '"></div></article>';
+    }
+    function organizationCard(item) {
+      const members = item.members || [];
+      return '<article class="item">' + head(item, esc(item.name || 'Организация #' + item.id), false) +
+        '<div class="fields">' +
+        field('ИНН', item.inn) + field('КПП', item.kpp) + field('ОГРН', item.ogrn) + field('СНО', item.taxSystem) +
+        field('Юр. адрес', item.legalAddress) + field('Представителей', members.length) +
+        '</div><div class="actions"><button onclick="openOrganizationAssets(' + item.id + ')">Кассы и подписки</button></div>' +
+        '<div id="assets-' + item.id + '"></div></article>';
+    }
+    async function openOrganizationAssets(id) {
+      const data = await api('/admin/api/organizations/' + id + '/assets');
+      const holder = document.querySelector('#assets-' + id);
+      if (!holder) return;
+      holder.innerHTML = renderOrganizationAssets(data);
+    }
+    function renderOrganizationAssets(data) {
+      const cashRegisters = data.cashRegisters || [];
+      const fiscalDrives = data.fiscalDrives || [];
+      const ofdSubscriptions = data.ofdSubscriptions || [];
+      return '<div class="chat"><div class="fields">' +
+        field('Кассы', cashRegisters.length) +
+        field('ФН', fiscalDrives.map((item) => item.serialNumber + (item.validUntil ? ' до ' + fmtDate(item.validUntil) : '')).join(', ') || 'Не указано') +
+        field('ОФД', ofdSubscriptions.map((item) => item.provider + (item.validUntil ? ' до ' + fmtDate(item.validUntil) : '')).join(', ') || 'Не указано') +
+        '</div></div>';
+    }
     async function processItem(kind, id) {
       await api('/admin/api/' + kind + '/' + id + '/process', { method: 'POST', body: '{}' });
       load();
     }
+    function selectServiceWork(key) {
+      state.openServiceWorkKey = key;
+      document.querySelectorAll('[data-service-key]').forEach((row) => row.classList.toggle('active', row.dataset.serviceKey === key));
+      openServiceWork(key);
+    }
+    async function openServiceWork(key) {
+      state.openServiceWorkKey = key;
+      const entry = state.serviceWorkItems.find((item) => item.key === key);
+      const holder = document.querySelector('#service-detail');
+      if (!entry || !holder) return;
+
+      if (entry.kind === 'bid') {
+        holder.innerHTML = renderBidDetail(entry.item);
+        return;
+      }
+
+      const data = await api('/admin/api/service-requests/' + entry.item.id);
+      holder.innerHTML = renderScenarioServiceDetail(data.request, data.events || []);
+    }
+    function renderBidDetail(item) {
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Заявка #' + item.id + ' · ' + esc(item.type) + '</div><div class="ticket-main-subtitle">' + esc(item.platform) + ' · ' + fmtDate(item.createdAt) + '</div></div>' +
+        (item.isProcessed ? '<div class="meta">Обработано</div>' : '<button class="primary" onclick="processItem(\\'bids\\',' + item.id + ')">Обработано</button>') +
+        '</div><div class="ticket-main-body"><div class="fields">' +
+          field('Проблема', item.problemDescription) +
+          field('Контакт', item.contactForCall) +
+          field('Организация', item.organizationId) +
+          field('Пользователь', item.userId || item.chatId) +
+        '</div></div>';
+    }
+    function renderScenarioServiceDetail(request, events) {
+      const answers = request.answers || {};
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сценарная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div></div>' +
+        '<div class="ticket-main-body"><div class="fields">' +
+          field('Статус', statusText(request.status)) +
+          field('Стоимость', request.calculatedPrice ? request.calculatedPrice + ' ₽' : 'Не рассчитана') +
+          field('ИНН', answers.inn) +
+          field('Касса/шильдик', answers.cashRegisterIdentity) +
+          field('ФН', answers.fiscalDriveTerm ? answers.fiscalDriveTerm + ' мес.' : '') +
+          field('Контакт', answers.contactForCall) +
+        '</div>' + renderServiceRequestDetails(request, events) + '</div>';
+    }
+    function selectTicket(id) {
+      state.openTicketId = id;
+      document.querySelectorAll('.ticket-row').forEach((row) => row.classList.toggle('active', row.getAttribute('onclick') === 'selectTicket(' + id + ')'));
+      openTicketChat(id);
+    }
     async function openTicketChat(id) {
       state.openTicketId = id;
       const data = await api('/admin/api/tickets/' + id);
-      const holder = document.querySelector('#chat-' + id);
-      if (holder) holder.innerHTML = renderChat(data.ticket, data.messages || []);
+      const holder = document.querySelector('#ticket-detail') || document.querySelector('#chat-' + id);
+      if (holder) holder.innerHTML = renderTicketDetail(data.ticket, data.messages || []);
+    }
+    function renderTicketDetail(ticket, messages) {
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Вопрос #' + ticket.id + ' · ' + esc(ticket.name || ticket.username || ticket.userChatId) + '</div><div class="ticket-main-subtitle">' + esc(ticket.platform) + ' · ' + fmtDate(ticket.createdAt) + '</div></div>' +
+        (!ticket.isAnswered ? '<button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button>' : '<div class="meta">Закрыт</div>') +
+        '</div><div class="ticket-main-body">' + renderChat(ticket, messages || []) + '</div>';
+    }
+    function startTicketResize(event) {
+      startSidebarResize(event, 'ticketSidebarWidth');
+    }
+    function startSidebarResize(event, storageKey) {
+      event.preventDefault();
+      const shell = event.target.closest('.ticket-shell');
+      const sidebar = shell?.querySelector('.ticket-sidebar');
+      if (!shell || !sidebar) return;
+      const startX = event.clientX;
+      const startWidth = sidebar.getBoundingClientRect().width;
+      function onMove(moveEvent) {
+        const max = Math.min(560, window.innerWidth * 0.58);
+        const next = Math.max(220, Math.min(max, startWidth + moveEvent.clientX - startX));
+        shell.style.setProperty('--ticket-sidebar-width', next + 'px');
+        localStorage.setItem(storageKey, String(Math.round(next)));
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    }
+    async function openServiceRequest(id) {
+      state.openServiceRequestId = id;
+      const data = await api('/admin/api/service-requests/' + id);
+      const holder = document.querySelector('#service-request-' + id);
+      if (holder) holder.innerHTML = renderServiceRequestDetails(data.request, data.events || []);
+    }
+    function renderServiceRequestDetails(request, events) {
+      const rows = events.length ? events.map((event) =>
+        '<div class="message"><div>' + esc(event.message || event.type) + '</div><div class="meta">' + esc(event.actor || '') + ' · ' + fmtDate(event.createdAt) + '</div></div>'
+      ).join('') : '<div class="empty">Истории по заявке пока нет</div>';
+      return '<div class="chat"><div class="messages">' + rows + '</div>' +
+        '<div class="composer"><input id="invoice-id-' + request.id + '" placeholder="Ссылка или номер PDF счета"><input id="invoice-name-' + request.id + '" placeholder="Название счета"><button class="primary" onclick="attachInvoice(' + request.id + ')">Прикрепить счет</button></div>' +
+        '<div class="composer"><input id="invoice-file-' + request.id + '" type="file" accept="application/pdf"><button class="primary" onclick="uploadInvoicePdf(' + request.id + ')">Загрузить PDF</button>' + (request.invoiceFileId ? '<button onclick="downloadInvoice(' + request.id + ')">Скачать счет</button>' : '') + '</div>' +
+        '<div class="actions"><button class="primary" onclick="markPaymentReceived(' + request.id + ')">Оплата получена</button></div>' +
+        '<div class="composer"><input id="visit-address-' + request.id + '" placeholder="Адрес визита"><input id="visit-time-' + request.id + '" placeholder="2026-07-05T12:00"><button onclick="scheduleVisit(' + request.id + ')">Назначить визит</button></div>' +
+        '<div class="actions"><button onclick="completeServiceRequest(' + request.id + ')">Завершить</button><button class="danger" onclick="cancelServiceRequest(' + request.id + ')">Отменить</button></div></div>';
+    }
+    async function attachInvoice(id) {
+      const invoiceFileId = document.querySelector('#invoice-id-' + id).value.trim();
+      const invoiceFileName = document.querySelector('#invoice-name-' + id).value.trim();
+      if (!invoiceFileId) return;
+      await api('/admin/api/service-requests/' + id + '/invoice', { method: 'POST', body: JSON.stringify({ invoiceFileId, invoiceFileName }) });
+      await openServiceRequest(id);
+      load();
+    }
+    async function uploadInvoicePdf(id) {
+      const input = document.querySelector('#invoice-file-' + id);
+      if (!input.files || !input.files[0]) return;
+      const form = new FormData();
+      form.append('file', input.files[0]);
+      const response = await fetch('/admin/api/service-requests/' + id + '/invoice-file', {
+        method: 'POST',
+        headers: { 'X-Admin-Token': token() },
+        body: form,
+      });
+      if (!response.ok) throw new Error(await response.text() || response.statusText);
+      await openServiceRequest(id);
+      load();
+    }
+    function downloadInvoice(id) {
+      window.open('/admin/api/service-requests/' + id + '/invoice?token=' + encodeURIComponent(token()), '_blank');
+    }
+    async function markPaymentReceived(id) {
+      await api('/admin/api/service-requests/' + id + '/payment-received', { method: 'POST', body: '{}' });
+      await openServiceRequest(id);
+      load();
+    }
+    async function scheduleVisit(id) {
+      const visitAddress = document.querySelector('#visit-address-' + id).value.trim();
+      const visitTime = document.querySelector('#visit-time-' + id).value.trim();
+      if (!visitAddress) return;
+      await api('/admin/api/service-requests/' + id + '/schedule', { method: 'POST', body: JSON.stringify({ visitAddress, visitTime }) });
+      await openServiceRequest(id);
+      load();
+    }
+    async function completeServiceRequest(id) {
+      await api('/admin/api/service-requests/' + id + '/complete', { method: 'POST', body: '{}' });
+      load();
+    }
+    async function cancelServiceRequest(id) {
+      await api('/admin/api/service-requests/' + id + '/cancel', { method: 'POST', body: '{}' });
+      load();
     }
     function renderChat(ticket, messages) {
       const rows = messages.length ? messages.map((message) =>
-        '<div class="message ' + esc(message.sender) + '"><div>' + esc(message.text) + '</div><div class="meta">' + esc(message.sender === 'operator' ? 'Оператор' : 'Клиент') + ' · ' + fmtDate(message.createdAt) + '</div></div>'
+        '<div class="message ' + esc(message.sender) + '"><div>' + renderTicketMessageContent(message) + '</div><div class="meta">' + esc(message.sender === 'operator' ? 'Оператор' : 'Клиент') + ' · ' + fmtDate(message.createdAt) + '</div></div>'
       ).join('') : '<div class="empty">Истории сообщений пока нет</div>';
       return '<div class="chat"><div class="messages">' + rows + '</div>' +
-        (!ticket.isAnswered ? '<div class="composer"><textarea id="reply-' + ticket.id + '" placeholder="Ответ клиенту"></textarea><button class="primary" onclick="sendTicketMessage(' + ticket.id + ')">Отправить</button><button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button></div>' : '') +
+        (!ticket.isAnswered ? '<div class="composer"><textarea id="reply-' + ticket.id + '" placeholder="Ответ клиенту"></textarea><button class="primary" onclick="sendTicketMessage(' + ticket.id + ')">Отправить</button><button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button></div><div class="composer"><input id="ticket-file-' + ticket.id + '" type="file"><input id="ticket-file-text-' + ticket.id + '" placeholder="Комментарий к файлу"><button onclick="sendTicketMedia(' + ticket.id + ')">Отправить файл</button></div>' : '') +
         '</div>';
+    }
+    function ticketFileUrl(message) {
+      if (message.localPath) return '/admin/api/ticket-messages/' + message.id + '/file?token=' + encodeURIComponent(token());
+      return message.externalUrl || '';
+    }
+    function renderTicketMessageContent(message) {
+      const type = message.messageType || 'text';
+      if (type === 'text') return esc(message.text || '');
+      const url = ticketFileUrl(message);
+      const label = esc(message.text || message.fileName || type);
+      if (!url) return label;
+      if (type === 'image') return '<a href="' + esc(url) + '" target="_blank"><img src="' + esc(url) + '" alt="' + label + '" style="max-width:100%;border-radius:6px"></a>' + (message.text ? '<div>' + esc(message.text) + '</div>' : '');
+      if (type === 'video' || type === 'video_note') return '<video controls src="' + esc(url) + '" style="max-width:100%"></video><div>' + label + '</div>';
+      if (type === 'audio' || type === 'voice') return '<audio controls src="' + esc(url) + '" style="width:100%"></audio><div>' + label + '</div>';
+      return '<a href="' + esc(url) + '" target="_blank">' + label + '</a>';
     }
     async function sendTicketMessage(id) {
       const textarea = document.querySelector('#reply-' + id);
       const text = textarea.value.trim();
       if (!text) return;
       await api('/admin/api/tickets/' + id + '/messages', { method: 'POST', body: JSON.stringify({ text }) });
+      await openTicketChat(id);
+      load();
+    }
+    async function sendTicketMedia(id) {
+      const input = document.querySelector('#ticket-file-' + id);
+      if (!input.files || !input.files[0]) return;
+      const comment = document.querySelector('#ticket-file-text-' + id).value.trim();
+      const form = new FormData();
+      form.append('file', input.files[0]);
+      if (comment) form.append('text', comment);
+      const response = await fetch('/admin/api/tickets/' + id + '/media', {
+        method: 'POST',
+        headers: { 'X-Admin-Token': token() },
+        body: form,
+      });
+      if (!response.ok) throw new Error(await response.text() || response.statusText);
       await openTicketChat(id);
       load();
     }

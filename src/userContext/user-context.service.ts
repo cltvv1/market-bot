@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 
-export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR' | 'BID';
+export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR' | 'BID' | 'SERVICE_REQUEST';
 
 interface UserContext {
     mode: UserMode;
     talkingTo?: string | null;
+    serviceRequestId?: number | null;
 }
 
 @Injectable()

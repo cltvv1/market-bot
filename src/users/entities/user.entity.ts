@@ -1,6 +1,6 @@
 import { Column, Entity, PrimaryGeneratedColumn, Unique } from 'typeorm';
 
-export type UserPlatform = 'telegram' | 'max';
+export type UserPlatform = 'telegram' | 'max' | 'web';
 
 @Entity('users')
 @Unique(['platform', 'chatId'])

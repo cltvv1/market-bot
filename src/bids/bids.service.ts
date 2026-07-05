@@ -37,10 +37,12 @@ export class BidService {
         return await this.bidsRepo.findOne({ where: { id: bidId, isProcessed: false } });
     }
 
-    async createBid(chatId: string, type: BidType, platform: UserPlatform = 'telegram') {
+    async createBid(chatId: string, type: BidType, platform: UserPlatform = 'telegram', userId?: number, organizationId?: number) {
         const bid = this.bidsRepo.create({
             chatId,
             platform,
+            userId,
+            organizationId,
             currentStep: 1,
             isFilled: false,
             type

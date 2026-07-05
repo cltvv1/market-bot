@@ -8,11 +8,17 @@ export class RegistrationRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;
 
-    @Column({ type: 'bigint' })
+    @Column({ type: 'text' })
     chatId: string;
 
     @Column({ type: 'varchar', default: 'telegram' })
     platform: UserPlatform;
+
+    @Column({ nullable: true })
+    userId: number;
+
+    @Column({ nullable: true })
+    organizationId: number;
 
     @Column({
         type: 'enum',

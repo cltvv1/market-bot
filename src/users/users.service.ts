@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { UserEntity, UserPlatform } from './entities/user.entity';
+import { UserChannelEntity } from './entities/user-channel.entity';
 
 @Injectable()
 export class UsersService {
     constructor(
         @InjectRepository(UserEntity)
         private readonly usersRepo: Repository<UserEntity>,
+        @InjectRepository(UserChannelEntity)
+        private readonly channelsRepo: Repository<UserChannelEntity>,
     ) { }
 
     async getOrCreateOrUpdate(
@@ -56,7 +59,21 @@ export class UsersService {
             await this.usersRepo.save(user);
         }
 
+        await this.upsertChannel(user, chatId, platform, name, username, now);
+
         return user;
+    }
+
+    async getChannel(externalId: string, platform: UserPlatform = 'telegram') {
+        return this.channelsRepo.findOne({
+            where: { externalId, platform },
+            relations: { user: true },
+        });
+    }
+
+    async getUserIdByChannel(externalId: string, platform: UserPlatform = 'telegram') {
+        const channel = await this.getChannel(externalId, platform);
+        return channel?.userId ?? null;
     }
 
     async getByChatId(chatId: string, platform: UserPlatform = 'telegram') {
@@ -128,5 +145,50 @@ export class UsersService {
     async isTalking(initChatId: string, talkingToChatId: string, platform: UserPlatform = 'telegram') {
         const user = await this.getByChatId(initChatId, platform);
         return user?.talkingTo === talkingToChatId;
+    }
+
+    private async upsertChannel(
+        user: UserEntity,
+        externalId: string,
+        platform: UserPlatform,
+        displayName?: string,
+        username?: string,
+        now = new Date(),
+    ) {
+        let channel = await this.channelsRepo.findOne({ where: { externalId, platform } });
+
+        if (!channel) {
+            channel = this.channelsRepo.create({
+                userId: user.id,
+                externalId,
+                platform,
+                displayName,
+                username,
+                lastSeenAt: now,
+            });
+            return this.channelsRepo.save(channel);
+        }
+
+        let needUpdate = false;
+
+        if (channel.userId !== user.id) {
+            channel.userId = user.id;
+            needUpdate = true;
+        }
+
+        if (displayName && channel.displayName !== displayName) {
+            channel.displayName = displayName;
+            needUpdate = true;
+        }
+
+        if (username && channel.username !== username) {
+            channel.username = username;
+            needUpdate = true;
+        }
+
+        channel.lastSeenAt = now;
+        needUpdate = true;
+
+        return needUpdate ? this.channelsRepo.save(channel) : channel;
     }
 }
