@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { ServiceRequestsService } from './service-requests.service';
 
@@ -11,6 +12,7 @@ interface ClientIdentityBody {
 }
 
 @Controller('api/client/service-requests')
+@ApiTags('service-requests')
 export class ServiceRequestsController {
     constructor(private readonly serviceRequestsService: ServiceRequestsService) { }
 

@@ -26,6 +26,23 @@ export class MaxMessengerService implements MessengerService {
         return this.bot.api.sendMessageToChat(this.toMaxChatId(chatId), text, this.toMaxExtra(options));
     }
 
+    async sendImage(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions) {
+        if (!this.bot) {
+            throw new Error('MAX_BOT_TOKEN is not defined in environment variables');
+        }
+
+        const attachment = await this.bot.api.uploadImage({ source: file.source as any });
+
+        return this.bot.api.sendMessageToChat(
+            this.toMaxChatId(chatId),
+            options?.caption || '',
+            {
+                ...this.toMaxExtra(options),
+                attachments: [attachment.toJson()],
+            },
+        );
+    }
+
     async sendDocument(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions) {
         if (!this.bot) {
             throw new Error('MAX_BOT_TOKEN is not defined in environment variables');
@@ -35,7 +52,7 @@ export class MaxMessengerService implements MessengerService {
 
         return this.bot.api.sendMessageToChat(
             this.toMaxChatId(chatId),
-            file.filename,
+            options?.caption || file.filename,
             {
                 ...this.toMaxExtra(options),
                 attachments: [attachment.toJson()],

@@ -60,12 +60,23 @@ export const adminPageHtml = `<!doctype html>
     .ticket-main-title { font-weight:700; overflow-wrap:anywhere; }
     .ticket-main-subtitle { color:var(--muted); font-size:13px; margin-top:4px; overflow-wrap:anywhere; }
     .ticket-main-body { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:12px; }
+    .detail-layout { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:12px; }
+    .detail-primary { min-width:0; min-height:0; display:flex; flex-direction:column; }
+    .context-card { min-width:0; overflow:auto; border-left:1px solid var(--line); padding-left:12px; }
+    .context-block { border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px; background:#fbfcfe; }
+    .context-block h3 { margin:0 0 8px; font-size:15px; }
+    .context-line { display:grid; gap:2px; margin-top:8px; overflow-wrap:anywhere; }
+    .context-line span { color:var(--muted); font-size:12px; }
+    .status-pill { display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; background:#fff; color:var(--muted); }
+    .status-pill.hot { color:#92400e; background:#fffbeb; border-color:#fde68a; }
+    .status-pill.done { color:#166534; background:#f0fdf4; border-color:#bbf7d0; }
+    .status-pill.bad { color:#991b1b; background:#fef2f2; border-color:#fecaca; }
     .ticket-main-body .chat { flex:1 1 auto; min-height:0; margin-top:0; padding-top:0; border-top:0; display:flex; flex-direction:column; }
     .ticket-main-body .messages { flex:1 1 auto; max-height:none; align-content:start; }
     .ticket-main-body .message { max-width:min(680px, 82%); }
     .empty { color:var(--muted); padding:26px; text-align:center; background:var(--panel); border:1px dashed var(--line); border-radius:8px; }
     .error { color:var(--danger); margin-left:8px; }
-    @media (max-width:900px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields, .composer { grid-template-columns:1fr; } .token { width:100%; } .message { max-width:100%; } .ticket-shell { height:auto; min-height:0; flex-direction:column; } .ticket-sidebar { width:100%; max-width:100%; max-height:320px; border-right:0; border-bottom:1px solid var(--line); } .ticket-resizer { display:none; } .ticket-main { min-height:520px; } .ticket-main-body .message { max-width:100%; } }
+    @media (max-width:900px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields, .composer, .detail-layout { grid-template-columns:1fr; } .context-card { border-left:0; border-top:1px solid var(--line); padding-left:0; padding-top:12px; } .token { width:100%; } .message { max-width:100%; } .ticket-shell { height:auto; min-height:0; flex-direction:column; } .ticket-sidebar { width:100%; max-width:100%; max-height:320px; border-right:0; border-bottom:1px solid var(--line); } .ticket-resizer { display:none; } .ticket-main { min-height:520px; } .ticket-main-body .message { max-width:100%; } }
   </style>
 </head>
 <body>
@@ -94,8 +105,10 @@ export const adminPageHtml = `<!doctype html>
     <section class="filters">
       <select id="status">
         <option value="new">Новые</option>
+        <option value="in_work">В работе</option>
+        <option value="waiting_payment">Ожидают оплаты</option>
+        <option value="closed">Закрытые</option>
         <option value="all">Все</option>
-        <option value="processed">Обработанные</option>
       </select>
       <select id="platform">
         <option value="">Все платформы</option>
@@ -154,7 +167,7 @@ export const adminPageHtml = `<!doctype html>
         bidCount.textContent = summary.newBids;
         serviceRequestCount.textContent = summary.activeServiceRequests || 0;
         ticketCount.textContent = summary.openTickets;
-        const params = new URLSearchParams({ status: status.value });
+        const params = new URLSearchParams({ status: adminStatusForCurrentTab() });
         if (platform.value) params.set('platform', platform.value);
         const items = state.tab === 'service'
           ? await loadServiceWorkItems(params)
@@ -169,17 +182,43 @@ export const adminPageHtml = `<!doctype html>
     }
 
     async function loadServiceWorkItems(params) {
-      const serviceParams = new URLSearchParams(params);
-      serviceParams.set('status', status.value === 'all' ? 'all' : status.value === 'processed' ? 'completed' : 'active');
+      const bidParams = new URLSearchParams(params);
+      bidParams.set('status', bidStatusForServiceFilter());
+      const serviceStatuses = serviceStatusesForFilter();
       const [bids, serviceRequests] = await Promise.all([
-        api('/admin/api/bids?' + params.toString()),
-        api('/admin/api/service-requests?' + serviceParams.toString()),
+        shouldLoadBidsForServiceFilter() ? api('/admin/api/bids?' + bidParams.toString()) : Promise.resolve([]),
+        Promise.all(serviceStatuses.map((serviceStatus) => {
+          const serviceParams = new URLSearchParams(params);
+          serviceParams.set('status', serviceStatus);
+          return api('/admin/api/service-requests?' + serviceParams.toString());
+        })).then((groups) => groups.flat()),
       ]);
       state.serviceWorkItems = [
         ...bids.map((item) => ({ kind:'bid', key:'bid:' + item.id, createdAt:item.createdAt, title:'Заявка #' + item.id + ' · ' + item.type, preview:item.problemDescription || item.contactForCall || 'Без описания', item })),
         ...serviceRequests.map((item) => ({ kind:'service-request', key:'service-request:' + item.id, createdAt:item.createdAt, title:'Сценарная заявка #' + item.id + ' · ' + item.serviceTypeTitle, preview:statusText(item.status) + (item.calculatedPrice ? ' · ' + item.calculatedPrice + ' ₽' : ''), item })),
       ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       return state.serviceWorkItems;
+    }
+
+    function adminStatusForCurrentTab() {
+      if (status.value === 'all') return 'all';
+      if (status.value === 'closed') return 'processed';
+      return 'new';
+    }
+    function shouldLoadBidsForServiceFilter() {
+      return status.value !== 'waiting_payment';
+    }
+    function bidStatusForServiceFilter() {
+      if (status.value === 'all') return 'all';
+      if (status.value === 'closed') return 'processed';
+      return 'new';
+    }
+    function serviceStatusesForFilter() {
+      if (status.value === 'all') return ['all'];
+      if (status.value === 'waiting_payment') return ['waiting_payment'];
+      if (status.value === 'closed') return ['completed', 'cancelled'];
+      if (status.value === 'in_work') return ['draft', 'price_confirmed', 'invoice_required', 'paid', 'scheduled'];
+      return ['active'];
     }
 
     function render(items) {
@@ -338,34 +377,43 @@ export const adminPageHtml = `<!doctype html>
       if (!entry || !holder) return;
 
       if (entry.kind === 'bid') {
-        holder.innerHTML = renderBidDetail(entry.item);
+        const context = await loadCustomerContext(entry.item);
+        holder.innerHTML = renderBidDetail(entry.item, context);
         return;
       }
 
       const data = await api('/admin/api/service-requests/' + entry.item.id);
-      holder.innerHTML = renderScenarioServiceDetail(data.request, data.events || []);
+      holder.innerHTML = renderScenarioServiceDetail(data.request, data.events || [], data.context);
     }
-    function renderBidDetail(item) {
+    async function loadCustomerContext(item) {
+      const params = new URLSearchParams();
+      if (item.userId) params.set('userId', item.userId);
+      if (item.organizationId) params.set('organizationId', item.organizationId);
+      if (item.platform) params.set('platform', item.platform);
+      if (item.chatId || item.userChatId) params.set('chatId', item.chatId || item.userChatId);
+      return api('/admin/api/customer-context?' + params.toString());
+    }
+    function renderBidDetail(item, context) {
       return '<div class="ticket-main-head"><div><div class="ticket-main-title">Заявка #' + item.id + ' · ' + esc(item.type) + '</div><div class="ticket-main-subtitle">' + esc(item.platform) + ' · ' + fmtDate(item.createdAt) + '</div></div>' +
         (item.isProcessed ? '<div class="meta">Обработано</div>' : '<button class="primary" onclick="processItem(\\'bids\\',' + item.id + ')">Обработано</button>') +
-        '</div><div class="ticket-main-body"><div class="fields">' +
-          field('Проблема', item.problemDescription) +
-          field('Контакт', item.contactForCall) +
-          field('Организация', item.organizationId) +
-          field('Пользователь', item.userId || item.chatId) +
-        '</div></div>';
+        '</div><div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary"><div class="fields">' +
+            field('Проблема', item.problemDescription) +
+            field('Контакт', item.contactForCall) +
+            field('Организация', item.organizationId) +
+            field('Пользователь', item.userId || item.chatId) +
+          '</div></div>' + renderContextCard(context) + '</div></div>';
     }
-    function renderScenarioServiceDetail(request, events) {
+    function renderScenarioServiceDetail(request, events, context) {
       const answers = request.answers || {};
       return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сценарная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div></div>' +
-        '<div class="ticket-main-body"><div class="fields">' +
-          field('Статус', statusText(request.status)) +
-          field('Стоимость', request.calculatedPrice ? request.calculatedPrice + ' ₽' : 'Не рассчитана') +
-          field('ИНН', answers.inn) +
-          field('Касса/шильдик', answers.cashRegisterIdentity) +
-          field('ФН', answers.fiscalDriveTerm ? answers.fiscalDriveTerm + ' мес.' : '') +
-          field('Контакт', answers.contactForCall) +
-        '</div>' + renderServiceRequestDetails(request, events) + '</div>';
+        '<div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary"><div class="fields">' +
+            field('Статус', statusText(request.status)) +
+            field('Стоимость', request.calculatedPrice ? request.calculatedPrice + ' ₽' : 'Не рассчитана') +
+            field('ИНН', answers.inn) +
+            field('Касса/шильдик', answers.cashRegisterIdentity) +
+            field('ФН', answers.fiscalDriveTerm ? answers.fiscalDriveTerm + ' мес.' : '') +
+            field('Контакт', answers.contactForCall) +
+          '</div>' + renderServiceRequestDetails(request, events) + '</div>' + renderContextCard(context) + '</div></div>';
     }
     function selectTicket(id) {
       state.openTicketId = id;
@@ -376,12 +424,12 @@ export const adminPageHtml = `<!doctype html>
       state.openTicketId = id;
       const data = await api('/admin/api/tickets/' + id);
       const holder = document.querySelector('#ticket-detail') || document.querySelector('#chat-' + id);
-      if (holder) holder.innerHTML = renderTicketDetail(data.ticket, data.messages || []);
+      if (holder) holder.innerHTML = renderTicketDetail(data.ticket, data.messages || [], data.context);
     }
-    function renderTicketDetail(ticket, messages) {
+    function renderTicketDetail(ticket, messages, context) {
       return '<div class="ticket-main-head"><div><div class="ticket-main-title">Вопрос #' + ticket.id + ' · ' + esc(ticket.name || ticket.username || ticket.userChatId) + '</div><div class="ticket-main-subtitle">' + esc(ticket.platform) + ' · ' + fmtDate(ticket.createdAt) + '</div></div>' +
         (!ticket.isAnswered ? '<button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button>' : '<div class="meta">Закрыт</div>') +
-        '</div><div class="ticket-main-body">' + renderChat(ticket, messages || []) + '</div>';
+        '</div><div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary">' + renderChat(ticket, messages || []) + '</div>' + renderContextCard(context) + '</div></div>';
     }
     function startTicketResize(event) {
       startSidebarResize(event, 'ticketSidebarWidth');
@@ -472,6 +520,41 @@ export const adminPageHtml = `<!doctype html>
     async function cancelServiceRequest(id) {
       await api('/admin/api/service-requests/' + id + '/cancel', { method: 'POST', body: '{}' });
       load();
+    }
+    function renderContextCard(context) {
+      const data = context || {};
+      const user = data.user || {};
+      const organization = data.organization || {};
+      const assets = data.assets || {};
+      const cashRegisters = assets.cashRegisters || [];
+      const fiscalDrives = assets.fiscalDrives || [];
+      const ofdSubscriptions = assets.ofdSubscriptions || [];
+      const activities = data.activities || [];
+      return '<aside class="context-card">' +
+        '<div class="context-block"><h3>Клиент</h3>' +
+          contextLine('Имя', user.name || user.username) +
+          contextLine('Платформа', user.platform) +
+          contextLine('Chat ID', user.chatId) +
+          contextLine('Последняя активность', fmtDate(user.lastSeenAt)) +
+        '</div>' +
+        '<div class="context-block"><h3>Организация</h3>' +
+          contextLine('Название', organization.name) +
+          contextLine('ИНН / КПП', [organization.inn, organization.kpp].filter(Boolean).join(' / ')) +
+          contextLine('ОГРН', organization.ogrn) +
+          contextLine('СНО', organization.taxSystem) +
+        '</div>' +
+        '<div class="context-block"><h3>Кассы и подписки</h3>' +
+          contextLine('Кассы', cashRegisters.length ? cashRegisters.map((item) => item.model || item.serialNumber || ('#' + item.id)).join(', ') : '') +
+          contextLine('ФН', fiscalDrives.length ? fiscalDrives.map((item) => (item.serialNumber || '#' + item.id) + (item.validUntil ? ' до ' + fmtDate(item.validUntil) : '')).join(', ') : '') +
+          contextLine('ОФД', ofdSubscriptions.length ? ofdSubscriptions.map((item) => (item.provider || '#' + item.id) + (item.validUntil ? ' до ' + fmtDate(item.validUntil) : '')).join(', ') : '') +
+        '</div>' +
+        '<div class="context-block"><h3>История</h3>' +
+          (activities.length ? activities.map((item) => '<div class="context-line"><b>' + esc(item.title || item.type) + '</b><span>' + fmtDate(item.createdAt) + '</span></div>').join('') : '<div class="meta">Истории пока нет</div>') +
+        '</div>' +
+      '</aside>';
+    }
+    function contextLine(label, value) {
+      return '<div class="context-line"><span>' + esc(label) + '</span><b>' + esc(value || 'Не указано') + '</b></div>';
     }
     function renderChat(ticket, messages) {
       const rows = messages.length ? messages.map((message) =>

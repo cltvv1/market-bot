@@ -19,6 +19,10 @@ export class MessengerRouterService implements MessengerService {
         return this.getMessenger(options?.platform).sendMessage(chatId, text, options);
     }
 
+    async sendImage(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions) {
+        return this.getMessenger(options?.platform).sendImage(chatId, file, options);
+    }
+
     async sendDocument(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions) {
         return this.getMessenger(options?.platform).sendDocument(chatId, file, options);
     }

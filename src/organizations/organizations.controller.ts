@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { OrganizationsService } from './organizations.service';
 import type { OrganizationMemberRole } from './entities/organization-member.entity';
@@ -22,6 +23,7 @@ interface LinkOrganizationBody extends OrganizationIdentityBody {
 }
 
 @Controller('api/client/organizations')
+@ApiTags('organizations')
 export class OrganizationsController {
     constructor(private readonly organizationsService: OrganizationsService) { }
 

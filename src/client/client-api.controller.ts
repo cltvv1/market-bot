@@ -3,6 +3,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { BadRequestException, Body, Controller, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { BidType } from 'src/bids/bid.types';
 import { BidService } from 'src/bids/bids.service';
@@ -21,6 +22,7 @@ interface ClientIdentityBody {
 }
 
 @Controller('api/client')
+@ApiTags('client')
 export class ClientApiController {
     constructor(
         private readonly clientWorkflow: ClientWorkflowService,

@@ -15,6 +15,10 @@ export class TelegramMessengerService implements MessengerService {
         return this.bot.telegram.sendMessage(chatId, text, this.toTelegramExtra(options));
     }
 
+    async sendImage(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions) {
+        return this.bot.telegram.sendPhoto(chatId, file, this.toTelegramExtra(options));
+    }
+
     async sendDocument(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions) {
         return this.bot.telegram.sendDocument(chatId, file, this.toTelegramExtra(options));
     }
@@ -26,6 +30,10 @@ export class TelegramMessengerService implements MessengerService {
 
         if (options.parseMode) {
             extra.parse_mode = options.parseMode;
+        }
+
+        if (options.caption) {
+            extra.caption = options.caption;
         }
 
         if (options.inlineKeyboard) {

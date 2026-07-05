@@ -14,6 +14,7 @@ export interface MessengerMessageOptions {
     inlineKeyboard?: MessengerInlineKeyboard;
     parseMode?: 'HTML' | 'Markdown';
     platform?: UserPlatform;
+    caption?: string;
 }
 
 export interface MessengerDocument {
@@ -23,6 +24,7 @@ export interface MessengerDocument {
 
 export interface MessengerService {
     sendMessage(chatId: string | number, text: string, options?: MessengerMessageOptions): Promise<unknown>;
+    sendImage(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions): Promise<unknown>;
     sendDocument(chatId: string | number, file: MessengerDocument, options?: MessengerMessageOptions): Promise<unknown>;
 }
 

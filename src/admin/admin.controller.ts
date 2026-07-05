@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { BadRequestException, Body, Controller, Get, Header, Param, Post, Query, Req, Res, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiSecurity, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
@@ -12,6 +13,8 @@ import type { AdminStatusFilter } from './admin.service';
 import { adminPageHtml } from './admin.page';
 
 @Controller('admin')
+@ApiTags('admin')
+@ApiSecurity('admin-token')
 export class AdminController {
     constructor(
         private readonly adminService: AdminService,
@@ -57,7 +60,24 @@ export class AdminController {
     @Get('api/service-requests/:id')
     getServiceRequest(@Req() request: Request, @Param('id') id: string) {
         this.assertAuthorized(request);
-        return this.adminService.getServiceRequest(Number(id));
+        return this.adminService.getServiceRequestDetails(Number(id));
+    }
+
+    @Get('api/customer-context')
+    getCustomerContext(
+        @Req() request: Request,
+        @Query('userId') userId?: string,
+        @Query('organizationId') organizationId?: string,
+        @Query('platform') platform?: UserPlatform,
+        @Query('chatId') chatId?: string,
+    ) {
+        this.assertAuthorized(request);
+        return this.adminService.getCustomerContext({
+            userId: userId ? Number(userId) : undefined,
+            organizationId: organizationId ? Number(organizationId) : undefined,
+            platform: this.normalizePlatform(platform),
+            chatId,
+        });
     }
 
     @Post('api/service-requests/:id/invoice')

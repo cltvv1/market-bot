@@ -12,6 +12,7 @@ import { CashRegisterEntity } from 'src/assets/entities/cash-register.entity';
 import { FiscalDriveEntity } from 'src/assets/entities/fiscal-drive.entity';
 import { OfdSubscriptionEntity } from 'src/assets/entities/ofd-subscription.entity';
 import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-activity.entity';
+import { UserEntity } from 'src/users/entities/user.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
@@ -44,6 +45,8 @@ export class AdminService {
         private readonly ofdSubscriptionsRepo: Repository<OfdSubscriptionEntity>,
         @InjectRepository(CustomerActivityEntity)
         private readonly activitiesRepo: Repository<CustomerActivityEntity>,
+        @InjectRepository(UserEntity)
+        private readonly usersRepo: Repository<UserEntity>,
         private readonly serviceRequestsService: ServiceRequestsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
@@ -139,6 +142,21 @@ export class AdminService {
         });
     }
 
+    async getCustomerContext(input: { userId?: number; organizationId?: number; platform?: UserPlatform; chatId?: string }) {
+        const [user, organization, assets, activities] = await Promise.all([
+            this.findContextUser(input),
+            input.organizationId ? this.organizationsRepo.findOne({ where: { id: input.organizationId } }) : Promise.resolve(null),
+            input.organizationId ? this.getOrganizationAssets(input.organizationId) : Promise.resolve({ cashRegisters: [], fiscalDrives: [], ofdSubscriptions: [] }),
+            this.activitiesRepo.find({
+                where: this.buildActivityContextWhere(input),
+                order: { createdAt: 'DESC' },
+                take: 8,
+            }),
+        ]);
+
+        return { user, organization, assets, activities };
+    }
+
     async getOrganizations() {
         const organizations = await this.organizationsRepo.find({
             order: { createdAt: 'DESC' },
@@ -181,7 +199,30 @@ export class AdminService {
             messages = await this.getTicketMessages(id);
         }
 
-        return { ticket, messages };
+        const context = ticket
+            ? await this.getCustomerContext({
+                userId: ticket.userId,
+                organizationId: ticket.organizationId,
+                platform: ticket.platform,
+                chatId: ticket.userChatId,
+            })
+            : null;
+
+        return { ticket, messages, context };
+    }
+
+    async getServiceRequestDetails(id: number) {
+        const details = await this.serviceRequestsService.getRequestDetails(id);
+        const context = details?.request
+            ? await this.getCustomerContext({
+                userId: details.request.userId,
+                organizationId: details.request.organizationId,
+                platform: details.request.platform,
+                chatId: details.request.chatId,
+            })
+            : null;
+
+        return { ...details, context };
     }
 
     getTicketMessages(ticketId: number) {
@@ -246,14 +287,20 @@ export class AdminService {
         }
 
         if (ticket.platform !== 'web') {
-            await this.messengerService.sendDocument(
-                ticket.userChatId,
-                {
-                    source: fs.createReadStream(media.localPath),
-                    filename: media.fileName,
-                },
-                { platform: ticket.platform },
-            );
+            const file = {
+                source: fs.createReadStream(media.localPath),
+                filename: media.fileName,
+            };
+            const options = {
+                platform: ticket.platform,
+                caption: media.text || undefined,
+            };
+
+            if (media.messageType === 'image') {
+                await this.messengerService.sendImage(ticket.userChatId, file, options);
+            } else {
+                await this.messengerService.sendDocument(ticket.userChatId, file, options);
+            }
         }
 
         await this.ticketMessagesRepo.save(this.ticketMessagesRepo.create({
@@ -288,5 +335,27 @@ export class AdminService {
         }
 
         return this.closeTicket(id, operatorId);
+    }
+
+    private async findContextUser(input: { userId?: number; platform?: UserPlatform; chatId?: string }) {
+        if (input.userId) {
+            const user = await this.usersRepo.findOne({ where: { id: input.userId } });
+            if (user) return user;
+        }
+
+        if (input.platform && input.chatId) {
+            return this.usersRepo.findOne({ where: { platform: input.platform, chatId: input.chatId } });
+        }
+
+        return null;
+    }
+
+    private buildActivityContextWhere(input: { userId?: number; organizationId?: number }) {
+        const where = [
+            ...(input.userId ? [{ userId: input.userId }] : []),
+            ...(input.organizationId ? [{ organizationId: input.organizationId }] : []),
+        ];
+
+        return where.length ? where : { id: -1 };
     }
 }

@@ -1,10 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Controller, Get, Header, Res, StreamableFile } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { sitePageHtml } from './site.page';
 
 @Controller('site')
+@ApiTags('site')
 export class SiteController {
     @Get()
     @Header('Content-Type', 'text/html; charset=utf-8')

@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { AssetsService } from './assets.service';
 
@@ -36,6 +37,7 @@ interface OfdSubscriptionBody extends ClientAssetIdentity {
 }
 
 @Controller('api/client/organizations/:organizationId/assets')
+@ApiTags('assets')
 export class AssetsController {
     constructor(private readonly assetsService: AssetsService) { }
 

@@ -10,6 +10,7 @@ import { CashRegisterEntity } from 'src/assets/entities/cash-register.entity';
 import { FiscalDriveEntity } from 'src/assets/entities/fiscal-drive.entity';
 import { OfdSubscriptionEntity } from 'src/assets/entities/ofd-subscription.entity';
 import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-activity.entity';
+import { UserEntity } from 'src/users/entities/user.entity';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { AdminController } from './admin.controller';
@@ -28,6 +29,7 @@ import { AdminService } from './admin.service';
             FiscalDriveEntity,
             OfdSubscriptionEntity,
             CustomerActivityEntity,
+            UserEntity,
         ]),
         MessengerModule,
         ServiceRequestsModule,
