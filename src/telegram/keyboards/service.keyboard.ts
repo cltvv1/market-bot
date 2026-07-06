@@ -1,4 +1,3 @@
-import { bidTypeToText } from "src/bids/bid.types";
 import { Markup } from "telegraf";
 
 export function serviceButtons() {
@@ -7,8 +6,8 @@ export function serviceButtons() {
             Markup.button.callback('📝 Регистрация кассы', 'wantToRegister'),
             Markup.button.callback('🔄 Замена ФН', 'fnReplacement'),
             Markup.button.callback('🔌 Активация ОФД', 'wantToOfd'),
-            Markup.button.callback(bidTypeToText('FIRMWARE_UPDATE'), 'bid:FIRMWARE_UPDATE'),
-            Markup.button.callback(bidTypeToText('KKT_REMOTE_WORK'), 'bid:KKT_REMOTE_WORK'),
+            Markup.button.callback('Обновление прошивки', 'serviceRequestSimple:firmware_update'),
+            Markup.button.callback('Удаленные работы с ККТ', 'serviceRequestSimple:kkt_remote_work'),
             Markup.button.callback('⬅️Вернуться в главное меню', 'mainMenu'),
         ],
         {

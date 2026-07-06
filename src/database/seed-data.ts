@@ -1,4 +1,3 @@
-import { BidField } from 'src/bids/bid.types';
 import { RegistrationField } from 'src/registrations/registration.types';
 
 export interface FieldSeed<TName extends string> {
@@ -26,9 +25,4 @@ export const REGISTRATION_FIELD_SEEDS: FieldSeed<RegistrationField>[] = [
     { name: 'kktModel', label: 'Модель ККТ', step: 17 },
     { name: 'bankReqs', label: 'Банковские реквизиты (Наименование банка, БИК, Расч/счет, Кор/счет) - для ООО, для ИП можете написать "-"', step: 18 },
     { name: 'ofd', label: 'ОФД (При покупке у нас - Платформа ОФД)', step: 19 },
-];
-
-export const BID_FIELD_SEEDS: FieldSeed<BidField>[] = [
-    { name: 'problemDescription', label: 'Описание проблемы (кратко или не очень)', step: 1 },
-    { name: 'contactForCall', label: 'Контакт для связи', step: 2 },
 ];

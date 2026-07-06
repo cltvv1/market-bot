@@ -5,11 +5,10 @@ import { BadRequestException, Body, Controller, Get, Param, Post, Query, Res, Up
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { BidType } from 'src/bids/bid.types';
-import { BidService } from 'src/bids/bids.service';
 import { RegistrationsService } from 'src/registrations/registrations.service';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { RegistrationField } from 'src/registrations/registration.types';
+import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { ClientWorkflowService } from './client-workflow.service';
 import type { ClientIdentity } from './client-workflow.types';
 
@@ -27,7 +26,7 @@ export class ClientApiController {
     constructor(
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly registrationsService: RegistrationsService,
-        private readonly bidsService: BidService,
+        private readonly serviceRequestsService: ServiceRequestsService,
     ) { }
 
     @Post('users')
@@ -62,29 +61,36 @@ export class ClientApiController {
         return this.clientWorkflow.submitRegistrationForm(this.parseIdentity(body), body.values);
     }
 
-    @Get('bid-fields')
-    getBidFields() {
-        return this.bidsService.getAllFields();
+    @Get('service-requests/types')
+    getServiceTypes() {
+        return this.serviceRequestsService.getServiceTypes();
     }
 
-    @Post('bids/start')
-    startBid(@Body() body: ClientIdentityBody & { type?: BidType }) {
-        const identity = this.parseIdentity(body);
-        if (!body.type || !(body.type in BidType)) {
-            throw new BadRequestException('Valid bid type is required');
-        }
-
-        return this.clientWorkflow.startBid({
-            ...identity,
-            type: body.type,
-        });
+    @Get('service-requests')
+    getServiceRequests(@Query() query: ClientIdentityBody) {
+        return this.serviceRequestsService.listForClient(this.parseIdentity(query));
     }
 
-    @Post('bids/answer')
-    submitBidAnswer(@Body() body: ClientIdentityBody & { value?: string }) {
-        return this.clientWorkflow.submitBidAnswer(
+    @Post('service-requests/start')
+    startServiceRequest(@Body() body: ClientIdentityBody & { serviceTypeCode?: string }) {
+        const serviceTypeCode = this.parseText(body.serviceTypeCode, 'Service type code is required');
+        return this.serviceRequestsService.start(this.parseIdentity(body), serviceTypeCode);
+    }
+
+    @Post('service-requests/:id/answers')
+    submitServiceRequestAnswer(@Param('id') id: string, @Body() body: ClientIdentityBody & { value?: string }) {
+        return this.serviceRequestsService.answer(
             this.parseIdentity(body),
-            this.parseText(body.value, 'Bid answer is required'),
+            this.parsePositiveNumber(id, 'id'),
+            this.parseText(body.value, 'Service request answer is required'),
+        );
+    }
+
+    @Post('service-requests/:id/confirm-price')
+    confirmServiceRequestPrice(@Param('id') id: string, @Body() body: ClientIdentityBody) {
+        return this.serviceRequestsService.confirmPrice(
+            this.parseIdentity(body),
+            this.parsePositiveNumber(id, 'id'),
         );
     }
 
@@ -206,4 +212,5 @@ export class ClientApiController {
 
         return 'document';
     }
+
 }

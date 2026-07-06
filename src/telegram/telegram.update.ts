@@ -21,12 +21,10 @@ import { disconnectFromButton } from "src/telegram/keyboards/disconnect.keyboard
 import { mainMenuButton } from "src/telegram/keyboards/return-to-main-menu.keyboard";
 import { RegisterTextHandler } from "src/telegram/handlers/register/register-text.handler";
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
-import { BidTextHandler } from './handlers/bid/bid-text.handler';
-import { BidService } from 'src/bids/bids.service';
-import { BidType } from 'src/bids/bid.types';
 import { ClientWorkflowService } from 'src/client/client-workflow.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
+import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
 
 
 @Update()
@@ -36,14 +34,12 @@ export class TelegramUpdate {
         private readonly ctxService: UserContextService,
         private readonly ticketService: TicketsService,
         private readonly usersService: UsersService,
-        private readonly bidService: BidService,
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly serviceRequestsService: ServiceRequestsService,
         private readonly registerHandler: RegisterTextHandler,
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
-        private readonly bidHandler: BidTextHandler,
     ) { }
 
     private toClientIdentity(ctx: Context) {
@@ -69,9 +65,6 @@ export class TelegramUpdate {
 
             case 'TICKET':
                 return this.ticketHandler.handle(ctx, text);
-
-            case 'BID':
-                return this.bidHandler.handle(ctx, text);
 
             case 'SERVICE_REQUEST':
                 return this.handleServiceRequestText(ctx, text);
@@ -320,30 +313,6 @@ export class TelegramUpdate {
         await ctx.deleteMessage(ctx.message?.message_id)
         await this.regService.notifyAdminsAboutRegDone(reg)
     }
-
-    @Action(/bidDone:\d+/)
-    async onBidDone(@Ctx() ctx: Context) {
-        const query = ctx.callbackQuery;
-
-        if (!query || !('data' in query)) {
-            return;
-        }
-
-        const data = query.data;
-
-        const [, bidId] = data.split(':');
-
-        const bid = await this.bidService.getBidById(bidId)
-
-        if (!bid) {
-            await ctx.reply('Эта заявка уже обработана!')
-            return
-        }
-        await this.bidService.doBid(bid)
-        await ctx.deleteMessage(ctx.message?.message_id)
-        await this.bidService.notifyAdminsAboutBidDone(bid)
-    }
-
     @Action('actualTickets')
     async handleActualTickets(@Ctx() ctx: Context) {
         const actualTickets = await this.ticketService.getActualTickets();
@@ -541,12 +510,10 @@ export class TelegramUpdate {
         await ctx.telegram.sendMessage(operatorChatId, 'Вы отключились от чата с клиентом.')
     }
 
-    @Action(/^bid:.+/)
-    async onBid(@Ctx() ctx: Context) {
+    @Action(/^serviceRequestSimple:.+/)
+    async onSimpleServiceRequest(@Ctx() ctx: Context) {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
-
-        await this.ctxService.set(chatId, { mode: 'BID' })
 
         const query = ctx.callbackQuery;
 
@@ -558,15 +525,16 @@ export class TelegramUpdate {
 
         const [, rawType] = data.split(':');
 
-        if (!(rawType in BidType)) {
+        if (!this.isSimpleServiceRequestCode(rawType)) {
             await ctx.answerCbQuery('Неизвестный тип заявки');
             return;
         }
-        const type = BidType[rawType as keyof typeof BidType];
-        const result = await this.clientWorkflow.startBid({ ...this.toClientIdentity(ctx), type });
+        const result = await this.clientWorkflow.startSimpleServiceRequest({ ...this.toClientIdentity(ctx), serviceTypeCode: rawType });
+        const request = result.data as { id?: number } | undefined;
+        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: request?.id })
 
         if (!result.nextField) {
-            await this.ctxService.set(chatId, { mode: 'IDLE' })
+            await this.ctxService.set(chatId, { mode: 'IDLE', serviceRequestId: null })
             await ctx.reply('Заявка создана, ожидайте ответа оператора', mainMenuButton());
             return;
         }
@@ -608,6 +576,12 @@ export class TelegramUpdate {
             return;
         }
 
+        if (!result.isReadyForConfirmation) {
+            await this.ctxService.set(String(ctx.chat?.id), { mode: 'IDLE', serviceRequestId: null });
+            await ctx.reply('Сервисная заявка создана. Оператор свяжется с вами в ближайшее время.', mainMenuButton());
+            return;
+        }
+
         const priceText = result.request.calculatedPrice
             ? `${result.request.calculatedPrice} руб.`
             : 'стоимость уточнит оператор';
@@ -644,5 +618,9 @@ export class TelegramUpdate {
         }
 
         await this.handleMedia(ctx, context.mode, String(chatId));
+    }
+
+    private isSimpleServiceRequestCode(value: string): value is SimpleServiceRequestCode {
+        return value === 'firmware_update' || value === 'kkt_remote_work';
     }
 }

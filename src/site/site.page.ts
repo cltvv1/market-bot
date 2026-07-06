@@ -143,8 +143,8 @@ export const sitePageHtml = `<!doctype html>
               <h3>Сервисная заявка</h3>
               <div class="form">
                 <select id="serviceType">
-                  <option value="KKT_REMOTE_WORK">Удаленные работы с ККТ</option>
-                  <option value="FIRMWARE_UPDATE">Обновление прошивки</option>
+                  <option value="kkt_remote_work">Удаленные работы с ККТ</option>
+                  <option value="firmware_update">Обновление прошивки</option>
                 </select>
                 <select id="serviceOrg"></select>
                 <textarea id="serviceText" placeholder="Что нужно сделать?"></textarea>
@@ -348,14 +348,14 @@ export const sitePageHtml = `<!doctype html>
       serviceStatus.textContent = '';
       try {
         const orgId = serviceOrg.value ? Number(serviceOrg.value) : undefined;
-        let result = await api('/api/client/bids/start', { method:'POST', body:JSON.stringify(identity({ type:serviceType.value, organizationId:orgId })) });
-        if (result.nextField && serviceText.value.trim()) {
-          result = await api('/api/client/bids/answer', { method:'POST', body:JSON.stringify(identity({ value:serviceText.value.trim(), organizationId:orgId })) });
+        let result = await api('/api/client/service-requests/start', { method:'POST', body:JSON.stringify(identity({ serviceTypeCode:serviceType.value, organizationId:orgId })) });
+        if (result.nextStep && serviceText.value.trim()) {
+          result = await api('/api/client/service-requests/' + result.request.id + '/answers', { method:'POST', body:JSON.stringify(identity({ value:serviceText.value.trim(), organizationId:orgId })) });
         }
-        if (result.nextField && serviceContact.value.trim()) {
-          result = await api('/api/client/bids/answer', { method:'POST', body:JSON.stringify(identity({ value:serviceContact.value.trim(), organizationId:orgId })) });
+        if (result.nextStep && serviceContact.value.trim()) {
+          result = await api('/api/client/service-requests/' + result.request.id + '/answers', { method:'POST', body:JSON.stringify(identity({ value:serviceContact.value.trim(), organizationId:orgId })) });
         }
-        serviceStatus.textContent = result.status === 'completed' ? 'Заявка создана' : 'Заявка начата, следующий шаг: ' + result.nextField;
+        serviceStatus.textContent = !result.nextStep ? 'Заявка создана' : 'Заявка начата, следующий шаг: ' + result.nextStep.label;
       } catch (error) { serviceStatus.innerHTML = '<span class="error">Не удалось создать заявку</span>'; }
     }
     async function createTicket() {

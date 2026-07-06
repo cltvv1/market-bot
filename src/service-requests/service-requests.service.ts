@@ -135,6 +135,31 @@ export class ServiceRequestsService {
         return this.present(request);
     }
 
+    async getLatestDraftForClient(identity: ServiceRequestIdentity, serviceTypeCodes?: string[]) {
+        const user = await this.usersService.getOrCreateOrUpdate(identity.chatId, identity.name, identity.username, identity.platform);
+        const items = await this.serviceRequestsRepo.find({
+            where: [
+                { userId: user.id, status: 'draft' },
+                { chatId: identity.chatId, platform: identity.platform, status: 'draft' },
+            ],
+            order: { createdAt: 'DESC', id: 'DESC' },
+            take: 10,
+        });
+
+        return serviceTypeCodes?.length
+            ? items.find((item) => serviceTypeCodes.includes(item.serviceTypeCode)) ?? null
+            : items[0] ?? null;
+    }
+
+    async answerLatestDraft(identity: ServiceRequestIdentity, value: string, serviceTypeCodes?: string[]) {
+        const request = await this.getLatestDraftForClient(identity, serviceTypeCodes);
+        if (!request) {
+            return null;
+        }
+
+        return this.answer(identity, request.id, value);
+    }
+
     async answer(identity: ServiceRequestIdentity, requestId: number, value: string) {
         const request = await this.getClientRequest(identity, requestId);
         if (request.status !== 'draft') {
@@ -154,7 +179,7 @@ export class ServiceRequestsService {
             request.calculatedPrice = await this.calculatePrice(request);
         }
 
-        const saved = await this.serviceRequestsRepo.save(request);
+        let saved = await this.serviceRequestsRepo.save(request);
         await this.addEvent(saved, 'answered', 'client', step.label, { key: step.key, value: normalizedValue });
         await this.activityService.add({
             userId: saved.userId,
@@ -167,6 +192,13 @@ export class ServiceRequestsService {
             serviceRequestId: saved.id,
             payload: { key: step.key },
         });
+
+        if (!this.getCurrentStep(saved) && !this.requiresClientConfirmation(saved)) {
+            saved.status = 'invoice_required';
+            saved = await this.serviceRequestsRepo.save(saved);
+            await this.addEvent(saved, 'submitted', 'client', 'Service request submitted to operator');
+            await this.notifyOperators(saved);
+        }
 
         return this.present(saved);
     }
@@ -332,6 +364,10 @@ export class ServiceRequestsService {
         return prices?.[term] ?? null;
     }
 
+    private requiresClientConfirmation(request: ServiceRequestEntity) {
+        return request.serviceTypeCode === 'fn_replacement';
+    }
+
     private async notifyOperators(request: ServiceRequestEntity) {
         const operators = await this.usersService.getOperators(request.platform);
         if (!operators.length) return;
@@ -381,14 +417,14 @@ export class ServiceRequestsService {
     }
 
     private formatOperatorMessage(request: ServiceRequestEntity) {
-        const answers = request.answers || {};
-        return `Новая сервисная заявка #${request.id}: ${request.serviceTypeTitle}\n\n` +
-            `ИНН: ${answers.inn ?? 'не указан'}\n` +
-            `Касса/шильдик: ${answers.cashRegisterIdentity ?? 'не указано'}\n` +
-            `ФН: ${answers.fiscalDriveTerm ? `${answers.fiscalDriveTerm} мес.` : 'не указан'}\n` +
-            `Контакт: ${answers.contactForCall ?? 'не указан'}\n` +
-            `Стоимость: ${request.calculatedPrice ? `${request.calculatedPrice} руб.` : 'не рассчитана'}\n\n` +
-            `В админке прикрепите счет и переведите заявку в ожидание оплаты.`;
+        const answerLines = Object.entries(request.answers || {})
+            .map(([key, value]) => `${key}: ${String(value)}`)
+            .join('\n') || 'No answers';
+        const priceLine = request.calculatedPrice ? `\nPrice: ${request.calculatedPrice} RUB` : '';
+
+        return `New service request #${request.id}: ${request.serviceTypeTitle}\n\n` +
+            `${answerLines}${priceLine}\n\n` +
+            `Open the admin panel to process it.`;
     }
 
     private async addEvent(request: ServiceRequestEntity, type: string, actor: string, message?: string, payload?: Record<string, unknown>) {

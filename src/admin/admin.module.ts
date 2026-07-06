@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { BidEntity } from 'src/bids/entities/bid.entity';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 import { TicketEntity } from 'src/tickets/entities/ticket.entity';
 import { TicketMessageEntity } from 'src/tickets/entities/ticket-message.entity';
@@ -20,7 +19,6 @@ import { AdminService } from './admin.service';
     imports: [
         TypeOrmModule.forFeature([
             RegistrationRequestEntity,
-            BidEntity,
             TicketMessageEntity,
             TicketEntity,
             OrganizationEntity,

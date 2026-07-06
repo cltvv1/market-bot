@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { BidsModule } from 'src/bids/bids.module';
 import { RegistrationsModule } from 'src/registrations/registrations.module';
+import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { TicketsModule } from 'src/tickets/tickets.module';
 import { UsersModule } from 'src/users/users.module';
 import { OrganizationsModule } from 'src/organizations/organizations.module';
@@ -12,7 +12,7 @@ import { ClientWorkflowService } from './client-workflow.service';
     imports: [
         UsersModule,
         RegistrationsModule,
-        BidsModule,
+        ServiceRequestsModule,
         TicketsModule,
         OrganizationsModule,
         CustomerActivityModule,

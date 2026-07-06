@@ -8,8 +8,6 @@ import { RegisterTextHandler } from './handlers/register/register-text.handler';
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
 import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
-import { BidTextHandler } from './handlers/bid/bid-text.handler';
-import { BidsModule } from 'src/bids/bids.module';
 import { ClientModule } from 'src/client/client.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 
@@ -19,7 +17,6 @@ import { ServiceRequestsModule } from 'src/service-requests/service-requests.mod
         RegistrationsModule,
         TicketsModule,
         UsersModule,
-        BidsModule,
         ClientModule,
         ServiceRequestsModule
     ],
@@ -29,7 +26,6 @@ import { ServiceRequestsModule } from 'src/service-requests/service-requests.mod
         IdleTextHandler,
         TicketTextHandler,
         OperatorTextHandler,
-        BidTextHandler
     ],
 })
 export class TelegramModule { }

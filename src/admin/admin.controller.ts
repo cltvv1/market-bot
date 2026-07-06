@@ -39,12 +39,6 @@ export class AdminController {
         return this.adminService.getRegistrations(this.normalizeStatus(status), this.normalizePlatform(platform));
     }
 
-    @Get('api/bids')
-    getBids(@Req() request: Request, @Query('status') status?: AdminStatusFilter, @Query('platform') platform?: UserPlatform) {
-        this.assertAuthorized(request);
-        return this.adminService.getBids(this.normalizeStatus(status), this.normalizePlatform(platform));
-    }
-
     @Get('api/tickets')
     getTickets(@Req() request: Request, @Query('status') status?: AdminStatusFilter, @Query('platform') platform?: UserPlatform) {
         this.assertAuthorized(request);
@@ -178,12 +172,6 @@ export class AdminController {
     processRegistration(@Req() request: Request, @Param('id') id: string) {
         this.assertAuthorized(request);
         return this.adminService.processRegistration(Number(id));
-    }
-
-    @Post('api/bids/:id/process')
-    processBid(@Req() request: Request, @Param('id') id: string) {
-        this.assertAuthorized(request);
-        return this.adminService.processBid(Number(id));
     }
 
     @Post('api/tickets/:id/reply')

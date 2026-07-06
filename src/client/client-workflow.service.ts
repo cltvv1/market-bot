@@ -1,13 +1,12 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { BidService } from 'src/bids/bids.service';
-import { BidType, bidTypeToText } from 'src/bids/bid.types';
 import { RegistrationsService } from 'src/registrations/registrations.service';
+import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { TicketsService } from 'src/tickets/tickets.service';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
 import { UsersService } from 'src/users/users.service';
 import { OrganizationsService } from 'src/organizations/organizations.service';
 import { CustomerActivityService } from 'src/customer-activity/customer-activity.service';
-import type { ClientFlowResult, ClientIdentity, StartBidInput } from './client-workflow.types';
+import type { ClientFlowResult, ClientIdentity, StartSimpleServiceRequestInput } from './client-workflow.types';
 import type { RegistrationField } from 'src/registrations/registration.types';
 
 @Injectable()
@@ -15,7 +14,7 @@ export class ClientWorkflowService {
     constructor(
         private readonly usersService: UsersService,
         private readonly registrationsService: RegistrationsService,
-        private readonly bidsService: BidService,
+        private readonly serviceRequestsService: ServiceRequestsService,
         private readonly ticketsService: TicketsService,
         private readonly organizationsService: OrganizationsService,
         private readonly activityService: CustomerActivityService,
@@ -127,72 +126,47 @@ export class ClientWorkflowService {
         };
     }
 
-    async startBid(input: StartBidInput): Promise<ClientFlowResult> {
-        const { user, organizationId } = await this.resolveClientContext(input);
+    async startSimpleServiceRequest(input: StartSimpleServiceRequestInput): Promise<ClientFlowResult> {
+        const identity = await this.resolveServiceRequestIdentity(input);
+        const request = await this.serviceRequestsService.getLatestDraftForClient(identity, [input.serviceTypeCode]);
+        const status = request ? 'continued' : 'started';
+        const result = request
+            ? this.serviceRequestsService.present(request)
+            : await this.serviceRequestsService.start(identity, input.serviceTypeCode);
 
-        let bid = await this.bidsService.getNotFilledBid(input.chatId, input.platform);
-        const status = bid ? 'continued' : 'started';
-
-        if (!bid) {
-            bid = await this.bidsService.createBid(
-                input.chatId,
-                input.type,
-                input.platform,
-                user.id,
-                organizationId,
-            );
-        }
-
-        const nextField = await this.bidsService.getFieldTextByStep(bid.currentStep);
-        if (!nextField) {
-            await this.bidsService.finishBid(bid);
-            await this.bidsService.notifyAdminsAboutNewBid(bid);
-
-            return {
-                status: 'completed',
-                message: 'Service request completed.',
-                data: bid,
-            };
-        }
+        const nextField = result.nextStep?.label;
 
         return {
             status,
             message: status === 'started'
-                ? `Service request created: ${bidTypeToText(input.type)}.`
+                ? `Service request created: ${result.request.serviceTypeTitle}.`
                 : 'Unfinished service request found.',
             nextField,
-            data: bid,
+            data: result.request,
         };
     }
 
-    async submitBidAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
-        await this.resolveClientContext(input);
-
-        const bid = await this.bidsService.saveFieldValue(input.chatId, value, input.platform);
-        if (!bid) {
+    async submitSimpleServiceRequestAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
+        const identity = await this.resolveServiceRequestIdentity(input);
+        const result = await this.serviceRequestsService.answerLatestDraft(
+            identity,
+            value,
+            ['firmware_update', 'kkt_remote_work'],
+        );
+        if (!result) {
             return {
                 status: 'not_found',
                 message: 'Service request was not found.',
             };
         }
 
-        const nextField = await this.bidsService.getFieldTextByStep(bid.currentStep);
-        if (nextField) {
-            return {
-                status: 'continued',
-                message: 'Service request answer saved.',
-                nextField,
-                data: bid,
-            };
-        }
-
-        await this.bidsService.finishBid(bid);
-        await this.bidsService.notifyAdminsAboutNewBid(bid);
+        const nextField = result.nextStep?.label;
 
         return {
-            status: 'completed',
-            message: 'Service request completed.',
-            data: bid,
+            status: nextField ? 'continued' : 'completed',
+            message: nextField ? 'Service request answer saved.' : 'Service request completed.',
+            nextField,
+            data: result.request,
         };
     }
 
@@ -370,5 +344,16 @@ export class ClientWorkflowService {
         );
 
         return { user, organizationId: input.organizationId };
+    }
+
+    private async resolveServiceRequestIdentity(input: ClientIdentity) {
+        await this.resolveClientContext(input);
+        return {
+            platform: input.platform,
+            chatId: input.chatId,
+            username: input.username,
+            name: input.name,
+            organizationId: input.organizationId,
+        };
     }
 }

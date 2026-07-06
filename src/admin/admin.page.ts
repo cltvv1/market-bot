@@ -92,7 +92,6 @@ export const adminPageHtml = `<!doctype html>
   <main>
     <section class="stats">
       <div class="stat">Новые регистрации<strong id="regCount">0</strong></div>
-      <div class="stat">Новые заявки<strong id="bidCount">0</strong></div>
       <div class="stat">Сценарные заявки<strong id="serviceRequestCount">0</strong></div>
       <div class="stat">Открытые вопросы<strong id="ticketCount">0</strong></div>
     </section>
@@ -164,7 +163,6 @@ export const adminPageHtml = `<!doctype html>
       try {
         const summary = await api('/admin/api/summary');
         regCount.textContent = summary.newRegistrations;
-        bidCount.textContent = summary.newBids;
         serviceRequestCount.textContent = summary.activeServiceRequests || 0;
         ticketCount.textContent = summary.openTickets;
         const params = new URLSearchParams({ status: adminStatusForCurrentTab() });
@@ -182,33 +180,19 @@ export const adminPageHtml = `<!doctype html>
     }
 
     async function loadServiceWorkItems(params) {
-      const bidParams = new URLSearchParams(params);
-      bidParams.set('status', bidStatusForServiceFilter());
       const serviceStatuses = serviceStatusesForFilter();
-      const [bids, serviceRequests] = await Promise.all([
-        shouldLoadBidsForServiceFilter() ? api('/admin/api/bids?' + bidParams.toString()) : Promise.resolve([]),
-        Promise.all(serviceStatuses.map((serviceStatus) => {
+      const serviceRequests = await Promise.all(serviceStatuses.map((serviceStatus) => {
           const serviceParams = new URLSearchParams(params);
           serviceParams.set('status', serviceStatus);
           return api('/admin/api/service-requests?' + serviceParams.toString());
-        })).then((groups) => groups.flat()),
-      ]);
+        })).then((groups) => groups.flat());
       state.serviceWorkItems = [
-        ...bids.map((item) => ({ kind:'bid', key:'bid:' + item.id, createdAt:item.createdAt, title:'Заявка #' + item.id + ' · ' + item.type, preview:item.problemDescription || item.contactForCall || 'Без описания', item })),
         ...serviceRequests.map((item) => ({ kind:'service-request', key:'service-request:' + item.id, createdAt:item.createdAt, title:'Сценарная заявка #' + item.id + ' · ' + item.serviceTypeTitle, preview:statusText(item.status) + (item.calculatedPrice ? ' · ' + item.calculatedPrice + ' ₽' : ''), item })),
       ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       return state.serviceWorkItems;
     }
 
     function adminStatusForCurrentTab() {
-      if (status.value === 'all') return 'all';
-      if (status.value === 'closed') return 'processed';
-      return 'new';
-    }
-    function shouldLoadBidsForServiceFilter() {
-      return status.value !== 'waiting_payment';
-    }
-    function bidStatusForServiceFilter() {
       if (status.value === 'all') return 'all';
       if (status.value === 'closed') return 'processed';
       return 'new';
@@ -297,12 +281,6 @@ export const adminPageHtml = `<!doctype html>
         (!item.isProcessed ? '<button class="primary" onclick="processItem(\\'registrations\\',' + item.id + ')">Обработано</button>' : '') +
         '</div></article>';
     }
-    function bidCard(item) {
-      return '<article class="item">' + head(item, 'Заявка #' + item.id + ' · ' + esc(item.type), item.isProcessed) +
-        '<div class="fields">' + field('Проблема', item.problemDescription) + field('Контакт', item.contactForCall) + '</div><div class="actions">' +
-        (!item.isProcessed ? '<button class="primary" onclick="processItem(\\'bids\\',' + item.id + ')">Обработано</button>' : '') +
-        '</div></article>';
-    }
     function ticketCard(item) {
       return '<article class="item">' + head(item, 'Вопрос #' + item.id + ' · ' + esc(item.name || item.username || item.userChatId), item.isAnswered) +
         '<div class="fields">' + field('Пользователь', item.username ? '@' + item.username : item.userChatId) + field('Последнее сообщение', item.text) + '</div>' +
@@ -376,12 +354,6 @@ export const adminPageHtml = `<!doctype html>
       const holder = document.querySelector('#service-detail');
       if (!entry || !holder) return;
 
-      if (entry.kind === 'bid') {
-        const context = await loadCustomerContext(entry.item);
-        holder.innerHTML = renderBidDetail(entry.item, context);
-        return;
-      }
-
       const data = await api('/admin/api/service-requests/' + entry.item.id);
       holder.innerHTML = renderScenarioServiceDetail(data.request, data.events || [], data.context);
     }
@@ -393,26 +365,14 @@ export const adminPageHtml = `<!doctype html>
       if (item.chatId || item.userChatId) params.set('chatId', item.chatId || item.userChatId);
       return api('/admin/api/customer-context?' + params.toString());
     }
-    function renderBidDetail(item, context) {
-      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Заявка #' + item.id + ' · ' + esc(item.type) + '</div><div class="ticket-main-subtitle">' + esc(item.platform) + ' · ' + fmtDate(item.createdAt) + '</div></div>' +
-        (item.isProcessed ? '<div class="meta">Обработано</div>' : '<button class="primary" onclick="processItem(\\'bids\\',' + item.id + ')">Обработано</button>') +
-        '</div><div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary"><div class="fields">' +
-            field('Проблема', item.problemDescription) +
-            field('Контакт', item.contactForCall) +
-            field('Организация', item.organizationId) +
-            field('Пользователь', item.userId || item.chatId) +
-          '</div></div>' + renderContextCard(context) + '</div></div>';
-    }
     function renderScenarioServiceDetail(request, events, context) {
       const answers = request.answers || {};
-      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сценарная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div></div>' +
+      const answerFields = Object.entries(answers).map(([key, value]) => field(serviceAnswerLabel(key), value)).join('');
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сервисная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div></div>' +
         '<div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary"><div class="fields">' +
             field('Статус', statusText(request.status)) +
             field('Стоимость', request.calculatedPrice ? request.calculatedPrice + ' ₽' : 'Не рассчитана') +
-            field('ИНН', answers.inn) +
-            field('Касса/шильдик', answers.cashRegisterIdentity) +
-            field('ФН', answers.fiscalDriveTerm ? answers.fiscalDriveTerm + ' мес.' : '') +
-            field('Контакт', answers.contactForCall) +
+            answerFields +
           '</div>' + renderServiceRequestDetails(request, events) + '</div>' + renderContextCard(context) + '</div></div>';
     }
     function selectTicket(id) {
@@ -427,8 +387,8 @@ export const adminPageHtml = `<!doctype html>
       if (holder) holder.innerHTML = renderTicketDetail(data.ticket, data.messages || [], data.context);
     }
     function renderTicketDetail(ticket, messages, context) {
-      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Вопрос #' + ticket.id + ' · ' + esc(ticket.name || ticket.username || ticket.userChatId) + '</div><div class="ticket-main-subtitle">' + esc(ticket.platform) + ' · ' + fmtDate(ticket.createdAt) + '</div></div>' +
-        (!ticket.isAnswered ? '<button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button>' : '<div class="meta">Закрыт</div>') +
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">\u0412\u043e\u043f\u0440\u043e\u0441 #' + ticket.id + ' ? ' + esc(ticket.name || ticket.username || ticket.userChatId) + '</div><div class="ticket-main-subtitle">' + esc(ticket.platform) + ' ? ' + fmtDate(ticket.createdAt) + '</div></div>' +
+        (!ticket.isAnswered ? '<button class="danger" onclick="closeTicket(' + ticket.id + ')">\u0417\u0430\u043a\u0440\u044b\u0442\u044c</button>' : '<div class="meta">\u0417\u0430\u043a\u0440\u044b\u0442</div>') +
         '</div><div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary">' + renderChat(ticket, messages || []) + '</div>' + renderContextCard(context) + '</div></div>';
     }
     function startTicketResize(event) {
@@ -466,7 +426,7 @@ export const adminPageHtml = `<!doctype html>
     }
     function renderServiceRequestDetails(request, events) {
       const rows = events.length ? events.map((event) =>
-        '<div class="message"><div>' + esc(event.message || event.type) + '</div><div class="meta">' + esc(event.actor || '') + ' · ' + fmtDate(event.createdAt) + '</div></div>'
+        '<div class="message"><div>' + esc(serviceEventText(event)) + '</div><div class="meta">' + esc(serviceEventMeta(event)) + ' · ' + fmtDate(event.createdAt) + '</div></div>'
       ).join('') : '<div class="empty">Истории по заявке пока нет</div>';
       return '<div class="chat"><div class="messages">' + rows + '</div>' +
         '<div class="composer"><input id="invoice-id-' + request.id + '" placeholder="Ссылка или номер PDF счета"><input id="invoice-name-' + request.id + '" placeholder="Название счета"><button class="primary" onclick="attachInvoice(' + request.id + ')">Прикрепить счет</button></div>' +
@@ -474,6 +434,28 @@ export const adminPageHtml = `<!doctype html>
         '<div class="actions"><button class="primary" onclick="markPaymentReceived(' + request.id + ')">Оплата получена</button></div>' +
         '<div class="composer"><input id="visit-address-' + request.id + '" placeholder="Адрес визита"><input id="visit-time-' + request.id + '" placeholder="2026-07-05T12:00"><button onclick="scheduleVisit(' + request.id + ')">Назначить визит</button></div>' +
         '<div class="actions"><button onclick="completeServiceRequest(' + request.id + ')">Завершить</button><button class="danger" onclick="cancelServiceRequest(' + request.id + ')">Отменить</button></div></div>';
+    }
+    function serviceEventText(event) {
+      if (event.type === 'answered' && event.payload && event.payload.value !== undefined) {
+        return String(event.payload.value);
+      }
+      return event.message || event.type;
+    }
+    function serviceEventMeta(event) {
+      if (event.type === 'answered' && event.payload && event.payload.key) {
+        return (event.actor || '') + ' · ' + serviceAnswerLabel(event.payload.key);
+      }
+      return event.actor || '';
+    }
+    function serviceAnswerLabel(key) {
+      const labels = {
+        problemDescription: 'Описание задачи',
+        contactForCall: 'Контакт',
+        inn: 'ИНН',
+        cashRegisterIdentity: 'Касса/шильдик',
+        fiscalDriveTerm: 'ФН',
+      };
+      return labels[key] || key;
     }
     async function attachInvoice(id) {
       const invoiceFileId = document.querySelector('#invoice-id-' + id).value.trim();

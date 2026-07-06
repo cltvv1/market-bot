@@ -1,8 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot, Keyboard } from '@maxhub/max-bot-api';
-import { BidService } from 'src/bids/bids.service';
-import { BidType, bidTypeToText } from 'src/bids/bid.types';
 import { RegistrationsService } from 'src/registrations/registrations.service';
 import { TicketsService } from 'src/tickets/tickets.service';
 import { UserContextService } from 'src/userContext/user-context.service';
@@ -13,6 +11,7 @@ import type { MessengerService } from 'src/messenger/messenger.types';
 import { ClientWorkflowService } from 'src/client/client-workflow.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
+import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
 
 @Injectable()
 export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
@@ -21,7 +20,6 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     constructor(
         private readonly configService: ConfigService,
-        private readonly bidService: BidService,
         private readonly regService: RegistrationsService,
         private readonly ticketService: TicketsService,
         private readonly ctxService: UserContextService,
@@ -83,10 +81,10 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.startTicket(ctx);
         });
 
-        this.bot.action(/^bid:.+/, async (ctx) => {
+        this.bot.action(/^serviceRequestSimple:.+/, async (ctx) => {
             const rawType = ctx.callback?.payload?.split(':')[1];
             await ctx.answerOnCallback({ notification: 'Сервисная заявка' });
-            await this.startBid(ctx, rawType);
+            await this.startSimpleServiceRequest(ctx, rawType);
         });
 
         this.bot.action('fnReplacement', async (ctx) => {
@@ -137,11 +135,6 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
             if (context.mode === 'REGISTER') {
                 await this.handleRegistrationText(ctx, text);
-                return;
-            }
-
-            if (context.mode === 'BID') {
-                await this.handleBidText(ctx, text);
                 return;
             }
 
@@ -207,8 +200,8 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                     Keyboard.inlineKeyboard([
                         [Keyboard.button.callback('Регистрация кассы', 'wantToRegister')],
                         [Keyboard.button.callback('Замена ФН', 'fnReplacement')],
-                        [Keyboard.button.callback('Сервисная заявка: обновление прошивки', 'bid:FIRMWARE_UPDATE')],
-                        [Keyboard.button.callback('Сервисная заявка: удаленные работы с ККТ', 'bid:KKT_REMOTE_WORK')],
+                        [Keyboard.button.callback('Сервисная заявка: обновление прошивки', 'serviceRequestSimple:firmware_update')],
+                        [Keyboard.button.callback('Сервисная заявка: удаленные работы с ККТ', 'serviceRequestSimple:kkt_remote_work')],
                         [Keyboard.button.callback('Вопрос оператору', 'createTicket')],
                     ]),
                 ],
@@ -275,40 +268,40 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
 
         await ctx.reply(
-            'Анкета заполнена. В ближайшее время оператор свяжется с вами по контактному телефону, указанному в заявке.',
+            'Анкета заполнена.  ближайшее время оператор свяжется с вами по контактному телефону, указанному в заявке.',
         );
         await this.sendMainMenu(ctx);
     }
 
-    private async startBid(ctx: any, rawType?: string) {
+    private async startSimpleServiceRequest(ctx: any, rawType?: string) {
         const chatId = String(ctx.chatId);
 
-        if (!rawType || !(rawType in BidType)) {
+        if (!rawType || !this.isSimpleServiceRequestCode(rawType)) {
             await ctx.reply('Неизвестный тип сервисной заявки.');
             await this.sendMainMenu(ctx);
             return;
         }
 
-        const type = BidType[rawType as keyof typeof BidType];
-        const result = await this.clientWorkflow.startBid({ ...this.toClientIdentity(ctx), type });
+        const result = await this.clientWorkflow.startSimpleServiceRequest({ ...this.toClientIdentity(ctx), serviceTypeCode: rawType });
+        const request = result.data as { id?: number; serviceTypeTitle?: string } | undefined;
 
         await ctx.reply(result.status === 'started'
-            ? `Создана заявка: ${bidTypeToText(type)}.`
+            ? `Создана сервисная заявка: ${request?.serviceTypeTitle ?? 'сервис'}.`
             : 'Найдена незаполненная сервисная заявка. Продолжим с места остановки.');
 
-        await this.ctxService.set(chatId, { mode: 'BID' }, 'max');
+        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: request?.id }, 'max');
 
         if (!result.nextField) {
-            await this.finishBid(ctx);
+            await this.finishServiceRequest(ctx);
             return;
         }
 
         await ctx.reply(`${result.nextField}:`);
     }
 
-    private async handleBidText(ctx: any, text: string) {
+    private async handleSimpleServiceRequestText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const result = await this.clientWorkflow.submitBidAnswer(this.toClientIdentity(ctx), text);
+        const result = await this.clientWorkflow.submitSimpleServiceRequestAnswer(this.toClientIdentity(ctx), text);
 
         if (result.status === 'not_found') {
             await ctx.reply('Сервисная заявка не найдена. Создайте новую из главного меню.');
@@ -322,10 +315,10 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        await this.finishBid(ctx);
+        await this.finishServiceRequest(ctx);
     }
 
-    private async finishBid(ctx: any) {
+    private async finishServiceRequest(ctx: any) {
         await this.ctxService.set(String(ctx.chatId), { mode: 'IDLE' }, 'max');
 
         await ctx.reply('Сервисная заявка создана. Оператор свяжется с вами в ближайшее время.');
@@ -386,6 +379,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             }
 
             await ctx.reply(`${result.nextStep.label}:`);
+            return;
+        }
+
+        if (!result.isReadyForConfirmation) {
+            await this.finishServiceRequest(ctx);
             return;
         }
 
@@ -571,5 +569,9 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             text,
             { inlineKeyboard: disconnectFromKeyboard(chatId), platform: 'max' },
         );
+    }
+
+    private isSimpleServiceRequestCode(value: string): value is SimpleServiceRequestCode {
+        return value === 'firmware_update' || value === 'kkt_remote_work';
     }
 }

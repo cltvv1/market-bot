@@ -4,20 +4,8 @@ export function regDoneKeyboard(regId: number): MessengerInlineKeyboard {
     return {
         buttons: [
             {
-                text: 'вњ…Р—Р°СЏРІРєР° РѕР±СЂР°Р±РѕС‚Р°РЅР°',
+                text: '✅ Заявка обработана',
                 callbackData: `regDone:${regId}`,
-            },
-        ],
-        columns: 1,
-    };
-}
-
-export function bidDoneKeyboard(bidId: number): MessengerInlineKeyboard {
-    return {
-        buttons: [
-            {
-                text: 'вњ…Р—Р°СЏРІРєР° РѕР±СЂР°Р±РѕС‚Р°РЅР°',
-                callbackData: `bidDone:${bidId}`,
             },
         ],
         columns: 1,
@@ -28,7 +16,7 @@ export function connectToKeyboard(chatId: string): MessengerInlineKeyboard {
     return {
         buttons: [
             {
-                text: 'РџРѕРґРєР»СЋС‡РёС‚СЊСЃСЏ РІ С‡Р°С‚ Рє РєР»РёРµРЅС‚Сѓ',
+                text: 'Подключиться в чат к клиенту',
                 callbackData: `connectTo:${chatId}`,
             },
         ],
@@ -40,7 +28,7 @@ export function disconnectFromKeyboard(chatId: string): MessengerInlineKeyboard 
     return {
         buttons: [
             {
-                text: 'вќЊР’РѕРїСЂРѕСЃ Р·Р°РєСЂС‹С‚, Р·Р°РєСЂС‹С‚СЊ С‡Р°С‚.',
+                text: '❌ Вопрос закрыт, закрыть чат',
                 callbackData: `disconnectFrom:${chatId}`,
             },
         ],

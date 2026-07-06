@@ -1,4 +1,3 @@
-import { BidType } from 'src/bids/bid.types';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 
 export interface ClientIdentity {
@@ -16,6 +15,8 @@ export interface ClientFlowResult<T = unknown> {
     data?: T;
 }
 
-export interface StartBidInput extends ClientIdentity {
-    type: BidType;
+export interface StartSimpleServiceRequestInput extends ClientIdentity {
+    serviceTypeCode: SimpleServiceRequestCode;
 }
+
+export type SimpleServiceRequestCode = 'firmware_update' | 'kkt_remote_work';

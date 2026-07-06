@@ -1,18 +1,14 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { BidFieldEntity } from 'src/bids/entities/bid-field.entity';
 import { RegistrationFieldEntity } from 'src/registrations/entities/registration-field.entity';
-import { BID_FIELD_SEEDS, FieldSeed, REGISTRATION_FIELD_SEEDS } from './seed-data';
+import { FieldSeed, REGISTRATION_FIELD_SEEDS } from './seed-data';
 
 @Injectable()
 export class DatabaseSeedService implements OnApplicationBootstrap {
     private readonly logger = new Logger(DatabaseSeedService.name);
 
     constructor(
-        @InjectRepository(BidFieldEntity)
-        private readonly bidFieldsRepo: Repository<BidFieldEntity>,
-
         @InjectRepository(RegistrationFieldEntity)
         private readonly registrationFieldsRepo: Repository<RegistrationFieldEntity>,
     ) { }
@@ -22,11 +18,10 @@ export class DatabaseSeedService implements OnApplicationBootstrap {
             this.registrationFieldsRepo,
             REGISTRATION_FIELD_SEEDS,
         );
-        const bidCount = await this.upsertFields(this.bidFieldsRepo, BID_FIELD_SEEDS);
 
-        if (registrationCount || bidCount) {
+        if (registrationCount) {
             this.logger.log(
-                `Seeded field dictionaries: registration=${registrationCount}, bid=${bidCount}`,
+                `Seeded field dictionaries: registration=${registrationCount}`,
             );
         }
     }

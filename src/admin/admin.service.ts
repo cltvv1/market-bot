@@ -2,7 +2,6 @@ import * as fs from 'fs';
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { BidEntity } from 'src/bids/entities/bid.entity';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 import { TicketEntity } from 'src/tickets/entities/ticket.entity';
 import { TicketMessageEntity } from 'src/tickets/entities/ticket-message.entity';
@@ -27,8 +26,6 @@ export class AdminService {
     constructor(
         @InjectRepository(RegistrationRequestEntity)
         private readonly registrationsRepo: Repository<RegistrationRequestEntity>,
-        @InjectRepository(BidEntity)
-        private readonly bidsRepo: Repository<BidEntity>,
         @InjectRepository(TicketEntity)
         private readonly ticketsRepo: Repository<TicketEntity>,
         @InjectRepository(TicketMessageEntity)
@@ -53,14 +50,13 @@ export class AdminService {
     ) { }
 
     async getSummary() {
-        const [newRegistrations, newBids, openTickets, activeServiceRequests] = await Promise.all([
+        const [newRegistrations, openTickets, activeServiceRequests] = await Promise.all([
             this.registrationsRepo.count({ where: { isFilled: true, isProcessed: false } }),
-            this.bidsRepo.count({ where: { isFilled: true, isProcessed: false } }),
             this.ticketsRepo.count({ where: { isAnswered: false } }),
             this.serviceRequestsService.listForAdmin('active').then((items) => items.length),
         ]);
 
-        return { newRegistrations, newBids, openTickets, activeServiceRequests };
+        return { newRegistrations, openTickets, activeServiceRequests };
     }
 
     getRegistrations(status: AdminStatusFilter = 'new', platform?: UserPlatform) {
@@ -77,18 +73,6 @@ export class AdminService {
 
     getRegistration(id: number) {
         return this.registrationsRepo.findOne({ where: { id } });
-    }
-
-    getBids(status: AdminStatusFilter = 'new', platform?: UserPlatform) {
-        return this.bidsRepo.find({
-            where: {
-                ...(status === 'new' ? { isFilled: true, isProcessed: false } : {}),
-                ...(status === 'processed' ? { isProcessed: true } : {}),
-                ...(platform ? { platform } : {}),
-            },
-            order: { createdAt: 'DESC' },
-            take: 100,
-        });
     }
 
     getTickets(status: AdminStatusFilter = 'new', platform?: UserPlatform) {
@@ -239,11 +223,6 @@ export class AdminService {
     async processRegistration(id: number) {
         await this.registrationsRepo.update(id, { isProcessed: true });
         return this.registrationsRepo.findOne({ where: { id } });
-    }
-
-    async processBid(id: number) {
-        await this.bidsRepo.update(id, { isProcessed: true });
-        return this.bidsRepo.findOne({ where: { id } });
     }
 
     async sendTicketMessage(id: number, text: string, operatorId = 'admin-panel') {
