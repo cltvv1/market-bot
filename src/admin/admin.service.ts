@@ -1,6 +1,9 @@
 import * as fs from 'fs';
+import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
+import { MoreThan } from 'typeorm';
 import { Repository } from 'typeorm';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 import { TicketEntity } from 'src/tickets/entities/ticket.entity';
@@ -15,9 +18,11 @@ import { UserEntity } from 'src/users/entities/user.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
-import type { ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
+import type { ServiceRequestPriority, ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { TicketMessageType } from 'src/tickets/entities/ticket-message.entity';
+import { AdminSessionEntity } from './entities/admin-session.entity';
+import { AdminUserEntity } from './entities/admin-user.entity';
 
 export type AdminStatusFilter = 'all' | 'new' | 'processed';
 
@@ -44,10 +49,101 @@ export class AdminService {
         private readonly activitiesRepo: Repository<CustomerActivityEntity>,
         @InjectRepository(UserEntity)
         private readonly usersRepo: Repository<UserEntity>,
+        @InjectRepository(AdminUserEntity)
+        private readonly adminUsersRepo: Repository<AdminUserEntity>,
+        @InjectRepository(AdminSessionEntity)
+        private readonly adminSessionsRepo: Repository<AdminSessionEntity>,
         private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly configService: ConfigService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
     ) { }
+
+    async loginAdmin(login: string, password: string) {
+        await this.ensureDefaultAdmin();
+        const admin = await this.adminUsersRepo.findOne({ where: { login: login.trim().toLowerCase(), isActive: true } });
+        if (!admin || !this.verifyPassword(password, admin.passwordHash)) {
+            return null;
+        }
+
+        const token = randomBytes(32).toString('base64url');
+        const days = this.configService.get<number>('ADMIN_SESSION_DAYS') || 180;
+        const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+        await this.adminSessionsRepo.save(this.adminSessionsRepo.create({
+            tokenHash: this.hashSessionToken(token),
+            userId: admin.id,
+            expiresAt,
+        }));
+
+        return {
+            token,
+            expiresAt,
+            admin: this.presentAdmin(admin),
+        };
+    }
+
+    async getAdminBySessionToken(token?: string | null) {
+        if (!token) return null;
+        const session = await this.adminSessionsRepo.findOne({
+            where: { tokenHash: this.hashSessionToken(token), expiresAt: MoreThan(new Date()) },
+            relations: { user: true },
+        });
+
+        if (!session?.user?.isActive) {
+            return null;
+        }
+
+        return this.presentAdmin(session.user);
+    }
+
+    async logoutAdmin(token?: string | null) {
+        if (!token) return;
+        await this.adminSessionsRepo.delete({ tokenHash: this.hashSessionToken(token) });
+    }
+
+    private async ensureDefaultAdmin() {
+        const count = await this.adminUsersRepo.count();
+        if (count > 0) return;
+
+        const login = (this.configService.get<string>('ADMIN_LOGIN') || 'admin').trim().toLowerCase();
+        const password = this.configService.get<string>('ADMIN_PASSWORD') || this.configService.get<string>('ADMIN_TOKEN') || 'admin';
+        const displayName = this.configService.get<string>('ADMIN_NAME') || login;
+        await this.adminUsersRepo.save(this.adminUsersRepo.create({
+            login,
+            displayName,
+            role: 'admin',
+            passwordHash: this.hashPassword(password),
+            isActive: true,
+        }));
+    }
+
+    private presentAdmin(admin: AdminUserEntity) {
+        return {
+            id: admin.id,
+            login: admin.login,
+            displayName: admin.displayName,
+            role: admin.role,
+        };
+    }
+
+    private hashPassword(password: string) {
+        const salt = randomBytes(16).toString('base64url');
+        const iterations = 120000;
+        const hash = pbkdf2Sync(password, salt, iterations, 32, 'sha256').toString('base64url');
+        return `pbkdf2$${iterations}$${salt}$${hash}`;
+    }
+
+    private verifyPassword(password: string, storedHash: string) {
+        const [method, iterationsText, salt, expectedHash] = storedHash.split('$');
+        if (method !== 'pbkdf2' || !iterationsText || !salt || !expectedHash) return false;
+        const actual = pbkdf2Sync(password, salt, Number(iterationsText), 32, 'sha256');
+        const expected = Buffer.from(expectedHash, 'base64url');
+        return actual.length === expected.length && timingSafeEqual(actual, expected);
+    }
+
+    private hashSessionToken(token: string) {
+        return createHash('sha256').update(token).digest('base64url');
+    }
 
     async getSummary() {
         const [newRegistrations, openTickets, activeServiceRequests] = await Promise.all([
@@ -115,6 +211,14 @@ export class AdminService {
         return this.serviceRequestsService.cancel(id, operatorId);
     }
 
+    updateServiceRequestOperatorState(
+        id: number,
+        input: { priority?: ServiceRequestPriority; executorName?: string | null; operatorComment?: string | null },
+        operatorId = 'admin-panel',
+    ) {
+        return this.serviceRequestsService.updateOperatorState(id, input, operatorId);
+    }
+
     getActivities(userId?: number, organizationId?: number) {
         return this.activitiesRepo.find({
             where: {
@@ -127,9 +231,14 @@ export class AdminService {
     }
 
     async getCustomerContext(input: { userId?: number; organizationId?: number; platform?: UserPlatform; chatId?: string }) {
-        const [user, organization, assets, activities] = await Promise.all([
-            this.findContextUser(input),
+        const user = await this.findContextUser(input);
+        const [organization, memberships, assets, activities] = await Promise.all([
             input.organizationId ? this.organizationsRepo.findOne({ where: { id: input.organizationId } }) : Promise.resolve(null),
+            user ? this.organizationMembersRepo.find({
+                where: { userId: user.id, status: 'active' },
+                relations: { organization: true },
+                order: { id: 'ASC' },
+            }) : Promise.resolve([]),
             input.organizationId ? this.getOrganizationAssets(input.organizationId) : Promise.resolve({ cashRegisters: [], fiscalDrives: [], ofdSubscriptions: [] }),
             this.activitiesRepo.find({
                 where: this.buildActivityContextWhere(input),
@@ -138,7 +247,18 @@ export class AdminService {
             }),
         ]);
 
-        return { user, organization, assets, activities };
+        return {
+            user,
+            organization,
+            organizations: memberships.map((member) => ({
+                id: member.organizationId,
+                role: member.role,
+                status: member.status,
+                organization: member.organization,
+            })),
+            assets,
+            activities,
+        };
     }
 
     async getOrganizations() {

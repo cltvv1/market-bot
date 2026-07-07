@@ -8,7 +8,7 @@ import type { MessengerService } from 'src/messenger/messenger.types';
 import { OrganizationsService } from 'src/organizations/organizations.service';
 import { UsersService } from 'src/users/users.service';
 import type { UserPlatform } from 'src/users/entities/user.entity';
-import { ServiceRequestEntity, ServiceRequestStatus } from './entities/service-request.entity';
+import { ServiceRequestEntity, ServiceRequestPriority, ServiceRequestStatus } from './entities/service-request.entity';
 import { ServiceRequestEventEntity } from './entities/service-request-event.entity';
 import { ServiceTypeEntity } from './entities/service-type.entity';
 import { defaultServiceTypes, serviceRequestFlows } from './service-request.flows';
@@ -19,6 +19,12 @@ export interface ServiceRequestIdentity {
     username?: string;
     name?: string;
     organizationId?: number;
+}
+
+export interface ServiceRequestOperatorStateInput {
+    priority?: ServiceRequestPriority;
+    executorName?: string | null;
+    operatorComment?: string | null;
 }
 
 @Injectable()
@@ -308,6 +314,31 @@ export class ServiceRequestsService {
         return this.setFinalStatus(id, 'cancelled', operatorId);
     }
 
+    async updateOperatorState(id: number, input: ServiceRequestOperatorStateInput, operatorId = 'admin-panel') {
+        const request = await this.requireRequest(id);
+
+        if (input.priority !== undefined) {
+            request.priority = this.normalizePriority(input.priority);
+        }
+        request.responsibleOperatorId = operatorId;
+        if (input.executorName !== undefined) {
+            request.executorName = input.executorName?.trim() || null;
+        }
+        if (input.operatorComment !== undefined) {
+            request.operatorComment = input.operatorComment?.trim() || null;
+        }
+
+        const saved = await this.serviceRequestsRepo.save(request);
+        await this.addEvent(saved, 'operator_state_updated', operatorId, 'Оператор обновил рабочие поля заявки', {
+            priority: saved.priority,
+            responsibleOperatorId: saved.responsibleOperatorId,
+            executorName: saved.executorName,
+            operatorComment: saved.operatorComment,
+        });
+
+        return this.getRequestDetails(saved.id);
+    }
+
     present(request: ServiceRequestEntity) {
         return {
             request,
@@ -333,6 +364,15 @@ export class ServiceRequestsService {
         }
 
         return request;
+    }
+
+    private normalizePriority(priority: ServiceRequestPriority) {
+        const allowed: ServiceRequestPriority[] = ['low', 'normal', 'high', 'urgent'];
+        if (!allowed.includes(priority)) {
+            throw new BadRequestException('Invalid service request priority');
+        }
+
+        return priority;
     }
 
     private getCurrentStep(request: ServiceRequestEntity) {

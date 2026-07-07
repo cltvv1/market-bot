@@ -19,6 +19,8 @@ export const adminPageHtml = `<!doctype html>
     input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; max-width:100%; }
     textarea { width:100%; min-height:76px; resize:vertical; }
     .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; max-width:100%; }
+    .login-panel { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .user-panel { display:none; gap:8px; align-items:center; flex-wrap:wrap; }
     .token { width:260px; }
     .stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:18px; }
     .stat { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }
@@ -53,6 +55,7 @@ export const adminPageHtml = `<!doctype html>
     .ticket-row.active { background:#e7f5f1; }
     .ticket-row-title { font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .ticket-row-preview { grid-column:1 / -1; color:var(--muted); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .ticket-row-badges { grid-column:1 / -1; display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
     .ticket-resizer { width:7px; flex:0 0 7px; cursor:col-resize; background:linear-gradient(90deg, transparent, #d8dee8, transparent); }
     .ticket-resizer:hover { background:#cbd5e1; }
     .ticket-main { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; background:#fff; }
@@ -83,8 +86,15 @@ export const adminPageHtml = `<!doctype html>
   <header>
     <h1>Админка бота</h1>
     <div class="toolbar">
-      <input id="token" class="token" type="password" placeholder="ADMIN_TOKEN" />
-      <button id="saveToken">Сохранить</button>
+      <form id="loginForm" class="login-panel">
+        <input id="login" autocomplete="username" placeholder="Логин" />
+        <input id="password" type="password" autocomplete="current-password" placeholder="Пароль" />
+        <button class="primary" type="submit">Войти</button>
+      </form>
+      <div id="userPanel" class="user-panel">
+        <span id="adminName" class="meta"></span>
+        <button id="logout" type="button">Выйти</button>
+      </div>
       <button id="refresh" class="primary">Обновить</button>
       <span id="error" class="error"></span>
     </div>
@@ -115,22 +125,50 @@ export const adminPageHtml = `<!doctype html>
         <option value="max">MAX</option>
         <option value="telegram">Telegram</option>
       </select>
+      <select id="servicePriority">
+        <option value="">Любой приоритет</option>
+        <option value="urgent">Срочные</option>
+        <option value="high">Высокие</option>
+        <option value="normal">Обычные</option>
+        <option value="low">Низкие</option>
+      </select>
+      <input id="serviceResponsible" placeholder="Куратор или исполнитель" />
     </section>
     <section id="list" class="grid"></section>
   </main>
   <script>
-    const state = { tab: 'registrations', openTicketId: null, openServiceRequestId: null, openServiceWorkKey: null, serviceWorkItems: [] };
-    const tokenInput = document.querySelector('#token');
+    const state = { tab: 'registrations', openTicketId: null, openServiceRequestId: null, openServiceWorkKey: null, serviceWorkItems: [], admin: null };
+    const loginForm = document.querySelector('#loginForm');
+    const userPanel = document.querySelector('#userPanel');
+    const adminName = document.querySelector('#adminName');
     const errorEl = document.querySelector('#error');
-    tokenInput.value = localStorage.getItem('adminToken') || '';
 
-    document.querySelector('#saveToken').onclick = () => {
-      localStorage.setItem('adminToken', tokenInput.value.trim());
-      load();
+    loginForm.onsubmit = async (event) => {
+      event.preventDefault();
+      errorEl.textContent = '';
+      try {
+        await api('/admin/api/login', {
+          method: 'POST',
+          body: JSON.stringify({ login: login.value.trim(), password: password.value }),
+        }, true);
+        password.value = '';
+        await checkSession();
+        await load();
+      } catch (error) {
+        errorEl.textContent = 'Неверный логин или пароль';
+      }
+    };
+    document.querySelector('#logout').onclick = async () => {
+      await api('/admin/api/logout', { method: 'POST', body: '{}' }, true);
+      state.admin = null;
+      renderAuth();
+      list.innerHTML = '';
     };
     document.querySelector('#refresh').onclick = () => load();
     document.querySelector('#status').onchange = () => load();
     document.querySelector('#platform').onchange = () => load();
+    document.querySelector('#servicePriority').onchange = () => load();
+    document.querySelector('#serviceResponsible').oninput = () => load();
     document.querySelectorAll('[data-tab]').forEach((button) => {
       button.onclick = () => {
         state.tab = button.dataset.tab;
@@ -143,14 +181,32 @@ export const adminPageHtml = `<!doctype html>
       };
     });
 
-    function token() { return tokenInput.value.trim() || localStorage.getItem('adminToken') || 'admin'; }
-    async function api(path, options = {}) {
+    async function api(path, options = {}, allowUnauthorized = false) {
       const response = await fetch(path, {
         ...options,
-        headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token(), ...(options.headers || {}) },
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
       });
+      if (response.status === 401 && !allowUnauthorized) {
+        state.admin = null;
+        renderAuth();
+      }
       if (!response.ok) throw new Error(await response.text() || response.statusText);
       return response.json();
+    }
+    async function checkSession() {
+      try {
+        const data = await api('/admin/api/me', {}, true);
+        state.admin = data.admin;
+      } catch (error) {
+        state.admin = null;
+      }
+      renderAuth();
+    }
+    function renderAuth() {
+      loginForm.style.display = state.admin ? 'none' : 'flex';
+      userPanel.style.display = state.admin ? 'flex' : 'none';
+      refresh.style.display = state.admin ? '' : 'none';
+      adminName.textContent = state.admin ? (state.admin.displayName + ' · ' + state.admin.role) : '';
     }
     function esc(value) {
       return String(value ?? '').replace(/[&<>"']/g, (ch) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;' }[ch]));
@@ -159,6 +215,10 @@ export const adminPageHtml = `<!doctype html>
     function field(label, value) { return '<div class="field"><span>' + label + '</span><b>' + esc(value || 'Не указано') + '</b></div>'; }
 
     async function load() {
+      if (!state.admin) {
+        list.innerHTML = '<div class="empty">Войдите в админку</div>';
+        return;
+      }
       errorEl.textContent = '';
       try {
         const summary = await api('/admin/api/summary');
@@ -186,10 +246,36 @@ export const adminPageHtml = `<!doctype html>
           serviceParams.set('status', serviceStatus);
           return api('/admin/api/service-requests?' + serviceParams.toString());
         })).then((groups) => groups.flat());
+      const priorityFilter = document.querySelector('#servicePriority').value;
+      const responsibleFilter = document.querySelector('#serviceResponsible').value.trim().toLowerCase();
+      const filteredRequests = serviceRequests.filter((item) => {
+        if (priorityFilter && (item.priority || 'normal') !== priorityFilter) return false;
+        if (responsibleFilter) {
+          const people = [item.responsibleOperatorId, item.executorName].filter(Boolean).join(' ').toLowerCase();
+          if (!people.includes(responsibleFilter)) return false;
+        }
+        return true;
+      });
       state.serviceWorkItems = [
-        ...serviceRequests.map((item) => ({ kind:'service-request', key:'service-request:' + item.id, createdAt:item.createdAt, title:'Сценарная заявка #' + item.id + ' · ' + item.serviceTypeTitle, preview:statusText(item.status) + (item.calculatedPrice ? ' · ' + item.calculatedPrice + ' ₽' : ''), item })),
-      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        ...filteredRequests.map((item) => ({ kind:'service-request', key:'service-request:' + item.id, createdAt:item.createdAt, title:'Сценарная заявка #' + item.id + ' · ' + item.serviceTypeTitle, preview:serviceWorkPreview(item), item })),
+      ].sort(compareServiceWorkItems);
       return state.serviceWorkItems;
+    }
+
+    function serviceWorkPreview(item) {
+      const parts = [statusText(item.status), servicePriorityText(item.priority)];
+      if (item.responsibleOperatorId) parts.push('Куратор: ' + item.responsibleOperatorId);
+      if (item.executorName) parts.push('Исполнитель: ' + item.executorName);
+      if (item.calculatedPrice) parts.push(item.calculatedPrice + ' ₽');
+      return parts.join(' · ');
+    }
+    function compareServiceWorkItems(a, b) {
+      const priorityDelta = servicePriorityRank(b.item.priority) - servicePriorityRank(a.item.priority);
+      if (priorityDelta) return priorityDelta;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    }
+    function servicePriorityRank(value) {
+      return ({ urgent: 4, high: 3, normal: 2, low: 1 }[value || 'normal']) || 2;
     }
 
     function adminStatusForCurrentTab() {
@@ -239,9 +325,14 @@ export const adminPageHtml = `<!doctype html>
         '</section>';
     }
     function serviceWorkListRow(entry) {
+      const item = entry.item;
       return '<button class="ticket-row ' + (state.openServiceWorkKey === entry.key ? 'active' : '') + '" data-service-key="' + esc(entry.key) + '" onclick="selectServiceWork(\\'' + entry.key + '\\')">' +
         '<span class="ticket-row-title">' + esc(entry.title) + '</span>' +
         '<span class="meta">' + fmtDate(entry.createdAt) + '</span>' +
+        '<span class="ticket-row-badges">' +
+          '<span class="status-pill ' + serviceStatusClass(item.status) + '">' + statusText(item.status) + '</span>' +
+          '<span class="status-pill ' + servicePriorityClass(item.priority) + '">' + servicePriorityText(item.priority) + '</span>' +
+        '</span>' +
         '<span class="ticket-row-preview">' + esc(entry.preview) + '</span>' +
         '</button>';
     }
@@ -300,6 +391,17 @@ export const adminPageHtml = `<!doctype html>
         completed:'Завершена',
         cancelled:'Отменена'
       })[value] || value;
+    }
+    function serviceStatusClass(value) {
+      if (value === 'completed') return 'done';
+      if (value === 'cancelled') return 'bad';
+      if (['invoice_required', 'waiting_payment', 'paid', 'scheduled'].includes(value)) return 'hot';
+      return '';
+    }
+    function servicePriorityClass(value) {
+      if (value === 'urgent' || value === 'high') return 'hot';
+      if (value === 'low') return 'done';
+      return '';
     }
     function serviceRequestCard(item) {
       const answers = item.answers || {};
@@ -371,6 +473,9 @@ export const adminPageHtml = `<!doctype html>
       return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сервисная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div></div>' +
         '<div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary"><div class="fields">' +
             field('Статус', statusText(request.status)) +
+            field('Приоритет', servicePriorityText(request.priority)) +
+            field('Куратор', request.responsibleOperatorId) +
+            field('Исполнитель', request.executorName) +
             field('Стоимость', request.calculatedPrice ? request.calculatedPrice + ' ₽' : 'Не рассчитана') +
             answerFields +
           '</div>' + renderServiceRequestDetails(request, events) + '</div>' + renderContextCard(context) + '</div></div>';
@@ -429,11 +534,25 @@ export const adminPageHtml = `<!doctype html>
         '<div class="message"><div>' + esc(serviceEventText(event)) + '</div><div class="meta">' + esc(serviceEventMeta(event)) + ' · ' + fmtDate(event.createdAt) + '</div></div>'
       ).join('') : '<div class="empty">Истории по заявке пока нет</div>';
       return '<div class="chat"><div class="messages">' + rows + '</div>' +
+        '<div class="composer"><select id="priority-' + request.id + '">' + renderPriorityOptions(request.priority) + '</select><input id="executor-' + request.id + '" placeholder="Исполнитель" value="' + esc(request.executorName || '') + '"><button class="primary" onclick="saveServiceRequestOperatorState(' + request.id + ')">Сохранить</button></div>' +
+        '<div class="composer"><textarea id="operator-comment-' + request.id + '" placeholder="Внутренний комментарий или поручение">' + esc(request.operatorComment || '') + '</textarea></div>' +
         '<div class="composer"><input id="invoice-id-' + request.id + '" placeholder="Ссылка или номер PDF счета"><input id="invoice-name-' + request.id + '" placeholder="Название счета"><button class="primary" onclick="attachInvoice(' + request.id + ')">Прикрепить счет</button></div>' +
         '<div class="composer"><input id="invoice-file-' + request.id + '" type="file" accept="application/pdf"><button class="primary" onclick="uploadInvoicePdf(' + request.id + ')">Загрузить PDF</button>' + (request.invoiceFileId ? '<button onclick="downloadInvoice(' + request.id + ')">Скачать счет</button>' : '') + '</div>' +
         '<div class="actions"><button class="primary" onclick="markPaymentReceived(' + request.id + ')">Оплата получена</button></div>' +
         '<div class="composer"><input id="visit-address-' + request.id + '" placeholder="Адрес визита"><input id="visit-time-' + request.id + '" placeholder="2026-07-05T12:00"><button onclick="scheduleVisit(' + request.id + ')">Назначить визит</button></div>' +
         '<div class="actions"><button onclick="completeServiceRequest(' + request.id + ')">Завершить</button><button class="danger" onclick="cancelServiceRequest(' + request.id + ')">Отменить</button></div></div>';
+    }
+    function renderPriorityOptions(value) {
+      const selected = value || 'normal';
+      return [
+        ['low', 'Низкий'],
+        ['normal', 'Обычный'],
+        ['high', 'Высокий'],
+        ['urgent', 'Срочный'],
+      ].map(([key, label]) => '<option value="' + key + '"' + (selected === key ? ' selected' : '') + '>' + label + '</option>').join('');
+    }
+    function servicePriorityText(value) {
+      return ({ low: 'Низкий', normal: 'Обычный', high: 'Высокий', urgent: 'Срочный' }[value || 'normal']) || value || 'Обычный';
     }
     function serviceEventText(event) {
       if (event.type === 'answered' && event.payload && event.payload.value !== undefined) {
@@ -472,7 +591,6 @@ export const adminPageHtml = `<!doctype html>
       form.append('file', input.files[0]);
       const response = await fetch('/admin/api/service-requests/' + id + '/invoice-file', {
         method: 'POST',
-        headers: { 'X-Admin-Token': token() },
         body: form,
       });
       if (!response.ok) throw new Error(await response.text() || response.statusText);
@@ -480,10 +598,21 @@ export const adminPageHtml = `<!doctype html>
       load();
     }
     function downloadInvoice(id) {
-      window.open('/admin/api/service-requests/' + id + '/invoice?token=' + encodeURIComponent(token()), '_blank');
+      window.open('/admin/api/service-requests/' + id + '/invoice', '_blank');
     }
     async function markPaymentReceived(id) {
       await api('/admin/api/service-requests/' + id + '/payment-received', { method: 'POST', body: '{}' });
+      await openServiceRequest(id);
+      load();
+    }
+    async function saveServiceRequestOperatorState(id) {
+      const priority = document.querySelector('#priority-' + id).value;
+      const executorName = document.querySelector('#executor-' + id).value.trim();
+      const operatorComment = document.querySelector('#operator-comment-' + id).value.trim();
+      await api('/admin/api/service-requests/' + id + '/operator-state', {
+        method: 'POST',
+        body: JSON.stringify({ priority, executorName, operatorComment }),
+      });
       await openServiceRequest(id);
       load();
     }
@@ -507,6 +636,7 @@ export const adminPageHtml = `<!doctype html>
       const data = context || {};
       const user = data.user || {};
       const organization = data.organization || {};
+      const linkedOrganizations = data.organizations || [];
       const assets = data.assets || {};
       const cashRegisters = assets.cashRegisters || [];
       const fiscalDrives = assets.fiscalDrives || [];
@@ -524,6 +654,16 @@ export const adminPageHtml = `<!doctype html>
           contextLine('ИНН / КПП', [organization.inn, organization.kpp].filter(Boolean).join(' / ')) +
           contextLine('ОГРН', organization.ogrn) +
           contextLine('СНО', organization.taxSystem) +
+        '</div>' +
+        '<div class="context-block"><h3>Связанные организации</h3>' +
+          (linkedOrganizations.length
+            ? linkedOrganizations.map((member) => {
+                const linked = member.organization || {};
+                const title = linked.name || linked.inn || ('Организация #' + member.id);
+                const details = [linked.inn, linked.kpp].filter(Boolean).join(' / ');
+                return '<div class="context-line"><b>' + esc(title) + '</b><span>' + esc(details || member.role || '') + '</span></div>';
+              }).join('')
+            : '<div class="meta">Связанных организаций нет</div>') +
         '</div>' +
         '<div class="context-block"><h3>Кассы и подписки</h3>' +
           contextLine('Кассы', cashRegisters.length ? cashRegisters.map((item) => item.model || item.serialNumber || ('#' + item.id)).join(', ') : '') +
@@ -547,7 +687,7 @@ export const adminPageHtml = `<!doctype html>
         '</div>';
     }
     function ticketFileUrl(message) {
-      if (message.localPath) return '/admin/api/ticket-messages/' + message.id + '/file?token=' + encodeURIComponent(token());
+      if (message.localPath) return '/admin/api/ticket-messages/' + message.id + '/file';
       return message.externalUrl || '';
     }
     function renderTicketMessageContent(message) {
@@ -578,7 +718,6 @@ export const adminPageHtml = `<!doctype html>
       if (comment) form.append('text', comment);
       const response = await fetch('/admin/api/tickets/' + id + '/media', {
         method: 'POST',
-        headers: { 'X-Admin-Token': token() },
         body: form,
       });
       if (!response.ok) throw new Error(await response.text() || response.statusText);
@@ -590,9 +729,9 @@ export const adminPageHtml = `<!doctype html>
       load();
     }
     function downloadPdf(id) {
-      window.open('/admin/api/registrations/' + id + '/pdf?token=' + encodeURIComponent(token()), '_blank');
+      window.open('/admin/api/registrations/' + id + '/pdf', '_blank');
     }
-    load();
+    checkSession().then(load);
   </script>
 </body>
 </html>`;

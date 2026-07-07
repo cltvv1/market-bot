@@ -12,6 +12,8 @@ import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-
 import { UserEntity } from 'src/users/entities/user.entity';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
+import { AdminSessionEntity } from './entities/admin-session.entity';
+import { AdminUserEntity } from './entities/admin-user.entity';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 
@@ -28,6 +30,8 @@ import { AdminService } from './admin.service';
             OfdSubscriptionEntity,
             CustomerActivityEntity,
             UserEntity,
+            AdminUserEntity,
+            AdminSessionEntity,
         ]),
         MessengerModule,
         ServiceRequestsModule,

@@ -10,4 +10,9 @@ export const validationSchema = Joi.object({
     DB_PASS: Joi.string().default('pass'),
     MAX_BOT_TOKEN: Joi.string().optional(),
     ADMIN_TOKEN: Joi.string().optional(),
+    ADMIN_NAME: Joi.string().optional(),
+    ADMIN_USERS: Joi.string().optional(),
+    ADMIN_LOGIN: Joi.string().optional(),
+    ADMIN_PASSWORD: Joi.string().optional(),
+    ADMIN_SESSION_DAYS: Joi.number().integer().min(1).default(180),
 });

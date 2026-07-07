@@ -11,6 +11,8 @@ export type ServiceRequestStatus =
     | 'completed'
     | 'cancelled';
 
+export type ServiceRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
+
 @Entity('service_requests')
 export class ServiceRequestEntity {
     @PrimaryGeneratedColumn()
@@ -66,6 +68,12 @@ export class ServiceRequestEntity {
 
     @Column({ type: 'varchar', nullable: true })
     responsibleOperatorId: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    executorName: string | null;
+
+    @Column({ type: 'varchar', default: 'normal' })
+    priority: ServiceRequestPriority;
 
     @CreateDateColumn()
     createdAt: Date;
