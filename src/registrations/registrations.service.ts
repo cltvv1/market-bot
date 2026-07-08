@@ -1,4 +1,6 @@
 import * as fs from 'fs';
+import * as path from 'path';
+import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,11 +11,8 @@ import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { UsersService } from 'src/users/users.service';
 import { formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
 import { RegistrationField } from './registration.types';
-import { Inject } from '@nestjs/common';
-import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
-import type { MessengerService } from 'src/messenger/messenger.types';
-import { regDoneKeyboard } from 'src/messenger/messenger-keyboards';
 import { UserPlatform } from 'src/users/entities/user.entity';
+import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 @Injectable()
 export class RegistrationsService {
     constructor(
@@ -25,8 +24,7 @@ export class RegistrationsService {
 
         private readonly pdfService: PdfGeneratorService,
         private usersService: UsersService,
-        @Inject(MESSENGER_SERVICE)
-        private messengerService: MessengerService
+        private readonly adminNotificationsService: AdminNotificationsService,
     ) { }
 
     async getAllRegs() {
@@ -71,10 +69,31 @@ export class RegistrationsService {
 
         const field = await this.getFieldNameByStep(reg.currentStep);
         if (!field) return reg;
+        if (field === 'equipmentPhoto') return reg;
 
         reg[field] = value;
         reg.currentStep++;
 
+        await this.registrationRepo.save(reg);
+        return reg;
+    }
+
+    async saveEquipmentPhoto(chatId: string, input: { buffer: Buffer; fileName?: string }, platform: UserPlatform = 'telegram') {
+        const reg = await this.getNotFilledReg(chatId, platform);
+        if (!reg) return null;
+
+        const field = await this.getFieldNameByStep(reg.currentStep);
+        if (field !== 'equipmentPhoto') return reg;
+
+        const mediaDir = path.join(process.cwd(), 'storage', 'registration-media');
+        fs.mkdirSync(mediaDir, { recursive: true });
+        const safeName = `${randomUUID()}-${input.fileName || 'equipment-photo.jpg'}`;
+        const filePath = path.join(mediaDir, safeName);
+        fs.writeFileSync(filePath, input.buffer);
+
+        reg.equipmentPhotoPath = filePath;
+        reg.equipmentPhotoName = input.fileName || safeName;
+        reg.currentStep++;
         await this.registrationRepo.save(reg);
         return reg;
     }
@@ -85,6 +104,7 @@ export class RegistrationsService {
 
         for (const [field, value] of Object.entries(values)) {
             if (!this.isRegistrationField(field)) continue;
+            if (field === 'equipmentPhoto') continue;
             const trimmed = value?.trim();
             if (trimmed) {
                 reg[field] = trimmed;
@@ -100,7 +120,8 @@ export class RegistrationsService {
 
     async isCompleted(reg: RegistrationRequestEntity) {
         const fields = await this.getAllFields();
-        return reg.currentStep > fields.length;
+        const lastStep = Math.max(...fields.map((field) => field.step), 1);
+        return reg.currentStep > lastStep;
     }
 
     async getFieldTextByStep(step: number) {
@@ -141,61 +162,19 @@ export class RegistrationsService {
     }
 
     async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
-        const admins = await this.usersService.getAdmins(reg.platform);
         const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId, undefined, undefined, reg.platform)
-        if (!admins.length) return;
-
         const message = formatRegistrationRequest(reg, regAuthor);
 
-        await Promise.all(
-            admins.map(async (admin) => {
-                try {
-                    await this.messengerService.sendMessage(
-                        admin.chatId,
-                        message,
-                        { inlineKeyboard: regDoneKeyboard(reg.id), platform: admin.platform },
-                    );
-
-                    await this.messengerService.sendDocument(
-                        admin.chatId,
-                        {
-                            source: fs.createReadStream(filePath),
-                            filename: `${reg.orgName}.pdf`,
-                        },
-                        { platform: admin.platform },
-                    );
-                } catch (e) {
-                    console.error(
-                        `Failed to notify admin ${admin.chatId}:`,
-                        e,
-                    );
-                }
-            })
-        );
+        await this.adminNotificationsService.notify('registrations', message);
+        await this.adminNotificationsService.notifyDocument('registrations', {
+            sourceFactory: () => fs.createReadStream(filePath),
+            filename: `${reg.orgName}.pdf`,
+        });
     }
 
     async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
-        const admins = await this.usersService.getAdmins(reg.platform);
-        if (!admins.length) return;
-
         const message = formatRegistrationDone(reg);
-
-        await Promise.all(
-            admins.map(async (admin) => {
-                try {
-                    await this.messengerService.sendMessage(
-                        admin.chatId,
-                        message,
-                        { platform: admin.platform },
-                    );
-                } catch (e) {
-                    console.error(
-                        `Failed to notify admin ${admin.chatId}`,
-                        e,
-                    );
-                }
-            }),
-        );
+        await this.adminNotificationsService.notify('registrations', message);
     }
 
     async doReg(reg: RegistrationRequestEntity) {
@@ -223,6 +202,7 @@ export class RegistrationsService {
             'kktModel',
             'bankReqs',
             'ofd',
+            'equipmentPhoto',
         ].includes(value);
     }
 }

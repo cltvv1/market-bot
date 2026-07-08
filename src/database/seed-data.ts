@@ -25,4 +25,5 @@ export const REGISTRATION_FIELD_SEEDS: FieldSeed<RegistrationField>[] = [
     { name: 'kktModel', label: 'Модель ККТ', step: 17 },
     { name: 'bankReqs', label: 'Банковские реквизиты (Наименование банка, БИК, Расч/счет, Кор/счет) - для ООО, для ИП можете написать "-"', step: 18 },
     { name: 'ofd', label: 'ОФД (При покупке у нас - Платформа ОФД)', step: 19 },
+    { name: 'equipmentPhoto', label: 'Пришлите одно фото, где виден серийный номер кассы или ФН. Обычно он находится на шильдике кассы, коробке ФН или наклейке на комплекте', step: 20 },
 ];

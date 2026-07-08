@@ -2,6 +2,8 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateCol
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { RegistrationType } from '../registration.types';
 
+export type RegistrationRequestStatus = 'new' | 'in_work' | 'processed';
+export type RegistrationRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 @Entity('registration_requests')
 export class RegistrationRequestEntity {
@@ -84,6 +86,15 @@ export class RegistrationRequestEntity {
     @Column({ nullable: true })
     ofd: string;
 
+    @Column({ type: 'varchar', nullable: true })
+    equipmentPhotoPath: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    equipmentPhotoName: string | null;
+
+    @Column({ type: 'integer', nullable: true })
+    equipmentKitId: number | null;
+
     @Column({ default: false })
     isFilled: boolean;
 
@@ -95,6 +106,12 @@ export class RegistrationRequestEntity {
 
     @Column({ default: false })
     isProcessed: boolean;
+
+    @Column({ type: 'varchar', default: 'new' })
+    status: RegistrationRequestStatus;
+
+    @Column({ type: 'varchar', default: 'normal' })
+    priority: RegistrationRequestPriority;
 
     @Column({ nullable: true })
     pdfPath: string;

@@ -6,6 +6,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan } from 'typeorm';
 import { Repository } from 'typeorm';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
+import type { RegistrationRequestPriority, RegistrationRequestStatus } from 'src/registrations/entities/registration.entity';
 import { TicketEntity } from 'src/tickets/entities/ticket.entity';
 import { TicketMessageEntity } from 'src/tickets/entities/ticket-message.entity';
 import { OrganizationEntity } from 'src/organizations/entities/organization.entity';
@@ -13,6 +14,7 @@ import { OrganizationMemberEntity } from 'src/organizations/entities/organizatio
 import { CashRegisterEntity } from 'src/assets/entities/cash-register.entity';
 import { FiscalDriveEntity } from 'src/assets/entities/fiscal-drive.entity';
 import { OfdSubscriptionEntity } from 'src/assets/entities/ofd-subscription.entity';
+import { EquipmentKitEntity } from 'src/assets/entities/equipment-kit.entity';
 import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-activity.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
@@ -24,7 +26,7 @@ import type { TicketMessageType } from 'src/tickets/entities/ticket-message.enti
 import { AdminSessionEntity } from './entities/admin-session.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
 
-export type AdminStatusFilter = 'all' | 'new' | 'processed';
+export type AdminStatusFilter = 'all' | 'new' | 'in_work' | 'processed';
 
 @Injectable()
 export class AdminService {
@@ -45,6 +47,8 @@ export class AdminService {
         private readonly fiscalDrivesRepo: Repository<FiscalDriveEntity>,
         @InjectRepository(OfdSubscriptionEntity)
         private readonly ofdSubscriptionsRepo: Repository<OfdSubscriptionEntity>,
+        @InjectRepository(EquipmentKitEntity)
+        private readonly equipmentKitsRepo: Repository<EquipmentKitEntity>,
         @InjectRepository(CustomerActivityEntity)
         private readonly activitiesRepo: Repository<CustomerActivityEntity>,
         @InjectRepository(UserEntity)
@@ -101,6 +105,60 @@ export class AdminService {
         await this.adminSessionsRepo.delete({ tokenHash: this.hashSessionToken(token) });
     }
 
+    async getNotificationBindings(adminId: number) {
+        const admin = await this.adminUsersRepo.findOne({ where: { id: adminId } });
+        if (!admin) return null;
+
+        return {
+            telegramChatId: admin.telegramChatId,
+            maxChatId: admin.maxChatId,
+            notifyRegistrations: admin.notifyRegistrations,
+            notifyTickets: admin.notifyTickets,
+            notifyServiceRequests: admin.notifyServiceRequests,
+            pendingBindPlatform: admin.messengerBindPlatform,
+            pendingBindCode: admin.messengerBindCode,
+            pendingBindCodeExpiresAt: admin.messengerBindCodeExpiresAt,
+        };
+    }
+
+    async createMessengerBindCode(adminId: number, platform: 'telegram' | 'max') {
+        const admin = await this.adminUsersRepo.findOne({ where: { id: adminId, isActive: true } });
+        if (!admin) return null;
+
+        admin.messengerBindCode = randomBytes(4).toString('hex').toUpperCase();
+        admin.messengerBindPlatform = platform;
+        admin.messengerBindCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+        await this.adminUsersRepo.save(admin);
+
+        return {
+            platform,
+            code: admin.messengerBindCode,
+            expiresAt: admin.messengerBindCodeExpiresAt,
+            command: `/admin ${admin.messengerBindCode}`,
+        };
+    }
+
+    async updateNotificationSettings(
+        adminId: number,
+        input: { notifyRegistrations?: boolean; notifyTickets?: boolean; notifyServiceRequests?: boolean },
+    ) {
+        const admin = await this.adminUsersRepo.findOne({ where: { id: adminId, isActive: true } });
+        if (!admin) return null;
+
+        if (input.notifyRegistrations !== undefined) {
+            admin.notifyRegistrations = input.notifyRegistrations;
+        }
+        if (input.notifyTickets !== undefined) {
+            admin.notifyTickets = input.notifyTickets;
+        }
+        if (input.notifyServiceRequests !== undefined) {
+            admin.notifyServiceRequests = input.notifyServiceRequests;
+        }
+
+        await this.adminUsersRepo.save(admin);
+        return this.getNotificationBindings(admin.id);
+    }
+
     private async ensureDefaultAdmin() {
         const count = await this.adminUsersRepo.count();
         if (count > 0) return;
@@ -155,13 +213,19 @@ export class AdminService {
         return { newRegistrations, openTickets, activeServiceRequests };
     }
 
-    getRegistrations(status: AdminStatusFilter = 'new', platform?: UserPlatform) {
+    getRegistrations(status: AdminStatusFilter = 'new', platform?: UserPlatform, priority?: RegistrationRequestPriority) {
+        const commonWhere = {
+            ...(platform ? { platform } : {}),
+            ...(priority ? { priority } : {}),
+        };
+        const where = status === 'all'
+            ? commonWhere
+            : status === 'processed'
+                ? [{ ...commonWhere, status: 'processed' as RegistrationRequestStatus }, { ...commonWhere, isProcessed: true }]
+                : { ...commonWhere, status, isFilled: true };
+
         return this.registrationsRepo.find({
-            where: {
-                ...(status === 'new' ? { isFilled: true, isProcessed: false } : {}),
-                ...(status === 'processed' ? { isProcessed: true } : {}),
-                ...(platform ? { platform } : {}),
-            },
+            where,
             order: { createdAt: 'DESC' },
             take: 100,
         });
@@ -278,6 +342,54 @@ export class AdminService {
         }));
     }
 
+    getEquipmentKits(query?: string) {
+        return this.equipmentKitsRepo.find({
+            order: { createdAt: 'DESC' },
+            take: 200,
+        }).then((items) => {
+            const normalized = query?.trim().toLowerCase();
+            if (!normalized) return items;
+            return items.filter((item) => [
+                item.cashRegisterModel,
+                item.cashRegisterSerial,
+                item.fiscalDriveSerial,
+                item.ofdActivationCode,
+                item.marketplaceOrderId,
+            ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized)));
+        });
+    }
+
+    createEquipmentKit(input: Partial<EquipmentKitEntity>) {
+        const kit = this.equipmentKitsRepo.create({
+            cashRegisterModel: input.cashRegisterModel?.trim() || null,
+            cashRegisterSerial: input.cashRegisterSerial?.trim() || null,
+            fiscalDriveSerial: input.fiscalDriveSerial?.trim() || null,
+            ofdActivationCode: input.ofdActivationCode?.trim() || null,
+            marketplaceOrderId: input.marketplaceOrderId?.trim() || null,
+            comment: input.comment?.trim() || null,
+            status: input.status || 'stock',
+        });
+        return this.equipmentKitsRepo.save(kit);
+    }
+
+    async linkEquipmentKitToRegistration(registrationId: number, kitId: number) {
+        const [registration, kit] = await Promise.all([
+            this.registrationsRepo.findOne({ where: { id: registrationId } }),
+            this.equipmentKitsRepo.findOne({ where: { id: kitId } }),
+        ]);
+        if (!registration || !kit) return null;
+
+        registration.equipmentKitId = kit.id;
+        kit.registrationRequestId = registration.id;
+        kit.status = 'linked';
+        await Promise.all([
+            this.registrationsRepo.save(registration),
+            this.equipmentKitsRepo.save(kit),
+        ]);
+
+        return { registration, kit };
+    }
+
     async getOrganizationAssets(organizationId: number) {
         const [cashRegisters, fiscalDrives, ofdSubscriptions] = await Promise.all([
             this.cashRegistersRepo.find({ where: { organizationId }, order: { id: 'ASC' } }),
@@ -341,7 +453,28 @@ export class AdminService {
     }
 
     async processRegistration(id: number) {
-        await this.registrationsRepo.update(id, { isProcessed: true });
+        await this.registrationsRepo.update(id, { isProcessed: true, status: 'processed' });
+        return this.registrationsRepo.findOne({ where: { id } });
+    }
+
+    async updateRegistrationOperatorState(
+        id: number,
+        input: { status?: RegistrationRequestStatus; priority?: RegistrationRequestPriority },
+    ) {
+        const patch: Partial<RegistrationRequestEntity> = {};
+        if (input.status) {
+            patch.status = input.status;
+            patch.isProcessed = input.status === 'processed';
+        }
+        if (input.priority) {
+            patch.priority = input.priority;
+        }
+
+        if (!Object.keys(patch).length) {
+            return this.registrationsRepo.findOne({ where: { id } });
+        }
+
+        await this.registrationsRepo.update(id, patch);
         return this.registrationsRepo.findOne({ where: { id } });
     }
 

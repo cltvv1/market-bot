@@ -22,6 +22,30 @@ export class AdminUserEntity {
     @Column({ default: true })
     isActive: boolean;
 
+    @Column({ type: 'varchar', nullable: true })
+    telegramChatId: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    maxChatId: string | null;
+
+    @Column({ default: true })
+    notifyRegistrations: boolean;
+
+    @Column({ default: true })
+    notifyTickets: boolean;
+
+    @Column({ default: true })
+    notifyServiceRequests: boolean;
+
+    @Column({ type: 'varchar', nullable: true })
+    messengerBindCode: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    messengerBindPlatform: 'telegram' | 'max' | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    messengerBindCodeExpiresAt: Date | null;
+
     @CreateDateColumn()
     createdAt: Date;
 

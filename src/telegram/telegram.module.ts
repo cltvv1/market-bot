@@ -10,6 +10,7 @@ import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
 import { ClientModule } from 'src/client/client.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
+import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
 
 
 @Module({
@@ -18,7 +19,8 @@ import { ServiceRequestsModule } from 'src/service-requests/service-requests.mod
         TicketsModule,
         UsersModule,
         ClientModule,
-        ServiceRequestsModule
+        ServiceRequestsModule,
+        AdminNotificationsModule,
     ],
     providers: [TelegramUpdate,
         UserContextService,

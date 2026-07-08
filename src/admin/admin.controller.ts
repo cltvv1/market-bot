@@ -8,6 +8,7 @@ import { ApiSecurity, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { ServiceRequestPriority, ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
+import type { RegistrationRequestPriority, RegistrationRequestStatus } from 'src/registrations/entities/registration.entity';
 import { AdminService } from './admin.service';
 import type { AdminStatusFilter } from './admin.service';
 import { adminPageHtml } from './admin.page';
@@ -61,6 +62,42 @@ export class AdminController {
         return { ok: true };
     }
 
+    @Get('api/notification-bindings')
+    async getNotificationBindings(@Req() request: Request) {
+        const admin = await this.getSessionAdmin(request);
+        if (!admin) throw new UnauthorizedException();
+
+        return this.adminService.getNotificationBindings(admin.id);
+    }
+
+    @Post('api/notification-bindings/code')
+    async createNotificationBindCode(@Req() request: Request, @Body('platform') platform?: 'telegram' | 'max') {
+        const admin = await this.getSessionAdmin(request);
+        if (!admin) throw new UnauthorizedException();
+        if (platform !== 'telegram' && platform !== 'max') {
+            throw new BadRequestException('platform must be telegram or max');
+        }
+
+        return this.adminService.createMessengerBindCode(admin.id, platform);
+    }
+
+    @Post('api/notification-bindings/settings')
+    async updateNotificationSettings(
+        @Req() request: Request,
+        @Body('notifyRegistrations') notifyRegistrations?: boolean,
+        @Body('notifyTickets') notifyTickets?: boolean,
+        @Body('notifyServiceRequests') notifyServiceRequests?: boolean,
+    ) {
+        const admin = await this.getSessionAdmin(request);
+        if (!admin) throw new UnauthorizedException();
+
+        return this.adminService.updateNotificationSettings(admin.id, {
+            ...(notifyRegistrations !== undefined ? { notifyRegistrations } : {}),
+            ...(notifyTickets !== undefined ? { notifyTickets } : {}),
+            ...(notifyServiceRequests !== undefined ? { notifyServiceRequests } : {}),
+        });
+    }
+
     @Get('api/summary')
     async getSummary(@Req() request: Request) {
         await this.assertAuthorized(request);
@@ -68,9 +105,14 @@ export class AdminController {
     }
 
     @Get('api/registrations')
-    async getRegistrations(@Req() request: Request, @Query('status') status?: AdminStatusFilter, @Query('platform') platform?: UserPlatform) {
+    async getRegistrations(
+        @Req() request: Request,
+        @Query('status') status?: AdminStatusFilter,
+        @Query('platform') platform?: UserPlatform,
+        @Query('priority') priority?: RegistrationRequestPriority,
+    ) {
         await this.assertAuthorized(request);
-        return this.adminService.getRegistrations(this.normalizeStatus(status), this.normalizePlatform(platform));
+        return this.adminService.getRegistrations(this.normalizeStatus(status), this.normalizePlatform(platform), this.normalizeRegistrationPriority(priority));
     }
 
     @Get('api/tickets')
@@ -206,6 +248,25 @@ export class AdminController {
         return this.adminService.getOrganizations();
     }
 
+    @Get('api/equipment-kits')
+    async getEquipmentKits(@Req() request: Request, @Query('q') query?: string) {
+        await this.assertAuthorized(request);
+        return this.adminService.getEquipmentKits(query);
+    }
+
+    @Post('api/equipment-kits')
+    async createEquipmentKit(@Req() request: Request, @Body() body: any) {
+        await this.assertAuthorized(request);
+        return this.adminService.createEquipmentKit(body || {});
+    }
+
+    @Post('api/registrations/:id/equipment-kit')
+    async linkEquipmentKitToRegistration(@Req() request: Request, @Param('id') id: string, @Body('kitId') kitId?: number) {
+        await this.assertAuthorized(request);
+        if (!kitId) throw new BadRequestException('kitId is required');
+        return this.adminService.linkEquipmentKitToRegistration(Number(id), Number(kitId));
+    }
+
     @Get('api/organizations/:id/assets')
     async getOrganizationAssets(@Req() request: Request, @Param('id') id: string) {
         await this.assertAuthorized(request);
@@ -222,6 +283,20 @@ export class AdminController {
     async processRegistration(@Req() request: Request, @Param('id') id: string) {
         await this.assertAuthorized(request);
         return this.adminService.processRegistration(Number(id));
+    }
+
+    @Post('api/registrations/:id/operator-state')
+    async updateRegistrationOperatorState(
+        @Req() request: Request,
+        @Param('id') id: string,
+        @Body('status') status?: RegistrationRequestStatus,
+        @Body('priority') priority?: RegistrationRequestPriority,
+    ) {
+        await this.assertAuthorized(request);
+        return this.adminService.updateRegistrationOperatorState(Number(id), {
+            ...(this.normalizeRegistrationStatus(status) ? { status: this.normalizeRegistrationStatus(status) } : {}),
+            ...(this.normalizeRegistrationPriority(priority) ? { priority: this.normalizeRegistrationPriority(priority) } : {}),
+        });
     }
 
     @Post('api/tickets/:id/reply')
@@ -296,6 +371,17 @@ export class AdminController {
         return response.download(registration.pdfPath, `registration_${registration.id}.pdf`);
     }
 
+    @Get('api/registrations/:id/equipment-photo')
+    async getRegistrationEquipmentPhoto(@Req() request: Request, @Param('id') id: string, @Query('token') token: string, @Res() response: Response) {
+        await this.assertAuthorized(request, token);
+        const registration = await this.adminService.getRegistration(Number(id));
+        if (!registration?.equipmentPhotoPath || !fs.existsSync(registration.equipmentPhotoPath)) {
+            throw new BadRequestException('Equipment photo not found');
+        }
+
+        return response.download(registration.equipmentPhotoPath, registration.equipmentPhotoName || `registration_${registration.id}_equipment_photo`);
+    }
+
     private async assertAuthorized(request: Request, queryToken?: string) {
         const sessionAdmin = await this.getSessionAdmin(request);
         if (sessionAdmin) {
@@ -361,11 +447,27 @@ export class AdminController {
     }
 
     private normalizeStatus(status?: AdminStatusFilter): AdminStatusFilter {
-        if (status === 'all' || status === 'processed' || status === 'new') {
+        if (status === 'all' || status === 'processed' || status === 'new' || status === 'in_work') {
             return status;
         }
 
         return 'new';
+    }
+
+    private normalizeRegistrationStatus(status?: RegistrationRequestStatus) {
+        if (status === 'new' || status === 'in_work' || status === 'processed') {
+            return status;
+        }
+
+        return undefined;
+    }
+
+    private normalizeRegistrationPriority(priority?: RegistrationRequestPriority) {
+        if (priority === 'low' || priority === 'normal' || priority === 'high' || priority === 'urgent') {
+            return priority;
+        }
+
+        return undefined;
     }
 
     private normalizePlatform(platform?: UserPlatform) {

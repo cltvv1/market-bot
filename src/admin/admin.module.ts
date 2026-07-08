@@ -8,12 +8,14 @@ import { OrganizationMemberEntity } from 'src/organizations/entities/organizatio
 import { CashRegisterEntity } from 'src/assets/entities/cash-register.entity';
 import { FiscalDriveEntity } from 'src/assets/entities/fiscal-drive.entity';
 import { OfdSubscriptionEntity } from 'src/assets/entities/ofd-subscription.entity';
+import { EquipmentKitEntity } from 'src/assets/entities/equipment-kit.entity';
 import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-activity.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { AdminSessionEntity } from './entities/admin-session.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
+import { AdminNotificationsModule } from './admin-notifications.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 
@@ -28,6 +30,7 @@ import { AdminService } from './admin.service';
             CashRegisterEntity,
             FiscalDriveEntity,
             OfdSubscriptionEntity,
+            EquipmentKitEntity,
             CustomerActivityEntity,
             UserEntity,
             AdminUserEntity,
@@ -35,6 +38,7 @@ import { AdminService } from './admin.service';
         ]),
         MessengerModule,
         ServiceRequestsModule,
+        AdminNotificationsModule,
     ],
     controllers: [AdminController],
     providers: [AdminService],

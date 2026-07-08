@@ -12,6 +12,7 @@ import { ServiceRequestEntity, ServiceRequestPriority, ServiceRequestStatus } fr
 import { ServiceRequestEventEntity } from './entities/service-request-event.entity';
 import { ServiceTypeEntity } from './entities/service-type.entity';
 import { defaultServiceTypes, serviceRequestFlows } from './service-request.flows';
+import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 
 export interface ServiceRequestIdentity {
     platform: UserPlatform;
@@ -39,6 +40,7 @@ export class ServiceRequestsService {
         private readonly usersService: UsersService,
         private readonly organizationsService: OrganizationsService,
         private readonly activityService: CustomerActivityService,
+        private readonly adminNotificationsService: AdminNotificationsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
     ) { }
@@ -409,17 +411,8 @@ export class ServiceRequestsService {
     }
 
     private async notifyOperators(request: ServiceRequestEntity) {
-        const operators = await this.usersService.getOperators(request.platform);
-        if (!operators.length) return;
-
         const message = this.formatOperatorMessage(request);
-        await Promise.all(operators.map(async (operator) => {
-            try {
-                await this.messengerService.sendMessage(operator.chatId, message, { platform: operator.platform });
-            } catch (error) {
-                console.error(`Failed to notify operator ${operator.chatId}:`, error);
-            }
-        }));
+        await this.adminNotificationsService.notify('serviceRequests', message);
     }
 
     private async notifyClient(request: ServiceRequestEntity, message: string) {

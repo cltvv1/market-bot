@@ -7,8 +7,8 @@ import { UsersService } from 'src/users/users.service';
 import { formatTicket } from 'src/common/utils';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
-import { connectToKeyboard } from 'src/messenger/messenger-keyboards';
 import { UserPlatform } from 'src/users/entities/user.entity';
+import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 
 export interface TicketMediaInput {
     messageType: Exclude<TicketMessageType, 'text'>;
@@ -32,7 +32,8 @@ export class TicketsService {
 
         private usersService: UsersService,
         @Inject(MESSENGER_SERVICE)
-        private messengerService: MessengerService
+        private messengerService: MessengerService,
+        private readonly adminNotificationsService: AdminNotificationsService,
     ) { }
 
     async createTicket(
@@ -175,29 +176,12 @@ export class TicketsService {
     }
 
     async notifyOperatorsAboutNewTicket(ticket: TicketEntity) {
-        const operators = await this.usersService.getOperators(ticket.platform);
-
         const message = formatTicket(ticket);
-
-        for (const op of operators) {
-            await this.messengerService.sendMessage(
-                op.chatId,
-                message,
-                { inlineKeyboard: connectToKeyboard(ticket.userChatId), platform: op.platform }
-            );
-        }
+        await this.adminNotificationsService.notify('tickets', message);
     }
 
     async notifyOperatorsAboutTicketMessage(ticket: TicketEntity, text: string) {
-        const operators = await this.usersService.getOperators(ticket.platform);
-
-        for (const op of operators) {
-            await this.messengerService.sendMessage(
-                op.chatId,
-                text,
-                { inlineKeyboard: connectToKeyboard(ticket.userChatId), platform: op.platform },
-            );
-        }
+        await this.adminNotificationsService.notify('tickets', text);
     }
 
     private formatMediaLabel(media: TicketMediaInput) {

@@ -2,6 +2,7 @@ import { Module, OnApplicationBootstrap } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CustomerActivityModule } from 'src/customer-activity/customer-activity.module';
 import { MessengerModule } from 'src/messenger/messenger.module';
+import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
 import { OrganizationsModule } from 'src/organizations/organizations.module';
 import { UsersModule } from 'src/users/users.module';
 import { ServiceRequestEntity } from './entities/service-request.entity';
@@ -17,6 +18,7 @@ import { ServiceRequestsService } from './service-requests.service';
         OrganizationsModule,
         CustomerActivityModule,
         MessengerModule,
+        AdminNotificationsModule,
     ],
     controllers: [ServiceRequestsController],
     providers: [ServiceRequestsService],

@@ -12,6 +12,7 @@ import { ClientWorkflowService } from 'src/client/client-workflow.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
 import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
+import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 
 @Injectable()
 export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
@@ -26,6 +27,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         private readonly usersService: UsersService,
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly adminNotificationsService: AdminNotificationsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
     ) { }
@@ -121,6 +123,10 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
             const text = ctx.message?.body?.text?.trim();
             const media = this.extractMaxMedia(ctx);
+            if (text?.startsWith('/admin')) {
+                await this.handleAdminBindCommand(ctx, text);
+                return;
+            }
             if ((!text && !media) || text?.startsWith('/')) return;
 
             const chatId = String(ctx.chatId);
@@ -181,6 +187,23 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         if (!ctx.chatId) return;
 
         await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
+    }
+
+    private async handleAdminBindCommand(ctx: any, text: string) {
+        const chatId = String(ctx.chatId);
+        const code = text.trim().split(/\s+/)[1];
+        if (!chatId || !code) {
+            await ctx.reply('Введите команду с кодом из веб-админки: /admin КОД');
+            return;
+        }
+
+        const admin = await this.adminNotificationsService.linkChatByCode(code, 'max', chatId);
+        if (!admin) {
+            await ctx.reply('Код не найден или уже истек. Сгенерируйте новый код в веб-админке.');
+            return;
+        }
+
+        await ctx.reply(`Готово. MAX-уведомления подключены для ${admin.displayName}.`);
     }
 
     private toClientIdentity(ctx: any) {
@@ -463,6 +486,21 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
+        if (mode === 'REGISTER') {
+            const result = await this.clientWorkflow.submitRegistrationPhoto(this.toClientIdentity(ctx), {
+                buffer: await this.downloadMediaBuffer(media),
+                fileName: media.fileName || `${media.messageType}.jpg`,
+            });
+            if (result.status === 'completed') {
+                await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+                await ctx.reply('Анкета заполнена, оператор свяжется с вами в ближайшее время.');
+                await this.sendMainMenu(ctx);
+                return;
+            }
+            await ctx.reply(result.nextField ? `${result.nextField}:` : 'Фото принято.');
+            return;
+        }
+
         if (mode === 'IDLE') {
             const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
             if (activeTicket?.text) {
@@ -491,6 +529,17 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             `Оператор отправил вложение: ${media.fileName || media.externalUrl || media.messageType}`,
             { inlineKeyboard: disconnectFromKeyboard(chatId), platform: 'max' },
         );
+    }
+
+    private async downloadMediaBuffer(media: TicketMediaInput) {
+        if (!media.externalUrl) {
+            throw new Error('Media URL was not resolved');
+        }
+        const response = await fetch(media.externalUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download media: ${response.status}`);
+        }
+        return Buffer.from(await response.arrayBuffer());
     }
 
     private async connectToClient(ctx: any, clientChatId?: string) {

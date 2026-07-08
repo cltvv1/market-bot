@@ -7,9 +7,10 @@ import { UsersModule } from 'src/users/users.module';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { ClientModule } from 'src/client/client.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
+import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
 
 @Module({
-    imports: [RegistrationsModule, TicketsModule, UsersModule, MessengerModule, ClientModule, ServiceRequestsModule],
+    imports: [RegistrationsModule, TicketsModule, UsersModule, MessengerModule, ClientModule, ServiceRequestsModule, AdminNotificationsModule],
     providers: [MaxUpdate, UserContextService],
 })
 export class MaxModule { }

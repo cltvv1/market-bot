@@ -3,7 +3,6 @@ import { Context, Markup } from 'telegraf';
 import { removeKeyboard } from 'telegraf/markup';
 import { TG_TEXTS } from 'src/texts/telegram.texts';
 import { UsersService } from 'src/users/users.service';
-import { adminButtons } from './keyboards/admin.keyboard';
 import { TicketsService } from 'src/tickets/tickets.service';
 import { creditsButtons } from './keyboards/credits.keyboard';
 import { serviceButtons } from './keyboards/service.keyboard';
@@ -25,6 +24,7 @@ import { ClientWorkflowService } from 'src/client/client-workflow.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
 import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
+import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 
 
 @Update()
@@ -36,6 +36,7 @@ export class TelegramUpdate {
         private readonly usersService: UsersService,
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly adminNotificationsService: AdminNotificationsService,
         private readonly registerHandler: RegisterTextHandler,
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
@@ -86,6 +87,20 @@ export class TelegramUpdate {
             await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
             await this.ctxService.set(chatId, { mode: 'IDLE' });
             await ctx.reply('Вложение принято, оператор ответит в ближайшее время.', mainMenuButton());
+            return;
+        }
+
+        if (mode === 'REGISTER') {
+            const result = await this.clientWorkflow.submitRegistrationPhoto(this.toClientIdentity(ctx), {
+                buffer: await this.downloadMediaBuffer(media),
+                fileName: media.fileName || `${media.messageType}.jpg`,
+            });
+            if (result.status === 'completed') {
+                await ctx.reply(TG_TEXTS.REG_FILLED, { parse_mode: 'HTML', ...mainMenuButton() });
+                await this.ctxService.set(chatId, { mode: 'IDLE' });
+                return;
+            }
+            await ctx.reply(result.nextField ? `${result.nextField}:` : 'Фото принято.');
             return;
         }
 
@@ -202,19 +217,11 @@ export class TelegramUpdate {
         const chatId = ctx.chat?.id;
         if (!chatId) return;
 
-        const user = await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
-
-        if (user.isAdmin) {
-            await ctx.reply(
-                'Админское меню:',
-                adminButtons(),
-            );
-        } else {
-            await ctx.reply(
-                'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
-                menuButtons(),
-            );
-        }
+        await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
+        await ctx.reply(
+            'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
+            menuButtons(),
+        );
 
         if (ctx.message?.message_id) {
             await ctx.deleteMessage(ctx.message.message_id).catch(() => { });
@@ -409,20 +416,12 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-            const user = await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
+        await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
         try {
             await ctx.deleteMessage(ctx.message?.message_id)
         } catch {
             return
         } finally {
-            if (user.isAdmin) {
-                await ctx.reply(
-                    'Админское меню:',
-                    adminButtons()
-                );
-                return
-            }
-
             await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
         }
     }
@@ -557,6 +556,17 @@ export class TelegramUpdate {
         await this.replyServiceRequestStep(ctx, result);
     }
 
+    private async downloadMediaBuffer(media: TicketMediaInput) {
+        if (!media.externalUrl) {
+            throw new Error('Media URL was not resolved');
+        }
+        const response = await fetch(media.externalUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download media: ${response.status}`);
+        }
+        return Buffer.from(await response.arrayBuffer());
+    }
+
     private async replyServiceRequestStep(ctx: Context, result: ReturnType<ServiceRequestsService['present']>) {
         if (result.nextStep) {
             if (result.nextStep.options?.length) {
@@ -604,6 +614,11 @@ export class TelegramUpdate {
         const context = await this.ctxService.get(chatId);
 
         if (msgText) {
+            if (msgText.trim().startsWith('/admin')) {
+                await this.handleAdminBindCommand(ctx, msgText);
+                return;
+            }
+
             if (context.mode === 'IDLE') {
                 const activeTicket = await this.ticketService.getActiveTicket(chatId);
                 if (activeTicket?.text) {
@@ -618,6 +633,23 @@ export class TelegramUpdate {
         }
 
         await this.handleMedia(ctx, context.mode, String(chatId));
+    }
+
+    private async handleAdminBindCommand(ctx: Context, text: string) {
+        const chatId = String(ctx.chat?.id);
+        const code = text.trim().split(/\s+/)[1];
+        if (!chatId || !code) {
+            await ctx.reply('Введите команду с кодом из веб-админки: /admin КОД');
+            return;
+        }
+
+        const admin = await this.adminNotificationsService.linkChatByCode(code, 'telegram', chatId);
+        if (!admin) {
+            await ctx.reply('Код не найден или уже истек. Сгенерируйте новый код в веб-админке.');
+            return;
+        }
+
+        await ctx.reply(`Готово. Telegram-уведомления подключены для ${admin.displayName}.`);
     }
 
     private isSimpleServiceRequestCode(value: string): value is SimpleServiceRequestCode {

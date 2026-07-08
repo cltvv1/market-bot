@@ -67,6 +67,19 @@ export class ClientWorkflowService {
     async submitRegistrationAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
 
+        const active = await this.registrationsService.getNotFilledReg(input.chatId, input.platform);
+        if (active) {
+            const field = await this.registrationsService.getFieldNameByStep(active.currentStep);
+            if (field === 'equipmentPhoto') {
+                return {
+                    status: 'continued',
+                    message: 'Equipment photo is required.',
+                    nextField: await this.registrationsService.getFieldTextByStep(active.currentStep),
+                    data: active,
+                };
+            }
+        }
+
         const registration = await this.registrationsService.saveFieldValue(input.chatId, value, input.platform);
         if (!registration) {
             return {
@@ -143,6 +156,37 @@ export class ClientWorkflowService {
                 : 'Unfinished service request found.',
             nextField,
             data: result.request,
+        };
+    }
+
+    async submitRegistrationPhoto(input: ClientIdentity, file: { buffer: Buffer; fileName?: string }): Promise<ClientFlowResult> {
+        await this.resolveClientContext(input);
+
+        const registration = await this.registrationsService.saveEquipmentPhoto(input.chatId, file, input.platform);
+        if (!registration) {
+            return {
+                status: 'not_found',
+                message: 'Registration request was not found.',
+            };
+        }
+
+        const nextField = await this.registrationsService.getFieldTextByStep(registration.currentStep);
+        if (nextField) {
+            return {
+                status: 'continued',
+                message: 'Registration photo saved.',
+                nextField,
+                data: registration,
+            };
+        }
+
+        const filePath = await this.registrationsService.finishReg(registration);
+        await this.registrationsService.notifyAdminsAboutNewReg(registration, filePath);
+
+        return {
+            status: 'completed',
+            message: 'Registration request completed.',
+            data: registration,
         };
     }
 
