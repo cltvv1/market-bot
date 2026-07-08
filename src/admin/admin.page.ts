@@ -38,6 +38,7 @@ export const adminPageHtml = `<!doctype html>
     .title { font-weight:700; overflow-wrap:anywhere; }
     .meta { color:var(--muted); font-size:13px; margin-top:4px; overflow-wrap:anywhere; }
     .fields { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px 18px; }
+    .fields.single-column { grid-template-columns:1fr; }
     .field span { display:block; color:var(--muted); font-size:12px; }
     .field, .field b { min-width:0; max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
     .field b { display:block; font-weight:400; }
@@ -65,14 +66,26 @@ export const adminPageHtml = `<!doctype html>
     .ticket-main-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; padding:14px 16px; border-bottom:1px solid var(--line); }
     .ticket-main-title { font-weight:700; overflow-wrap:anywhere; }
     .ticket-main-subtitle { color:var(--muted); font-size:13px; margin-top:4px; overflow-wrap:anywhere; }
-    .ticket-main-body { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:12px; }
+    .ticket-main-body { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; padding:12px; overflow:auto; }
     .detail-layout { flex:1 1 auto; min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:12px; }
     .detail-primary { min-width:0; min-height:0; display:flex; flex-direction:column; }
+    .registration-detail { display:block; padding-bottom:16px; }
+    .registration-detail .chat { display:block; flex:0 0 auto; min-height:auto; }
     .context-card { min-width:0; overflow:auto; border-left:1px solid var(--line); padding-left:12px; }
     .context-block { border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px; background:#fbfcfe; }
     .context-block h3 { margin:0 0 8px; font-size:15px; }
     .context-line { display:grid; gap:2px; margin-top:8px; overflow-wrap:anywhere; }
     .context-line span { color:var(--muted); font-size:12px; }
+    .media-preview { margin-top:12px; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fbfcfe; }
+    .media-preview-head { display:flex; justify-content:space-between; gap:8px; align-items:center; padding:10px 12px; border-bottom:1px solid var(--line); font-weight:700; }
+    .media-preview-body { display:none; padding:10px; }
+    .media-preview.open .media-preview-body { display:block; }
+    .media-preview img { display:block; width:100%; max-height:none; object-fit:contain; border-radius:6px; background:#f8fafc; }
+    .customer-card-panel { display:none; margin-bottom:12px; border:1px solid var(--line); border-radius:8px; padding:12px; background:#fbfcfe; }
+    .customer-card-panel.open { display:block; }
+    .customer-card-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .customer-card-list { display:grid; gap:6px; margin-top:8px; }
+    .customer-card-list .context-line { border-top:1px solid var(--line); padding-top:6px; }
     .status-pill { display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; background:#fff; color:var(--muted); }
     .status-pill.hot { color:#92400e; background:#fffbeb; border-color:#fde68a; }
     .status-pill.done { color:#166534; background:#f0fdf4; border-color:#bbf7d0; }
@@ -82,7 +95,7 @@ export const adminPageHtml = `<!doctype html>
     .ticket-main-body .message { max-width:min(680px, 82%); }
     .empty { color:var(--muted); padding:26px; text-align:center; background:var(--panel); border:1px dashed var(--line); border-radius:8px; }
     .error { color:var(--danger); margin-left:8px; }
-    @media (max-width:900px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields, .composer, .detail-layout { grid-template-columns:1fr; } .context-card { border-left:0; border-top:1px solid var(--line); padding-left:0; padding-top:12px; } .token { width:100%; } .message { max-width:100%; } .ticket-shell { height:auto; min-height:0; flex-direction:column; } .ticket-sidebar { width:100%; max-width:100%; max-height:320px; border-right:0; border-bottom:1px solid var(--line); } .ticket-resizer { display:none; } .ticket-main { min-height:520px; } .ticket-main-body .message { max-width:100%; } }
+    @media (max-width:900px) { header { align-items:flex-start; flex-direction:column; } .stats, .fields, .composer, .detail-layout, .customer-card-grid { grid-template-columns:1fr; } .context-card { border-left:0; border-top:1px solid var(--line); padding-left:0; padding-top:12px; } .token { width:100%; } .message { max-width:100%; } .ticket-shell { height:auto; min-height:0; flex-direction:column; } .ticket-sidebar { width:100%; max-width:100%; max-height:320px; border-right:0; border-bottom:1px solid var(--line); } .ticket-resizer { display:none; } .ticket-main { min-height:520px; } .ticket-main-body .message { max-width:100%; } }
   </style>
 </head>
 <body>
@@ -148,7 +161,7 @@ export const adminPageHtml = `<!doctype html>
     <section id="list" class="grid"></section>
   </main>
   <script>
-    const state = { tab: 'registrations', openRegistrationId: null, openTicketId: null, openServiceRequestId: null, openServiceWorkKey: null, serviceWorkItems: [], admin: null };
+    const state = { tab: 'registrations', openRegistrationId: null, openTicketId: null, openServiceRequestId: null, openServiceWorkKey: null, serviceWorkItems: [], registrationItems: [], admin: null };
     const loginForm = document.querySelector('#loginForm');
     const userPanel = document.querySelector('#userPanel');
     const notifyPanel = document.querySelector('#notifyPanel');
@@ -425,6 +438,7 @@ export const adminPageHtml = `<!doctype html>
         '</button>';
     }
     function renderRegistrationsLayout(items) {
+      state.registrationItems = items;
       if (items.length && (!state.openRegistrationId || !items.some((item) => item.id === state.openRegistrationId))) {
         state.openRegistrationId = items[0].id;
       }
@@ -456,9 +470,11 @@ export const adminPageHtml = `<!doctype html>
     }
     function renderRegistrationDetail(item) {
       return '<div class="ticket-main-head"><div><div class="ticket-main-title">Анкета #' + item.id + ' · ' + esc(item.orgName || 'Без названия') + '</div>' +
-        '<div class="ticket-main-subtitle">' + esc(item.platform) + ' · ' + registrationStatusText(item.status, item.isProcessed) + ' · ' + fmtDate(item.createdAt) + '</div></div></div>' +
-        '<div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary">' +
-          '<div class="fields">' +
+        '<div class="ticket-main-subtitle">' + esc(item.platform) + ' · ' + registrationStatusText(item.status, item.isProcessed) + ' · ' + fmtDate(item.createdAt) + '</div></div>' +
+        '<button onclick="toggleRegistrationCustomerCard(' + item.id + ')">Карточка клиента</button></div>' +
+        '<div class="ticket-main-body"><div class="registration-detail">' +
+          '<div id="customer-card-' + item.id + '" class="customer-card-panel"></div>' +
+          '<div class="fields single-column">' +
             field('Статус', registrationStatusText(item.status, item.isProcessed)) +
             field('Приоритет', registrationPriorityText(item.priority)) +
             field('Организация', item.orgName) +
@@ -480,6 +496,7 @@ export const adminPageHtml = `<!doctype html>
             field('Фото комплекта', item.equipmentPhotoPath ? 'Есть' : '') +
             field('Комплект', item.equipmentKitId ? '#' + item.equipmentKitId : '') +
           '</div>' +
+          renderRegistrationEquipmentPhoto(item) +
           '<div class="chat"><div class="composer">' +
             '<select id="reg-status-' + item.id + '">' + renderRegistrationStatusOptions(item.status, item.isProcessed) + '</select>' +
             '<select id="reg-priority-' + item.id + '">' + renderPriorityOptions(item.priority) + '</select>' +
@@ -487,22 +504,72 @@ export const adminPageHtml = `<!doctype html>
           '</div><div class="composer">' +
             '<input id="reg-kit-' + item.id + '" placeholder="ID комплекта" value="' + esc(item.equipmentKitId || '') + '">' +
             '<button onclick="linkEquipmentKit(' + item.id + ')">Привязать комплект</button>' +
-            (item.equipmentPhotoPath ? '<button onclick="downloadEquipmentPhoto(' + item.id + ')">Фото комплекта</button>' : '') +
             (item.pdfPath ? '<button onclick="downloadPdf(' + item.id + ')">PDF</button>' : '') +
           '</div></div>' +
-        '</div><aside class="context-card">' +
-          '<div class="context-block"><h3>Клиент</h3>' +
-            contextLine('Платформа', item.platform) +
-            contextLine('Chat ID', item.chatId) +
-            contextLine('User ID', item.userId) +
+        '</div></div>';
+    }
+    function renderRegistrationEquipmentPhoto(item) {
+      if (!item.equipmentPhotoPath) return '';
+      const url = '/admin/api/registrations/' + item.id + '/equipment-photo';
+      const label = esc(item.equipmentPhotoName || 'Фото комплекта');
+      return '<div id="equipment-photo-' + item.id + '" class="media-preview">' +
+        '<div class="media-preview-head"><span>Фото комплекта</span><button onclick="toggleEquipmentPhoto(' + item.id + ')">Показать</button></div>' +
+        '<div class="media-preview-body"><img src="' + url + '" alt="' + label + '"><div class="meta">' + label + '</div></div>' +
+        '</div>';
+    }
+    function toggleEquipmentPhoto(id) {
+      const holder = document.querySelector('#equipment-photo-' + id);
+      if (!holder) return;
+      holder.classList.toggle('open');
+      const button = holder.querySelector('button');
+      if (button) button.textContent = holder.classList.contains('open') ? 'Скрыть' : 'Показать';
+    }
+    async function toggleRegistrationCustomerCard(id) {
+      const holder = document.querySelector('#customer-card-' + id);
+      if (!holder) return;
+      if (holder.classList.contains('open')) {
+        holder.classList.remove('open');
+        return;
+      }
+      holder.classList.add('open');
+      if (holder.dataset.loaded === '1') return;
+      holder.innerHTML = '<div class="meta">Загрузка карточки клиента...</div>';
+      const item = state.registrationItems.find((registration) => registration.id === id);
+      if (!item) return;
+      const params = new URLSearchParams();
+      if (item.userId) params.set('userId', item.userId);
+      if (item.organizationId) params.set('organizationId', item.organizationId);
+      if (item.platform) params.set('platform', item.platform);
+      if (item.chatId) params.set('chatId', item.chatId);
+      const data = await api('/admin/api/customer-card?' + params.toString());
+      holder.innerHTML = renderCustomerCardPanel(data);
+      holder.dataset.loaded = '1';
+    }
+    function renderCustomerCardPanel(data) {
+      const user = data.user || {};
+      const registrations = data.registrations || [];
+      const serviceRequests = data.serviceRequests || [];
+      const tickets = data.tickets || [];
+      return '<div class="customer-card-grid">' +
+        '<div class="context-block"><h3>Клиент</h3>' +
+          contextLine('Платформа', user.platform) +
+          contextLine('Chat ID', user.chatId) +
+          contextLine('User ID', user.id) +
+          contextLine('Имя', user.name || user.username) +
+        '</div>' +
+        '<div class="context-block"><h3>Анкеты</h3>' + renderCustomerCardList(registrations, (item) => 'Анкета #' + item.id + ' · ' + registrationStatusText(item.status, item.isProcessed), (item) => fmtDate(item.createdAt)) + '</div>' +
+        '<div class="context-block"><h3>Заявки и вопросы</h3>' +
+          '<div class="customer-card-list">' +
+            serviceRequests.map((item) => '<div class="context-line"><b>Заявка #' + item.id + ' · ' + esc(item.serviceTypeTitle || item.serviceTypeCode) + '</b><span>' + esc(statusText(item.status)) + ' · ' + fmtDate(item.createdAt) + '</span></div>').join('') +
+            tickets.map((item) => '<div class="context-line"><b>Вопрос #' + item.id + '</b><span>' + esc(item.isAnswered ? 'Закрыт' : 'Открыт') + ' · ' + fmtDate(item.createdAt) + '</span></div>').join('') +
+            (!serviceRequests.length && !tickets.length ? '<div class="meta">Обращений пока нет</div>' : '') +
           '</div>' +
-          '<div class="context-block"><h3>Системные данные</h3>' +
-            contextLine('Создана', fmtDate(item.createdAt)) +
-            contextLine('Обновлена', fmtDate(item.updatedAt)) +
-            contextLine('Шаг', item.currentStep) +
-            contextLine('PDF', item.pdfPath ? 'Есть' : '') +
-          '</div>' +
-        '</aside></div></div>';
+        '</div>' +
+      '</div>';
+    }
+    function renderCustomerCardList(items, titleFn, metaFn) {
+      if (!items.length) return '<div class="meta">Нет данных</div>';
+      return '<div class="customer-card-list">' + items.map((item) => '<div class="context-line"><b>' + esc(titleFn(item)) + '</b><span>' + esc(metaFn(item)) + '</span></div>').join('') + '</div>';
     }
     function selectRegistration(id) {
       state.openRegistrationId = id;

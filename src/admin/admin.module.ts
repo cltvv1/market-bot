@@ -11,6 +11,7 @@ import { OfdSubscriptionEntity } from 'src/assets/entities/ofd-subscription.enti
 import { EquipmentKitEntity } from 'src/assets/entities/equipment-kit.entity';
 import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-activity.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
+import { ServiceRequestEntity } from 'src/service-requests/entities/service-request.entity';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { AdminSessionEntity } from './entities/admin-session.entity';
@@ -33,6 +34,7 @@ import { AdminService } from './admin.service';
             EquipmentKitEntity,
             CustomerActivityEntity,
             UserEntity,
+            ServiceRequestEntity,
             AdminUserEntity,
             AdminSessionEntity,
         ]),

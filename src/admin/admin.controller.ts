@@ -150,6 +150,23 @@ export class AdminController {
         });
     }
 
+    @Get('api/customer-card')
+    async getCustomerCard(
+        @Req() request: Request,
+        @Query('userId') userId?: string,
+        @Query('organizationId') organizationId?: string,
+        @Query('platform') platform?: UserPlatform,
+        @Query('chatId') chatId?: string,
+    ) {
+        await this.assertAuthorized(request);
+        return this.adminService.getCustomerCard({
+            userId: userId ? Number(userId) : undefined,
+            organizationId: organizationId ? Number(organizationId) : undefined,
+            platform: this.normalizePlatform(platform),
+            chatId,
+        });
+    }
+
     @Post('api/service-requests/:id/invoice')
     async attachServiceRequestInvoice(@Req() request: Request, @Param('id') id: string, @Body('invoiceFileId') invoiceFileId?: string, @Body('invoiceFileName') invoiceFileName?: string) {
         const actor = await this.assertAuthorized(request);

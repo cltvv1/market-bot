@@ -20,6 +20,7 @@ import { UserEntity } from 'src/users/entities/user.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import { ServiceRequestEntity } from 'src/service-requests/entities/service-request.entity';
 import type { ServiceRequestPriority, ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { TicketMessageType } from 'src/tickets/entities/ticket-message.entity';
@@ -53,6 +54,8 @@ export class AdminService {
         private readonly activitiesRepo: Repository<CustomerActivityEntity>,
         @InjectRepository(UserEntity)
         private readonly usersRepo: Repository<UserEntity>,
+        @InjectRepository(ServiceRequestEntity)
+        private readonly serviceRequestsRepo: Repository<ServiceRequestEntity>,
         @InjectRepository(AdminUserEntity)
         private readonly adminUsersRepo: Repository<AdminUserEntity>,
         @InjectRepository(AdminSessionEntity)
@@ -325,6 +328,40 @@ export class AdminService {
         };
     }
 
+    async getCustomerCard(input: { userId?: number; organizationId?: number; platform?: UserPlatform; chatId?: string }) {
+        const context = await this.getCustomerContext(input);
+        const user = context.user;
+        const relationWhere = this.buildCustomerRelationWhere({
+            userId: input.userId || user?.id,
+            platform: input.platform || user?.platform,
+            chatId: input.chatId || user?.chatId,
+        });
+
+        const [registrations, serviceRequests, tickets] = await Promise.all([
+            relationWhere.length ? this.registrationsRepo.find({
+                where: relationWhere,
+                order: { createdAt: 'DESC' },
+                take: 50,
+            }) : Promise.resolve([]),
+            relationWhere.length ? this.serviceRequestsRepo.find({
+                where: relationWhere,
+                order: { createdAt: 'DESC' },
+                take: 50,
+            }) : Promise.resolve([]),
+            relationWhere.length ? this.ticketsRepo.find({
+                where: relationWhere.map((where) => ({
+                    ...(where.userId ? { userId: where.userId } : {}),
+                    ...(where.platform ? { platform: where.platform } : {}),
+                    ...(where.chatId ? { userChatId: where.chatId } : {}),
+                })),
+                order: { createdAt: 'DESC' },
+                take: 50,
+            }) : Promise.resolve([]),
+        ]);
+
+        return { ...context, registrations, serviceRequests, tickets };
+    }
+
     async getOrganizations() {
         const organizations = await this.organizationsRepo.find({
             order: { createdAt: 'DESC' },
@@ -589,5 +626,12 @@ export class AdminService {
         ];
 
         return where.length ? where : { id: -1 };
+    }
+
+    private buildCustomerRelationWhere(input: { userId?: number; platform?: UserPlatform; chatId?: string }) {
+        return [
+            ...(input.userId ? [{ userId: input.userId }] : []),
+            ...(input.platform && input.chatId ? [{ platform: input.platform, chatId: input.chatId }] : []),
+        ];
     }
 }
