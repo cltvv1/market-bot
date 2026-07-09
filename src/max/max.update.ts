@@ -100,6 +100,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.startAtolConsent(ctx);
         });
 
+        this.bot.action('cancelAtolConsent', async (ctx) => {
+            await ctx.answerOnCallback({ notification: 'Подача согласия отменена' });
+            await this.cancelAtolConsent(ctx);
+        });
+
         this.bot.action(/^serviceRequestAnswer:\d+:.+/, async (ctx) => {
             const [, requestId, value] = ctx.callback?.payload?.split(':') ?? [];
             await ctx.answerOnCallback({ notification: 'Ответ сохранен' });
@@ -411,7 +416,24 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             );
         }
 
-        await ctx.reply('Теперь распечатайте эту форму, подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.');
+        await ctx.reply(
+            'Теперь распечатайте эту форму и подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.',
+            {
+                attachments: [
+                    Keyboard.inlineKeyboard([
+                        [Keyboard.button.callback('Отменить подачу согласия', 'cancelAtolConsent')],
+                    ]),
+                ],
+            },
+        );
+    }
+
+    private async cancelAtolConsent(ctx: any) {
+        const chatId = String(ctx.chatId);
+        await this.clientWorkflow.cancelAtolConsent(this.toClientIdentity(ctx));
+        await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+        await ctx.reply('Подача согласия на доступ АТОЛ отменена. Черновик удален.');
+        await this.sendMainMenu(ctx);
     }
 
     private async handleServiceRequestText(ctx: any, text: string) {

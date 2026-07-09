@@ -441,6 +441,23 @@ export class ClientWorkflowService {
         };
     }
 
+    async cancelAtolConsent(input: ClientIdentity): Promise<ClientFlowResult> {
+        await this.resolveClientContext(input);
+        const request = await this.serviceRequestsService.cancelAtolConsentDraft(await this.resolveServiceRequestIdentity(input));
+        if (!request) {
+            return {
+                status: 'not_found',
+                message: 'ATOL consent draft was not found.',
+            };
+        }
+
+        return {
+            status: 'completed',
+            message: 'ATOL consent draft cancelled.',
+            data: request,
+        };
+    }
+
     private async resolveServiceRequestIdentity(input: ClientIdentity) {
         await this.resolveClientContext(input);
         return {

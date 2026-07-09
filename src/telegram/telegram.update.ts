@@ -426,6 +426,18 @@ export class TelegramUpdate {
         await ctx.reply('Согласие уже сформировано. Отправьте фото или скан подписанного документа.');
     }
 
+    @Action('cancelAtolConsent')
+    async onCancelAtolConsent(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        await ctx.answerCbQuery('Подача согласия отменена');
+        await this.clientWorkflow.cancelAtolConsent(this.toClientIdentity(ctx));
+        await this.ctxService.set(chatId, { mode: 'IDLE' });
+        await ctx.reply('Подача согласия на доступ АТОЛ отменена. Черновик удален.');
+        await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons());
+    }
+
     @Action(/^serviceRequestAnswer:\d+:.+/)
     async onServiceRequestButtonAnswer(@Ctx() ctx: Context) {
         const query = ctx.callbackQuery;
@@ -619,7 +631,10 @@ export class TelegramUpdate {
         }
 
         await ctx.reply(
-            'Теперь распечатайте эту форму, подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.',
+            'Теперь распечатайте эту форму и подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.',
+            Markup.inlineKeyboard([
+                [Markup.button.callback('Отменить подачу согласия', 'cancelAtolConsent')],
+            ]),
         );
     }
 
