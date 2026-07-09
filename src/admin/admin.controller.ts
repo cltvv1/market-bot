@@ -26,6 +26,7 @@ export class AdminController {
 
     @Get()
     @Header('Content-Type', 'text/html; charset=utf-8')
+    @Header('Cache-Control', 'no-store')
     getPage() {
         return adminPageHtml;
     }
@@ -113,6 +114,12 @@ export class AdminController {
     ) {
         await this.assertAuthorized(request);
         return this.adminService.getRegistrations(this.normalizeStatus(status), this.normalizePlatform(platform), this.normalizeRegistrationPriority(priority));
+    }
+
+    @Get('api/registrations/:id')
+    async getRegistration(@Req() request: Request, @Param('id') id: string) {
+        await this.assertAuthorized(request);
+        return this.adminService.getRegistration(Number(id));
     }
 
     @Get('api/tickets')
@@ -209,6 +216,20 @@ export class AdminController {
         return response.download(invoicePath, details.request.invoiceFileName || `invoice_${id}.pdf`);
     }
 
+    @Get('api/service-requests/:id/signed-consent')
+    async downloadServiceRequestSignedConsent(@Req() request: Request, @Param('id') id: string, @Query('token') token: string, @Res() response: Response) {
+        await this.assertAuthorized(request, token);
+        const details = await this.adminService.getServiceRequest(Number(id));
+        const answers = details.request.answers || {};
+        const filePath = typeof answers.signedConsentPath === 'string' ? answers.signedConsentPath : '';
+        const fileName = typeof answers.signedConsentName === 'string' ? answers.signedConsentName : `signed_consent_${id}`;
+        if (!filePath || !fs.existsSync(filePath)) {
+            throw new BadRequestException('Signed consent file not found');
+        }
+
+        return response.download(filePath, fileName);
+    }
+
     @Post('api/service-requests/:id/payment-received')
     async markServiceRequestPaymentReceived(@Req() request: Request, @Param('id') id: string) {
         const actor = await this.assertAuthorized(request);
@@ -269,6 +290,12 @@ export class AdminController {
     async getEquipmentKits(@Req() request: Request, @Query('q') query?: string) {
         await this.assertAuthorized(request);
         return this.adminService.getEquipmentKits(query);
+    }
+
+    @Get('api/equipment-kits/free')
+    async getFreeEquipmentKits(@Req() request: Request, @Query('q') query?: string) {
+        await this.assertAuthorized(request);
+        return this.adminService.getFreeEquipmentKits(query);
     }
 
     @Post('api/equipment-kits')
@@ -501,6 +528,7 @@ export class AdminController {
             status === 'active' ||
             status === 'draft' ||
             status === 'price_confirmed' ||
+            status === 'review_required' ||
             status === 'invoice_required' ||
             status === 'waiting_payment' ||
             status === 'paid' ||

@@ -70,6 +70,9 @@ export class TelegramUpdate {
             case 'SERVICE_REQUEST':
                 return this.handleServiceRequestText(ctx, text);
 
+            case 'ATOL_CONSENT':
+                return this.handleAtolConsentText(ctx, text);
+
             case 'OPERATOR':
                 return this.operatorHandler.handle(ctx);
         }
@@ -101,6 +104,22 @@ export class TelegramUpdate {
                 return;
             }
             await ctx.reply(result.nextField ? `${result.nextField}:` : 'Фото принято.');
+            return;
+        }
+
+        if (mode === 'ATOL_CONSENT') {
+            const result = await this.clientWorkflow.submitAtolConsentSignedFile(this.toClientIdentity(ctx), {
+                buffer: await this.downloadMediaBuffer(media),
+                fileName: media.fileName || `${media.messageType}.jpg`,
+            });
+            if (result.status === 'not_found') {
+                await ctx.reply('Сначала сформируйте согласие через меню сервиса.', mainMenuButton());
+                await this.ctxService.set(chatId, { mode: 'IDLE' });
+                return;
+            }
+
+            await ctx.reply('Спасибо, подписанное согласие получено. Оператор проверит документ и продолжит работу.', mainMenuButton());
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
             return;
         }
 
@@ -387,6 +406,26 @@ export class TelegramUpdate {
         await this.replyServiceRequestStep(ctx, result);
     }
 
+    @Action('atolConsent')
+    async onAtolConsent(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const result = await this.clientWorkflow.startAtolConsent(this.toClientIdentity(ctx));
+        await this.ctxService.set(chatId, { mode: 'ATOL_CONSENT' });
+
+        await ctx.reply(result.status === 'started'
+            ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.'
+            : 'Нашел незаполненное согласие. Продолжим с места остановки.');
+
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
+            return;
+        }
+
+        await ctx.reply('Согласие уже сформировано. Отправьте фото или скан подписанного документа.');
+    }
+
     @Action(/^serviceRequestAnswer:\d+:.+/)
     async onServiceRequestButtonAnswer(@Ctx() ctx: Context) {
         const query = ctx.callbackQuery;
@@ -554,6 +593,34 @@ export class TelegramUpdate {
 
         const result = await this.serviceRequestsService.answer(this.toClientIdentity(ctx), context.serviceRequestId, text);
         await this.replyServiceRequestStep(ctx, result);
+    }
+
+    private async handleAtolConsentText(ctx: Context, text: string) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const result = await this.clientWorkflow.submitAtolConsentAnswer(this.toClientIdentity(ctx), text);
+        if (result.status === 'not_found') {
+            await ctx.reply('Согласие не найдено. Начните оформление заново из меню сервиса.', mainMenuButton());
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
+            return;
+        }
+
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
+            return;
+        }
+
+        if (result.filePath && fs.existsSync(result.filePath)) {
+            await ctx.replyWithDocument({
+                source: fs.createReadStream(result.filePath),
+                filename: 'atol_consent.pdf',
+            });
+        }
+
+        await ctx.reply(
+            'Теперь распечатайте эту форму, подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.',
+        );
     }
 
     private async downloadMediaBuffer(media: TicketMediaInput) {

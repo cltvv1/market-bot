@@ -4,6 +4,7 @@ import type { UserPlatform } from 'src/users/entities/user.entity';
 export type ServiceRequestStatus =
     | 'draft'
     | 'price_confirmed'
+    | 'review_required'
     | 'invoice_required'
     | 'waiting_payment'
     | 'paid'

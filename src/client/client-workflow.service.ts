@@ -390,6 +390,57 @@ export class ClientWorkflowService {
         return { user, organizationId: input.organizationId };
     }
 
+    async startAtolConsent(input: ClientIdentity): Promise<ClientFlowResult> {
+        await this.resolveClientContext(input);
+        const result = await this.serviceRequestsService.startAtolConsent(await this.resolveServiceRequestIdentity(input));
+
+        return {
+            status: result.request.currentStep > 0 ? 'continued' : 'started',
+            message: result.request.currentStep > 0
+                ? 'Unfinished ATOL consent found.'
+                : 'ATOL consent draft created.',
+            nextField: result.nextStep?.label,
+            data: result.request,
+            filePath: result.request.answers?.generatedPdfPath ? String(result.request.answers.generatedPdfPath) : undefined,
+        };
+    }
+
+    async submitAtolConsentAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
+        await this.resolveClientContext(input);
+        const result = await this.serviceRequestsService.answerAtolConsent(await this.resolveServiceRequestIdentity(input), value);
+        if (!result) {
+            return {
+                status: 'not_found',
+                message: 'ATOL consent draft was not found.',
+            };
+        }
+
+        return {
+            status: result.nextStep ? 'continued' : 'completed',
+            message: result.nextStep ? 'ATOL consent answer saved.' : 'ATOL consent PDF generated.',
+            nextField: result.nextStep?.label,
+            data: result.request,
+            filePath: result.request.answers?.generatedPdfPath ? String(result.request.answers.generatedPdfPath) : undefined,
+        };
+    }
+
+    async submitAtolConsentSignedFile(input: ClientIdentity, file: { buffer: Buffer; fileName?: string }): Promise<ClientFlowResult> {
+        await this.resolveClientContext(input);
+        const result = await this.serviceRequestsService.attachAtolConsentSignedFile(await this.resolveServiceRequestIdentity(input), file);
+        if (!result) {
+            return {
+                status: 'not_found',
+                message: 'Generated ATOL consent was not found.',
+            };
+        }
+
+        return {
+            status: 'completed',
+            message: 'Signed ATOL consent received.',
+            data: result.request,
+        };
+    }
+
     private async resolveServiceRequestIdentity(input: ClientIdentity) {
         await this.resolveClientContext(input);
         return {

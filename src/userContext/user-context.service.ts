@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 
-export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR' | 'SERVICE_REQUEST';
+export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR' | 'SERVICE_REQUEST' | 'ATOL_CONSENT';
 
 interface UserContext {
     mode: UserMode;

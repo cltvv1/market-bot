@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan } from 'typeorm';
+import { IsNull, Not, In } from 'typeorm';
 import { Repository } from 'typeorm';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 import type { RegistrationRequestPriority, RegistrationRequestStatus } from 'src/registrations/entities/registration.entity';
@@ -359,7 +360,12 @@ export class AdminService {
             }) : Promise.resolve([]),
         ]);
 
-        return { ...context, registrations, serviceRequests, tickets };
+        return {
+            ...context,
+            registrations,
+            serviceRequests,
+            tickets: tickets.filter((ticket) => ticket.text?.trim()),
+        };
     }
 
     async getOrganizations() {
@@ -381,6 +387,27 @@ export class AdminService {
 
     getEquipmentKits(query?: string) {
         return this.equipmentKitsRepo.find({
+            order: { createdAt: 'DESC' },
+            take: 200,
+        }).then((items) => {
+            const normalized = query?.trim().toLowerCase();
+            if (!normalized) return items;
+            return items.filter((item) => [
+                item.cashRegisterModel,
+                item.cashRegisterSerial,
+                item.fiscalDriveSerial,
+                item.ofdActivationCode,
+                item.marketplaceOrderId,
+            ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized)));
+        });
+    }
+
+    getFreeEquipmentKits(query?: string) {
+        return this.equipmentKitsRepo.find({
+            where: {
+                registrationRequestId: IsNull(),
+                status: Not(In(['linked', 'registered', 'archived'])),
+            },
             order: { createdAt: 'DESC' },
             take: 200,
         }).then((items) => {

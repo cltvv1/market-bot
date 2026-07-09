@@ -10,7 +10,10 @@ export type CustomerActivityType =
     | 'service_request_payment_received'
     | 'service_request_visit_scheduled'
     | 'service_request_completed'
-    | 'service_request_cancelled';
+    | 'service_request_cancelled'
+    | 'atol_consent_started'
+    | 'atol_consent_generated'
+    | 'atol_consent_signed_received';
 
 @Entity('customer_activities')
 export class CustomerActivityEntity {

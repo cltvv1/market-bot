@@ -13,6 +13,7 @@ export interface ClientFlowResult<T = unknown> {
     message: string;
     nextField?: string;
     data?: T;
+    filePath?: string;
 }
 
 export interface StartSimpleServiceRequestInput extends ClientIdentity {

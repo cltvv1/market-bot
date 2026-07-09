@@ -81,11 +81,12 @@ export const adminPageHtml = `<!doctype html>
     .media-preview-body { display:none; padding:10px; }
     .media-preview.open .media-preview-body { display:block; }
     .media-preview img { display:block; width:100%; max-height:none; object-fit:contain; border-radius:6px; background:#f8fafc; }
-    .customer-card-panel { display:none; margin-bottom:12px; border:1px solid var(--line); border-radius:8px; padding:12px; background:#fbfcfe; }
-    .customer-card-panel.open { display:block; }
-    .customer-card-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+    .customer-card-screen { display:grid; gap:12px; }
+    .ticket-customer-card { display:grid; gap:12px; }
+    .customer-card-grid { display:grid; grid-template-columns:280px minmax(0,1fr); gap:12px; align-items:start; }
     .customer-card-list { display:grid; gap:6px; margin-top:8px; }
-    .customer-card-list .context-line { border-top:1px solid var(--line); padding-top:6px; }
+    .customer-card-list button.context-line { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; background:#fff; text-align:left; }
+    .customer-card-list button.context-line:hover { background:#f1f5f9; }
     .status-pill { display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:999px; padding:3px 8px; font-size:12px; background:#fff; color:var(--muted); }
     .status-pill.hot { color:#92400e; background:#fffbeb; border-color:#fde68a; }
     .status-pill.done { color:#166534; background:#f0fdf4; border-color:#bbf7d0; }
@@ -161,7 +162,7 @@ export const adminPageHtml = `<!doctype html>
     <section id="list" class="grid"></section>
   </main>
   <script>
-    const state = { tab: 'registrations', openRegistrationId: null, openTicketId: null, openServiceRequestId: null, openServiceWorkKey: null, serviceWorkItems: [], registrationItems: [], admin: null };
+    const state = { tab: 'registrations', openRegistrationId: null, openTicketId: null, openServiceRequestId: null, openServiceWorkKey: null, serviceWorkItems: [], registrationItems: [], customerRegistrationId: null, focusTicketQuestionId: null, admin: null };
     const loginForm = document.querySelector('#loginForm');
     const userPanel = document.querySelector('#userPanel');
     const notifyPanel = document.querySelector('#notifyPanel');
@@ -169,6 +170,10 @@ export const adminPageHtml = `<!doctype html>
     const notifyRegistrations = document.querySelector('#notifyRegistrations');
     const notifyTickets = document.querySelector('#notifyTickets');
     const notifyServiceRequests = document.querySelector('#notifyServiceRequests');
+    const statusFilter = document.querySelector('#status');
+    const platformFilter = document.querySelector('#platform');
+    const priorityFilter = document.querySelector('#servicePriority');
+    const responsibleFilter = document.querySelector('#serviceResponsible');
     let bindNotice = '';
     const errorEl = document.querySelector('#error');
 
@@ -200,10 +205,10 @@ export const adminPageHtml = `<!doctype html>
     notifyTickets.onchange = saveNotificationSettings;
     notifyServiceRequests.onchange = saveNotificationSettings;
     document.querySelector('#refresh').onclick = () => load();
-    document.querySelector('#status').onchange = () => load();
-    document.querySelector('#platform').onchange = () => load();
-    document.querySelector('#servicePriority').onchange = () => load();
-    document.querySelector('#serviceResponsible').oninput = () => load();
+    statusFilter.onchange = () => load();
+    platformFilter.onchange = () => load();
+    priorityFilter.onchange = () => load();
+    responsibleFilter.oninput = () => load();
     document.querySelectorAll('[data-tab]').forEach((button) => {
       button.onclick = () => {
         state.tab = button.dataset.tab;
@@ -211,6 +216,8 @@ export const adminPageHtml = `<!doctype html>
         state.openTicketId = null;
         state.openServiceRequestId = null;
         state.openServiceWorkKey = null;
+        state.customerRegistrationId = null;
+        state.focusTicketQuestionId = null;
         state.serviceWorkItems = [];
         document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item === button));
         load();
@@ -288,8 +295,8 @@ export const adminPageHtml = `<!doctype html>
         serviceRequestCount.textContent = summary.activeServiceRequests || 0;
         ticketCount.textContent = summary.openTickets;
         const params = new URLSearchParams({ status: adminStatusForCurrentTab() });
-        if (platform.value) params.set('platform', platform.value);
-        if (state.tab === 'registrations' && servicePriority.value) params.set('priority', servicePriority.value);
+        if (platformFilter.value) params.set('platform', platformFilter.value);
+        if (state.tab === 'registrations' && priorityFilter.value) params.set('priority', priorityFilter.value);
         const items = state.tab === 'service'
           ? await loadServiceWorkItems(params)
           : await api('/admin/api/' + state.tab + '?' + params.toString());
@@ -309,13 +316,13 @@ export const adminPageHtml = `<!doctype html>
           serviceParams.set('status', serviceStatus);
           return api('/admin/api/service-requests?' + serviceParams.toString());
         })).then((groups) => groups.flat());
-      const priorityFilter = document.querySelector('#servicePriority').value;
-      const responsibleFilter = document.querySelector('#serviceResponsible').value.trim().toLowerCase();
+      const selectedPriority = priorityFilter.value;
+      const responsibleText = responsibleFilter.value.trim().toLowerCase();
       const filteredRequests = serviceRequests.filter((item) => {
-        if (priorityFilter && (item.priority || 'normal') !== priorityFilter) return false;
-        if (responsibleFilter) {
+        if (selectedPriority && (item.priority || 'normal') !== selectedPriority) return false;
+        if (responsibleText) {
           const people = [item.responsibleOperatorId, item.executorName].filter(Boolean).join(' ').toLowerCase();
-          if (!people.includes(responsibleFilter)) return false;
+          if (!people.includes(responsibleText)) return false;
         }
         return true;
       });
@@ -342,19 +349,19 @@ export const adminPageHtml = `<!doctype html>
     }
 
     function adminStatusForCurrentTab() {
-      if (status.value === 'all') return 'all';
-      if (status.value === 'closed') return 'processed';
+      if (statusFilter.value === 'all') return 'all';
+      if (statusFilter.value === 'closed') return 'processed';
       if (state.tab === 'registrations') {
-        if (status.value === 'in_work') return 'in_work';
-        if (status.value === 'waiting_payment') return 'all';
+        if (statusFilter.value === 'in_work') return 'in_work';
+        if (statusFilter.value === 'waiting_payment') return 'all';
       }
       return 'new';
     }
     function serviceStatusesForFilter() {
-      if (status.value === 'all') return ['all'];
-      if (status.value === 'waiting_payment') return ['waiting_payment'];
-      if (status.value === 'closed') return ['completed', 'cancelled'];
-      if (status.value === 'in_work') return ['draft', 'price_confirmed', 'invoice_required', 'paid', 'scheduled'];
+      if (statusFilter.value === 'all') return ['all'];
+      if (statusFilter.value === 'waiting_payment') return ['waiting_payment'];
+      if (statusFilter.value === 'closed') return ['completed', 'cancelled'];
+      if (statusFilter.value === 'in_work') return ['draft', 'price_confirmed', 'review_required', 'invoice_required', 'paid', 'scheduled'];
       return ['active'];
     }
 
@@ -371,12 +378,12 @@ export const adminPageHtml = `<!doctype html>
         renderRegistrationsLayout(items);
         return;
       }
-      if (!items.length) {
-        list.innerHTML = '<div class="empty">Ничего не найдено</div>';
-        return;
-      }
       if (state.tab === 'tickets') {
         renderTicketsLayout(items);
+        return;
+      }
+      if (!items.length) {
+        list.innerHTML = '<div class="empty">Ничего не найдено</div>';
         return;
       }
       list.innerHTML = items.map((item) => {
@@ -415,17 +422,17 @@ export const adminPageHtml = `<!doctype html>
         '</button>';
     }
     function renderTicketsLayout(items) {
-      if (!state.openTicketId || !items.some((item) => item.id === state.openTicketId)) {
+      if (items.length && (!state.openTicketId || !items.some((item) => item.id === state.openTicketId))) {
         state.openTicketId = items[0].id;
       }
       const width = Number(localStorage.getItem('ticketSidebarWidth')) || 330;
       list.innerHTML =
         '<section class="ticket-shell" style="--ticket-sidebar-width:' + width + 'px">' +
           '<aside class="ticket-sidebar"><div class="ticket-sidebar-head">Вопросы</div>' +
-            items.map(ticketListRow).join('') +
+            (items.length ? items.map(ticketListRow).join('') : '<div class="empty">Вопросов нет</div>') +
           '</aside>' +
           '<div class="ticket-resizer" onmousedown="startTicketResize(event)" title="Изменить ширину списка"></div>' +
-          '<section id="ticket-detail" class="ticket-main"><div class="ticket-main-body"><div class="empty">Выберите вопрос слева</div></div></section>' +
+          '<section id="ticket-detail" class="ticket-main"><div class="ticket-main-body"><div class="empty">' + (state.openTicketId ? 'Загрузка вопроса...' : 'Нет вопросов по выбранным фильтрам') + '</div></div></section>' +
         '</section>';
     }
     function ticketListRow(item) {
@@ -454,6 +461,7 @@ export const adminPageHtml = `<!doctype html>
             (selected ? renderRegistrationDetail(selected) : '<div class="ticket-main-body"><div class="empty">Нет анкет по выбранным фильтрам</div></div>') +
           '</section>' +
         '</section>';
+      if (selected) loadFreeEquipmentKitOptions(selected.id, selected.equipmentKitId);
     }
     function registrationListRow(item) {
       const title = item.orgName || item.innKpp || item.phoneToCall || item.phone || ('Анкета #' + item.id);
@@ -471,9 +479,8 @@ export const adminPageHtml = `<!doctype html>
     function renderRegistrationDetail(item) {
       return '<div class="ticket-main-head"><div><div class="ticket-main-title">Анкета #' + item.id + ' · ' + esc(item.orgName || 'Без названия') + '</div>' +
         '<div class="ticket-main-subtitle">' + esc(item.platform) + ' · ' + registrationStatusText(item.status, item.isProcessed) + ' · ' + fmtDate(item.createdAt) + '</div></div>' +
-        '<button onclick="toggleRegistrationCustomerCard(' + item.id + ')">Карточка клиента</button></div>' +
+        '<button onclick="openRegistrationCustomerCard(' + item.id + ')">Карточка клиента</button></div>' +
         '<div class="ticket-main-body"><div class="registration-detail">' +
-          '<div id="customer-card-' + item.id + '" class="customer-card-panel"></div>' +
           '<div class="fields single-column">' +
             field('Статус', registrationStatusText(item.status, item.isProcessed)) +
             field('Приоритет', registrationPriorityText(item.priority)) +
@@ -502,7 +509,7 @@ export const adminPageHtml = `<!doctype html>
             '<select id="reg-priority-' + item.id + '">' + renderPriorityOptions(item.priority) + '</select>' +
             '<button class="primary" onclick="saveRegistrationOperatorState(' + item.id + ')">Сохранить</button>' +
           '</div><div class="composer">' +
-            '<input id="reg-kit-' + item.id + '" placeholder="ID комплекта" value="' + esc(item.equipmentKitId || '') + '">' +
+            '<select id="reg-kit-' + item.id + '"' + (item.equipmentKitId ? ' disabled' : '') + '><option value="">' + (item.equipmentKitId ? 'Комплект уже привязан' : 'Загрузка свободных комплектов...') + '</option></select>' +
             '<button onclick="linkEquipmentKit(' + item.id + ')">Привязать комплект</button>' +
             (item.pdfPath ? '<button onclick="downloadPdf(' + item.id + ')">PDF</button>' : '') +
           '</div></div>' +
@@ -524,16 +531,11 @@ export const adminPageHtml = `<!doctype html>
       const button = holder.querySelector('button');
       if (button) button.textContent = holder.classList.contains('open') ? 'Скрыть' : 'Показать';
     }
-    async function toggleRegistrationCustomerCard(id) {
-      const holder = document.querySelector('#customer-card-' + id);
+    async function openRegistrationCustomerCard(id) {
+      const holder = document.querySelector('#registration-detail');
       if (!holder) return;
-      if (holder.classList.contains('open')) {
-        holder.classList.remove('open');
-        return;
-      }
-      holder.classList.add('open');
-      if (holder.dataset.loaded === '1') return;
-      holder.innerHTML = '<div class="meta">Загрузка карточки клиента...</div>';
+      state.customerRegistrationId = id;
+      holder.innerHTML = '<div class="ticket-main-body"><div class="empty">Загрузка карточки клиента...</div></div>';
       const item = state.registrationItems.find((registration) => registration.id === id);
       if (!item) return;
       const params = new URLSearchParams();
@@ -542,37 +544,91 @@ export const adminPageHtml = `<!doctype html>
       if (item.platform) params.set('platform', item.platform);
       if (item.chatId) params.set('chatId', item.chatId);
       const data = await api('/admin/api/customer-card?' + params.toString());
-      holder.innerHTML = renderCustomerCardPanel(data);
-      holder.dataset.loaded = '1';
+      holder.innerHTML = renderCustomerCardScreen(data, id);
     }
-    function renderCustomerCardPanel(data) {
+    function renderCustomerCardScreen(data, sourceRegistrationId) {
       const user = data.user || {};
       const registrations = data.registrations || [];
       const serviceRequests = data.serviceRequests || [];
       const tickets = data.tickets || [];
-      return '<div class="customer-card-grid">' +
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Карточка клиента</div><div class="ticket-main-subtitle">' + esc(user.platform || '') + ' · ' + esc(user.chatId || '') + '</div></div>' +
+        '<button onclick="closeRegistrationCustomerCard(' + sourceRegistrationId + ')">Закрыть</button></div>' +
+        '<div class="ticket-main-body"><div class="customer-card-screen"><div class="customer-card-grid">' +
         '<div class="context-block"><h3>Клиент</h3>' +
           contextLine('Платформа', user.platform) +
           contextLine('Chat ID', user.chatId) +
           contextLine('User ID', user.id) +
           contextLine('Имя', user.name || user.username) +
         '</div>' +
-        '<div class="context-block"><h3>Анкеты</h3>' + renderCustomerCardList(registrations, (item) => 'Анкета #' + item.id + ' · ' + registrationStatusText(item.status, item.isProcessed), (item) => fmtDate(item.createdAt)) + '</div>' +
-        '<div class="context-block"><h3>Заявки и вопросы</h3>' +
+        '<div class="context-block"><h3>История обращений</h3>' +
           '<div class="customer-card-list">' +
-            serviceRequests.map((item) => '<div class="context-line"><b>Заявка #' + item.id + ' · ' + esc(item.serviceTypeTitle || item.serviceTypeCode) + '</b><span>' + esc(statusText(item.status)) + ' · ' + fmtDate(item.createdAt) + '</span></div>').join('') +
-            tickets.map((item) => '<div class="context-line"><b>Вопрос #' + item.id + '</b><span>' + esc(item.isAnswered ? 'Закрыт' : 'Открыт') + ' · ' + fmtDate(item.createdAt) + '</span></div>').join('') +
-            (!serviceRequests.length && !tickets.length ? '<div class="meta">Обращений пока нет</div>' : '') +
+            renderCustomerHistoryItems(registrations, serviceRequests, tickets) +
           '</div>' +
         '</div>' +
-      '</div>';
+      '</div></div></div>';
     }
-    function renderCustomerCardList(items, titleFn, metaFn) {
-      if (!items.length) return '<div class="meta">Нет данных</div>';
-      return '<div class="customer-card-list">' + items.map((item) => '<div class="context-line"><b>' + esc(titleFn(item)) + '</b><span>' + esc(metaFn(item)) + '</span></div>').join('') + '</div>';
+    function renderCustomerHistoryItems(registrations, serviceRequests, tickets) {
+      const rows = [
+        ...registrations.map((item) => ({
+          createdAt: item.createdAt,
+          html: '<button class="context-line" onclick="openRegistrationFromCustomer(' + item.id + ')"><b>Анкета #' + item.id + ' · ' + esc(item.orgName || item.innKpp || 'Без названия') + '</b><span>' + registrationStatusText(item.status, item.isProcessed) + ' · ' + fmtDate(item.createdAt) + '</span></button>',
+        })),
+        ...serviceRequests.map((item) => ({
+          createdAt: item.createdAt,
+          html: '<button class="context-line" onclick="openServiceFromCustomer(' + item.id + ')"><b>Сервис #' + item.id + ' · ' + esc(item.serviceTypeTitle || item.serviceTypeCode) + '</b><span>' + esc(statusText(item.status)) + ' · ' + fmtDate(item.createdAt) + '</span></button>',
+        })),
+        ...tickets.map((item) => ({
+          createdAt: item.createdAt,
+          html: '<button class="context-line" onclick="openTicketFromCustomer(' + item.id + ')"><b>Вопрос #' + item.id + ' · ' + esc(item.text || 'Без текста') + '</b><span>' + esc(item.isAnswered ? 'Закрыт' : 'Открыт') + ' · ' + fmtDate(item.createdAt) + '</span></button>',
+        })),
+      ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return rows.length ? rows.map((row) => row.html).join('') : '<div class="meta">Обращений пока нет</div>';
+    }
+    function closeRegistrationCustomerCard(id) {
+      state.customerRegistrationId = null;
+      const item = state.registrationItems.find((registration) => registration.id === id);
+      const holder = document.querySelector('#registration-detail');
+      if (holder && item) {
+        holder.innerHTML = renderRegistrationDetail(item);
+        loadFreeEquipmentKitOptions(item.id, item.equipmentKitId);
+      }
+    }
+    async function openRegistrationFromCustomer(id) {
+      state.customerRegistrationId = null;
+      state.openRegistrationId = id;
+      let item = state.registrationItems.find((registration) => registration.id === id);
+      if (!item) {
+        item = await api('/admin/api/registrations/' + id);
+        if (item && !state.registrationItems.some((registration) => registration.id === id)) {
+          state.registrationItems = [item, ...state.registrationItems];
+        }
+      }
+      document.querySelectorAll('.ticket-row').forEach((row) => row.classList.toggle('active', row.getAttribute('onclick') === 'selectRegistration(' + id + ')'));
+      const holder = document.querySelector('#registration-detail');
+      if (holder && item) {
+        holder.innerHTML = renderRegistrationDetail(item);
+        loadFreeEquipmentKitOptions(item.id, item.equipmentKitId);
+      }
+    }
+    async function openServiceFromCustomer(id) {
+      state.tab = 'service';
+      state.openServiceWorkKey = 'service-request:' + id;
+      statusFilter.value = 'all';
+      document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item.dataset.tab === 'service'));
+      await load();
+    }
+    async function openTicketFromCustomer(id) {
+      state.tab = 'tickets';
+      state.openTicketId = id;
+      state.focusTicketQuestionId = id;
+      statusFilter.value = 'all';
+      platformFilter.value = '';
+      document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item.dataset.tab === 'tickets'));
+      await load();
     }
     function selectRegistration(id) {
       state.openRegistrationId = id;
+      state.customerRegistrationId = null;
       load();
     }
     function renderRegistrationStatusOptions(value, isProcessed) {
@@ -607,7 +663,7 @@ export const adminPageHtml = `<!doctype html>
         '</div><div class="actions">' +
         (item.pdfPath ? '<button onclick="downloadPdf(' + item.id + ')">PDF</button>' : '') +
         (item.equipmentPhotoPath ? '<button onclick="downloadEquipmentPhoto(' + item.id + ')">Фото комплекта</button>' : '') +
-        '<input id="reg-kit-' + item.id + '" placeholder="ID комплекта"><button onclick="linkEquipmentKit(' + item.id + ')">Привязать комплект</button>' +
+        '<select id="reg-kit-' + item.id + '"><option value="">Выберите свободный комплект</option></select><button onclick="linkEquipmentKit(' + item.id + ')">Привязать комплект</button>' +
         (!item.isProcessed ? '<button class="primary" onclick="processItem(\\'registrations\\',' + item.id + ')">Обработано</button>' : '') +
         '</div></article>';
     }
@@ -623,6 +679,7 @@ export const adminPageHtml = `<!doctype html>
       return ({
         draft:'Черновик',
         price_confirmed:'Цена подтверждена',
+        review_required:'Нужно проверить',
         invoice_required:'Нужен счет',
         waiting_payment:'Ожидает оплаты',
         paid:'Оплачено',
@@ -634,7 +691,7 @@ export const adminPageHtml = `<!doctype html>
     function serviceStatusClass(value) {
       if (value === 'completed') return 'done';
       if (value === 'cancelled') return 'bad';
-      if (['invoice_required', 'waiting_payment', 'paid', 'scheduled'].includes(value)) return 'hot';
+      if (['review_required', 'invoice_required', 'waiting_payment', 'paid', 'scheduled'].includes(value)) return 'hot';
       return '';
     }
     function servicePriorityClass(value) {
@@ -753,7 +810,9 @@ export const adminPageHtml = `<!doctype html>
     }
     function renderScenarioServiceDetail(request, events, context) {
       const answers = request.answers || {};
-      const answerFields = Object.entries(answers).map(([key, value]) => field(serviceAnswerLabel(key), value)).join('');
+      const hiddenAnswerKeys = new Set(['generatedPdfPath', 'signedConsentPath']);
+      const answerFields = Object.entries(answers).filter(([key]) => !hiddenAnswerKeys.has(key)).map(([key, value]) => field(serviceAnswerLabel(key), value)).join('');
+      const signedConsentButton = answers.signedConsentPath ? '<div class="actions"><button onclick="downloadSignedConsent(' + request.id + ')">Скачать подписанное согласие</button></div>' : '';
       return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сервисная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div></div>' +
         '<div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary"><div class="fields">' +
             field('Статус', statusText(request.status)) +
@@ -762,7 +821,7 @@ export const adminPageHtml = `<!doctype html>
             field('Исполнитель', request.executorName) +
             field('Стоимость', request.calculatedPrice ? request.calculatedPrice + ' ₽' : 'Не рассчитана') +
             answerFields +
-          '</div>' + renderServiceRequestDetails(request, events) + '</div>' + renderContextCard(context) + '</div></div>';
+          '</div>' + signedConsentButton + renderServiceRequestDetails(request, events) + '</div>' + renderContextCard(context) + '</div></div>';
     }
     function selectTicket(id) {
       state.openTicketId = id;
@@ -774,11 +833,52 @@ export const adminPageHtml = `<!doctype html>
       const data = await api('/admin/api/tickets/' + id);
       const holder = document.querySelector('#ticket-detail') || document.querySelector('#chat-' + id);
       if (holder) holder.innerHTML = renderTicketDetail(data.ticket, data.messages || [], data.context);
+      if (state.focusTicketQuestionId === id) {
+        setTimeout(() => {
+          const target = document.querySelector('#ticket-question-' + id);
+          if (target) target.scrollIntoView({ block: 'center' });
+          state.focusTicketQuestionId = null;
+        }, 0);
+      }
     }
     function renderTicketDetail(ticket, messages, context) {
-      return '<div class="ticket-main-head"><div><div class="ticket-main-title">\u0412\u043e\u043f\u0440\u043e\u0441 #' + ticket.id + ' ? ' + esc(ticket.name || ticket.username || ticket.userChatId) + '</div><div class="ticket-main-subtitle">' + esc(ticket.platform) + ' ? ' + fmtDate(ticket.createdAt) + '</div></div>' +
-        (!ticket.isAnswered ? '<button class="danger" onclick="closeTicket(' + ticket.id + ')">\u0417\u0430\u043a\u0440\u044b\u0442\u044c</button>' : '<div class="meta">\u0417\u0430\u043a\u0440\u044b\u0442</div>') +
-        '</div><div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary">' + renderChat(ticket, messages || []) + '</div>' + renderContextCard(context) + '</div></div>';
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Вопрос #' + ticket.id + ' · ' + esc(ticket.name || ticket.username || ticket.userChatId) + '</div><div class="ticket-main-subtitle">' + esc(ticket.platform) + ' · ' + fmtDate(ticket.createdAt) + '</div></div>' +
+        '<div class="actions" style="margin-top:0">' +
+          '<button onclick="openTicketCustomerCard(' + ticket.id + ')">Карточка клиента</button>' +
+          (!ticket.isAnswered ? '<button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button>' : '<span class="meta">Закрыт</span>') +
+        '</div></div><div class="ticket-main-body"><div class="detail-primary">' + renderChat(ticket, messages || []) + '</div></div>';
+    }
+    async function openTicketCustomerCard(id) {
+      const data = await api('/admin/api/tickets/' + id);
+      const ticket = data.ticket || {};
+      const context = data.context || {};
+      const params = new URLSearchParams();
+      if (ticket.userId) params.set('userId', ticket.userId);
+      if (ticket.organizationId) params.set('organizationId', ticket.organizationId);
+      if (ticket.platform) params.set('platform', ticket.platform);
+      if (ticket.userChatId) params.set('chatId', ticket.userChatId);
+      const card = await api('/admin/api/customer-card?' + params.toString());
+      const holder = document.querySelector('#ticket-detail') || document.querySelector('#chat-' + id);
+      if (holder) holder.innerHTML = renderTicketCustomerCardScreen(card, ticket);
+    }
+    function renderTicketCustomerCardScreen(data, ticket) {
+      const user = data.user || {};
+      const registrations = data.registrations || [];
+      const serviceRequests = data.serviceRequests || [];
+      const tickets = data.tickets || [];
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Карточка клиента</div><div class="ticket-main-subtitle">' + esc(user.platform || ticket.platform || '') + ' · ' + esc(user.chatId || ticket.userChatId || '') + '</div></div>' +
+        '<button onclick="openTicketChat(' + ticket.id + ')">Закрыть</button></div>' +
+        '<div class="ticket-main-body"><div class="ticket-customer-card"><div class="customer-card-grid">' +
+          '<div class="context-block"><h3>Клиент</h3>' +
+            contextLine('Платформа', user.platform || ticket.platform) +
+            contextLine('Chat ID', user.chatId || ticket.userChatId) +
+            contextLine('User ID', user.id || ticket.userId) +
+            contextLine('Имя', user.name || user.username || ticket.name || ticket.username) +
+          '</div>' +
+          '<div class="context-block"><h3>История обращений</h3><div class="customer-card-list">' +
+            renderCustomerHistoryItems(registrations, serviceRequests, tickets) +
+          '</div></div>' +
+        '</div></div></div>';
     }
     function startTicketResize(event) {
       startSidebarResize(event, 'ticketSidebarWidth');
@@ -857,6 +957,12 @@ export const adminPageHtml = `<!doctype html>
         inn: 'ИНН',
         cashRegisterIdentity: 'Касса/шильдик',
         fiscalDriveTerm: 'ФН',
+        consentId: 'ID согласия',
+        city: 'Город',
+        clientName: 'Клиент',
+        representativeName: 'В лице',
+        representativeBasis: 'Основание',
+        signedConsentName: 'Подписанный файл',
       };
       return labels[key] || key;
     }
@@ -883,6 +989,9 @@ export const adminPageHtml = `<!doctype html>
     }
     function downloadInvoice(id) {
       window.open('/admin/api/service-requests/' + id + '/invoice', '_blank');
+    }
+    function downloadSignedConsent(id) {
+      window.open('/admin/api/service-requests/' + id + '/signed-consent', '_blank');
     }
     async function markPaymentReceived(id) {
       await api('/admin/api/service-requests/' + id + '/payment-received', { method: 'POST', body: '{}' });
@@ -963,9 +1072,12 @@ export const adminPageHtml = `<!doctype html>
       return '<div class="context-line"><span>' + esc(label) + '</span><b>' + esc(value || 'Не указано') + '</b></div>';
     }
     function renderChat(ticket, messages) {
-      const rows = messages.length ? messages.map((message) =>
-        '<div class="message ' + esc(message.sender) + '"><div>' + renderTicketMessageContent(message) + '</div><div class="meta">' + esc(message.sender === 'operator' ? 'Оператор' : 'Клиент') + ' · ' + fmtDate(message.createdAt) + '</div></div>'
-      ).join('') : '<div class="empty">Истории сообщений пока нет</div>';
+      let questionMarked = false;
+      const rows = messages.length ? messages.map((message) => {
+        const isQuestion = !questionMarked && ticket.text && message.sender !== 'operator' && (message.text || '') === ticket.text;
+        if (isQuestion) questionMarked = true;
+        return '<div ' + (isQuestion ? 'id="ticket-question-' + ticket.id + '" ' : '') + 'class="message ' + esc(message.sender) + '"><div>' + renderTicketMessageContent(message) + '</div><div class="meta">' + esc(message.sender === 'operator' ? 'Оператор' : 'Клиент') + ' · ' + fmtDate(message.createdAt) + '</div></div>';
+      }).join('') : '<div class="empty">Истории сообщений пока нет</div>';
       return '<div class="chat"><div class="messages">' + rows + '</div>' +
         (!ticket.isAnswered ? '<div class="composer"><textarea id="reply-' + ticket.id + '" placeholder="Ответ клиенту"></textarea><button class="primary" onclick="sendTicketMessage(' + ticket.id + ')">Отправить</button><button class="danger" onclick="closeTicket(' + ticket.id + ')">Закрыть</button></div><div class="composer"><input id="ticket-file-' + ticket.id + '" type="file"><input id="ticket-file-text-' + ticket.id + '" placeholder="Комментарий к файлу"><button onclick="sendTicketMedia(' + ticket.id + ')">Отправить файл</button></div>' : '') +
         '</div>';
@@ -1017,6 +1129,30 @@ export const adminPageHtml = `<!doctype html>
     }
     function downloadEquipmentPhoto(id) {
       window.open('/admin/api/registrations/' + id + '/equipment-photo', '_blank');
+    }
+    async function loadFreeEquipmentKitOptions(registrationId, currentKitId) {
+      const select = document.querySelector('#reg-kit-' + registrationId);
+      if (!select) return;
+      if (currentKitId) {
+        select.innerHTML = '<option value="' + currentKitId + '">Комплект #' + currentKitId + ' уже привязан</option>';
+        select.disabled = true;
+        return;
+      }
+      const kits = await api('/admin/api/equipment-kits/free');
+      select.disabled = false;
+      select.innerHTML = '<option value="">Выберите свободный комплект</option>' +
+        (kits.length
+          ? kits.map((kit) => '<option value="' + kit.id + '">' + esc(equipmentKitOptionLabel(kit)) + '</option>').join('')
+          : '<option value="">Свободных комплектов нет</option>');
+    }
+    function equipmentKitOptionLabel(kit) {
+      return [
+        '#' + kit.id,
+        kit.cashRegisterModel,
+        kit.cashRegisterSerial ? 'ККТ ' + kit.cashRegisterSerial : '',
+        kit.fiscalDriveSerial ? 'ФН ' + kit.fiscalDriveSerial : '',
+        kit.marketplaceOrderId ? 'заказ ' + kit.marketplaceOrderId : '',
+      ].filter(Boolean).join(' · ');
     }
     async function linkEquipmentKit(id) {
       const kitId = Number(document.querySelector('#reg-kit-' + id).value);

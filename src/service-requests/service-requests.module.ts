@@ -4,6 +4,7 @@ import { CustomerActivityModule } from 'src/customer-activity/customer-activity.
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
 import { OrganizationsModule } from 'src/organizations/organizations.module';
+import { PdfModule } from 'src/pdf/pdf.module';
 import { UsersModule } from 'src/users/users.module';
 import { ServiceRequestEntity } from './entities/service-request.entity';
 import { ServiceRequestEventEntity } from './entities/service-request-event.entity';
@@ -19,6 +20,7 @@ import { ServiceRequestsService } from './service-requests.service';
         CustomerActivityModule,
         MessengerModule,
         AdminNotificationsModule,
+        PdfModule,
     ],
     controllers: [ServiceRequestsController],
     providers: [ServiceRequestsService],

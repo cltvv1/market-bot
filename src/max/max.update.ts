@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot, Keyboard } from '@maxhub/max-bot-api';
@@ -94,6 +95,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.startFnReplacement(ctx);
         });
 
+        this.bot.action('atolConsent', async (ctx) => {
+            await ctx.answerOnCallback({ notification: 'Согласие АТОЛ' });
+            await this.startAtolConsent(ctx);
+        });
+
         this.bot.action(/^serviceRequestAnswer:\d+:.+/, async (ctx) => {
             const [, requestId, value] = ctx.callback?.payload?.split(':') ?? [];
             await ctx.answerOnCallback({ notification: 'Ответ сохранен' });
@@ -146,6 +152,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
             if (context.mode === 'SERVICE_REQUEST') {
                 await this.handleServiceRequestText(ctx, text);
+                return;
+            }
+
+            if (context.mode === 'ATOL_CONSENT') {
+                await this.handleAtolConsentText(ctx, text);
                 return;
             }
 
@@ -223,6 +234,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                     Keyboard.inlineKeyboard([
                         [Keyboard.button.callback('Регистрация кассы', 'wantToRegister')],
                         [Keyboard.button.callback('Замена ФН', 'fnReplacement')],
+                        [Keyboard.button.callback('Согласие на доступ АТОЛ', 'atolConsent')],
                         [Keyboard.button.callback('Сервисная заявка: обновление прошивки', 'serviceRequestSimple:firmware_update')],
                         [Keyboard.button.callback('Сервисная заявка: удаленные работы с ККТ', 'serviceRequestSimple:kkt_remote_work')],
                         [Keyboard.button.callback('Вопрос оператору', 'createTicket')],
@@ -354,6 +366,52 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id }, 'max');
         await ctx.reply('Начинаем заявку на замену фискального накопителя.');
         await this.replyServiceRequestStep(ctx, result);
+    }
+
+    private async startAtolConsent(ctx: any) {
+        const chatId = String(ctx.chatId);
+        const result = await this.clientWorkflow.startAtolConsent(this.toClientIdentity(ctx));
+        await this.ctxService.set(chatId, { mode: 'ATOL_CONSENT' }, 'max');
+
+        await ctx.reply(result.status === 'started'
+            ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.'
+            : 'Нашел незаполненное согласие. Продолжим с места остановки.');
+
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
+            return;
+        }
+
+        await ctx.reply('Согласие уже сформировано. Отправьте фото или скан подписанного документа.');
+    }
+
+    private async handleAtolConsentText(ctx: any, text: string) {
+        const chatId = String(ctx.chatId);
+        const result = await this.clientWorkflow.submitAtolConsentAnswer(this.toClientIdentity(ctx), text);
+        if (result.status === 'not_found') {
+            await ctx.reply('Согласие не найдено. Начните оформление заново из меню сервиса.');
+            await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+            await this.sendMainMenu(ctx);
+            return;
+        }
+
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
+            return;
+        }
+
+        if (result.filePath && fs.existsSync(result.filePath)) {
+            await this.messengerService.sendDocument(
+                chatId,
+                {
+                    source: fs.createReadStream(result.filePath),
+                    filename: 'atol_consent.pdf',
+                },
+                { platform: 'max' },
+            );
+        }
+
+        await ctx.reply('Теперь распечатайте эту форму, подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.');
     }
 
     private async handleServiceRequestText(ctx: any, text: string) {
@@ -498,6 +556,24 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                 return;
             }
             await ctx.reply(result.nextField ? `${result.nextField}:` : 'Фото принято.');
+            return;
+        }
+
+        if (mode === 'ATOL_CONSENT') {
+            const result = await this.clientWorkflow.submitAtolConsentSignedFile(this.toClientIdentity(ctx), {
+                buffer: await this.downloadMediaBuffer(media),
+                fileName: media.fileName || `${media.messageType}.jpg`,
+            });
+            if (result.status === 'not_found') {
+                await ctx.reply('Сначала сформируйте согласие через меню сервиса.');
+                await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+                await this.sendMainMenu(ctx);
+                return;
+            }
+
+            await ctx.reply('Спасибо, подписанное согласие получено. Оператор проверит документ и продолжит работу.');
+            await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+            await this.sendMainMenu(ctx);
             return;
         }
 
