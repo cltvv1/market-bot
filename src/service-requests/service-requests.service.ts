@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+﻿import * as fs from 'fs';
 import * as path from 'path';
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -28,18 +28,6 @@ export interface ServiceRequestOperatorStateInput {
     priority?: ServiceRequestPriority;
     executorName?: string | null;
     operatorComment?: string | null;
-}
-
-export interface AtolConsentReviewInput {
-    consentId: number;
-    city: string;
-    clientName: string;
-    inn: string;
-    representativeName: string;
-    representativeBasis: string;
-    generatedPdfPath: string;
-    signedFilePath: string;
-    signedFileName: string;
 }
 
 @Injectable()
@@ -143,7 +131,7 @@ export class ServiceRequestsService {
             answers: {},
         }));
 
-        await this.addEvent(request, 'created', 'client', `Создана заявка: ${serviceType.title}`);
+        await this.addEvent(request, 'created', 'client', `РЎРѕР·РґР°РЅР° Р·Р°СЏРІРєР°: ${serviceType.title}`);
         await this.activityService.add({
             userId: user.id,
             organizationId: identity.organizationId,
@@ -151,71 +139,11 @@ export class ServiceRequestsService {
             chatId: identity.chatId,
             type: 'service_request_created',
             title: serviceType.title,
-            description: `Создана сервисная заявка #${request.id}`,
+            description: `РЎРѕР·РґР°РЅР° СЃРµСЂРІРёСЃРЅР°СЏ Р·Р°СЏРІРєР° #${request.id}`,
             serviceRequestId: request.id,
         });
 
         return this.present(request);
-    }
-
-    async createAtolConsentReviewRequest(identity: ServiceRequestIdentity, consent: AtolConsentReviewInput) {
-        const user = await this.usersService.getOrCreateOrUpdate(identity.chatId, identity.name, identity.username, identity.platform);
-        await this.organizationsService.assertUserOrganization(identity.chatId, identity.platform, identity.organizationId);
-        await this.ensureDefaultTypes();
-
-        let serviceType = await this.serviceTypesRepo.findOne({ where: { code: 'atol_consent' } });
-        if (!serviceType) {
-            serviceType = await this.serviceTypesRepo.save(this.serviceTypesRepo.create({
-                code: 'atol_consent',
-                title: 'Согласие на доступ АТОЛ',
-                description: 'Подписанное согласие клиента на дистанционный доступ и управление ККТ через кабинет АТОЛ.',
-                flow: 'simple',
-                isActive: false,
-                settings: null,
-            }));
-        }
-
-        const request = await this.serviceRequestsRepo.save(this.serviceRequestsRepo.create({
-            serviceTypeId: serviceType.id,
-            serviceTypeCode: serviceType.code,
-            serviceTypeTitle: serviceType.title,
-            userId: user.id,
-            organizationId: identity.organizationId,
-            platform: identity.platform,
-            chatId: identity.chatId,
-            status: 'review_required',
-            currentStep: 0,
-            answers: {
-                consentId: consent.consentId,
-                city: consent.city,
-                clientName: consent.clientName,
-                inn: consent.inn,
-                representativeName: consent.representativeName,
-                representativeBasis: consent.representativeBasis,
-                generatedPdfPath: consent.generatedPdfPath,
-                signedConsentPath: consent.signedFilePath,
-                signedConsentName: consent.signedFileName,
-            },
-        }));
-
-        await this.addEvent(request, 'created', 'client', 'Получено подписанное согласие на доступ АТОЛ', {
-            consentId: consent.consentId,
-            signedConsentName: consent.signedFileName,
-        });
-        await this.activityService.add({
-            userId: user.id,
-            organizationId: identity.organizationId,
-            platform: identity.platform,
-            chatId: identity.chatId,
-            type: 'service_request_created',
-            title: serviceType.title,
-            description: `Создана сервисная заявка #${request.id} по подписанному согласию АТОЛ`,
-            serviceRequestId: request.id,
-            payload: { consentId: consent.consentId },
-        });
-        await this.notifyOperators(request);
-
-        return request;
     }
 
     async startAtolConsent(identity: ServiceRequestIdentity) {
@@ -241,7 +169,7 @@ export class ServiceRequestsService {
             answers: {},
         }));
 
-        await this.addEvent(request, 'created', 'client', 'Создан черновик согласия на доступ АТОЛ');
+        await this.addEvent(request, 'created', 'client', 'РЎРѕР·РґР°РЅ С‡РµСЂРЅРѕРІРёРє СЃРѕРіР»Р°СЃРёСЏ РЅР° РґРѕСЃС‚СѓРї РђРўРћР›');
         await this.activityService.add({
             userId: user.id,
             organizationId: identity.organizationId,
@@ -249,7 +177,7 @@ export class ServiceRequestsService {
             chatId: identity.chatId,
             type: 'service_request_created',
             title: serviceType.title,
-            description: `Создан черновик согласия АТОЛ #${request.id}`,
+            description: `РЎРѕР·РґР°РЅ С‡РµСЂРЅРѕРІРёРє СЃРѕРіР»Р°СЃРёСЏ РђРўРћР› #${request.id}`,
             serviceRequestId: request.id,
         });
 
@@ -289,7 +217,7 @@ export class ServiceRequestsService {
             });
             saved.answers = { ...saved.answers, generatedPdfPath: pdfPath };
             saved = await this.serviceRequestsRepo.save(saved);
-            await this.addEvent(saved, 'generated', 'system', 'Сформирован PDF согласия на доступ АТОЛ', { generatedPdfPath: pdfPath });
+            await this.addEvent(saved, 'generated', 'system', 'РЎС„РѕСЂРјРёСЂРѕРІР°РЅ PDF СЃРѕРіР»Р°СЃРёСЏ РЅР° РґРѕСЃС‚СѓРї РђРўРћР›', { generatedPdfPath: pdfPath });
         }
 
         return this.presentAtolConsent(saved);
@@ -305,7 +233,7 @@ export class ServiceRequestsService {
         await fs.promises.mkdir(dir, { recursive: true });
 
         const originalName = file.fileName || 'signed-consent.jpg';
-        const safeName = originalName.replace(/[^\wа-яА-ЯёЁ.\-]+/g, '_');
+        const safeName = originalName.replace(/[^a-zA-Z0-9_.-]+/g, '_');
         const filePath = path.join(dir, `signed_${Date.now()}_${safeName}`);
         await fs.promises.writeFile(filePath, file.buffer);
 
@@ -317,7 +245,7 @@ export class ServiceRequestsService {
         request.status = 'review_required';
         const saved = await this.serviceRequestsRepo.save(request);
 
-        await this.addEvent(saved, 'signed_received', 'client', 'Получено подписанное согласие на доступ АТОЛ', {
+        await this.addEvent(saved, 'signed_received', 'client', 'РџРѕР»СѓС‡РµРЅРѕ РїРѕРґРїРёСЃР°РЅРЅРѕРµ СЃРѕРіР»Р°СЃРёРµ РЅР° РґРѕСЃС‚СѓРї РђРўРћР›', {
             signedConsentName: originalName,
         });
         await this.activityService.add({
@@ -327,7 +255,7 @@ export class ServiceRequestsService {
             chatId: saved.chatId,
             type: 'service_request_created',
             title: saved.serviceTypeTitle,
-            description: `Получено подписанное согласие АТОЛ по заявке #${saved.id}`,
+            description: `РџРѕР»СѓС‡РµРЅРѕ РїРѕРґРїРёСЃР°РЅРЅРѕРµ СЃРѕРіР»Р°СЃРёРµ РђРўРћР› РїРѕ Р·Р°СЏРІРєРµ #${saved.id}`,
             serviceRequestId: saved.id,
         });
         await this.notifyOperators(saved);
@@ -411,7 +339,7 @@ export class ServiceRequestsService {
 
         request.status = 'invoice_required';
         const saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(saved, 'price_confirmed', 'client', 'Клиент согласился со стоимостью');
+        await this.addEvent(saved, 'price_confirmed', 'client', 'РљР»РёРµРЅС‚ СЃРѕРіР»Р°СЃРёР»СЃСЏ СЃРѕ СЃС‚РѕРёРјРѕСЃС‚СЊСЋ');
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -419,7 +347,7 @@ export class ServiceRequestsService {
             chatId: saved.chatId,
             type: 'service_request_price_confirmed',
             title: saved.serviceTypeTitle,
-            description: `Клиент согласился со стоимостью ${saved.calculatedPrice ?? 0} руб.`,
+            description: `РљР»РёРµРЅС‚ СЃРѕРіР»Р°СЃРёР»СЃСЏ СЃРѕ СЃС‚РѕРёРјРѕСЃС‚СЊСЋ ${saved.calculatedPrice ?? 0} СЂСѓР±.`,
             serviceRequestId: saved.id,
         });
         await this.notifyOperators(saved);
@@ -435,7 +363,7 @@ export class ServiceRequestsService {
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
 
-        await this.addEvent(saved, 'invoice_attached', operatorId, 'Оператор прикрепил счет', { invoiceFileId, invoiceFileName });
+        await this.addEvent(saved, 'invoice_attached', operatorId, 'РћРїРµСЂР°С‚РѕСЂ РїСЂРёРєСЂРµРїРёР» СЃС‡РµС‚', { invoiceFileId, invoiceFileName });
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -443,7 +371,7 @@ export class ServiceRequestsService {
             chatId: saved.chatId,
             type: 'service_request_invoice_attached',
             title: saved.serviceTypeTitle,
-            description: 'Счет отправлен клиенту, заявка ожидает оплаты',
+            description: 'РЎС‡РµС‚ РѕС‚РїСЂР°РІР»РµРЅ РєР»РёРµРЅС‚Сѓ, Р·Р°СЏРІРєР° РѕР¶РёРґР°РµС‚ РѕРїР»Р°С‚С‹',
             serviceRequestId: saved.id,
         });
 
@@ -456,7 +384,7 @@ export class ServiceRequestsService {
         request.status = 'paid';
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(saved, 'payment_received', operatorId, 'Оператор отметил оплату');
+        await this.addEvent(saved, 'payment_received', operatorId, 'РћРїРµСЂР°С‚РѕСЂ РѕС‚РјРµС‚РёР» РѕРїР»Р°С‚Сѓ');
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -464,10 +392,10 @@ export class ServiceRequestsService {
             chatId: saved.chatId,
             type: 'service_request_payment_received',
             title: saved.serviceTypeTitle,
-            description: 'Оплата по счету получена',
+            description: 'РћРїР»Р°С‚Р° РїРѕ СЃС‡РµС‚Сѓ РїРѕР»СѓС‡РµРЅР°',
             serviceRequestId: saved.id,
         });
-        await this.notifyClient(saved, `Оплата по заявке #${saved.id} получена. Оператор назначит время визита или свяжется с вами.`);
+        await this.notifyClient(saved, `РћРїР»Р°С‚Р° РїРѕ Р·Р°СЏРІРєРµ #${saved.id} РїРѕР»СѓС‡РµРЅР°. РћРїРµСЂР°С‚РѕСЂ РЅР°Р·РЅР°С‡РёС‚ РІСЂРµРјСЏ РІРёР·РёС‚Р° РёР»Рё СЃРІСЏР¶РµС‚СЃСЏ СЃ РІР°РјРё.`);
 
         return this.getRequestDetails(saved.id);
     }
@@ -481,7 +409,7 @@ export class ServiceRequestsService {
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
 
-        await this.addEvent(saved, 'visit_scheduled', operatorId, 'Назначен визит', { visitAddress, visitTime, operatorComment });
+        await this.addEvent(saved, 'visit_scheduled', operatorId, 'РќР°Р·РЅР°С‡РµРЅ РІРёР·РёС‚', { visitAddress, visitTime, operatorComment });
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -489,13 +417,13 @@ export class ServiceRequestsService {
             chatId: saved.chatId,
             type: 'service_request_visit_scheduled',
             title: saved.serviceTypeTitle,
-            description: `Назначен визит: ${visitAddress}`,
+            description: `РќР°Р·РЅР°С‡РµРЅ РІРёР·РёС‚: ${visitAddress}`,
             serviceRequestId: saved.id,
         });
 
-        const timeText = saved.visitTime ? ` Время: ${saved.visitTime.toLocaleString('ru-RU')}.` : '';
+        const timeText = saved.visitTime ? ` Р’СЂРµРјСЏ: ${saved.visitTime.toLocaleString('ru-RU')}.` : '';
         const commentText = saved.operatorComment ? ` ${saved.operatorComment}` : '';
-        await this.notifyClient(saved, `По заявке #${saved.id}: приходите по адресу ${visitAddress}.${timeText}${commentText}`);
+        await this.notifyClient(saved, `РџРѕ Р·Р°СЏРІРєРµ #${saved.id}: РїСЂРёС…РѕРґРёС‚Рµ РїРѕ Р°РґСЂРµСЃСѓ ${visitAddress}.${timeText}${commentText}`);
 
         return this.getRequestDetails(saved.id);
     }
@@ -523,7 +451,7 @@ export class ServiceRequestsService {
         }
 
         const saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(saved, 'operator_state_updated', operatorId, 'Оператор обновил рабочие поля заявки', {
+        await this.addEvent(saved, 'operator_state_updated', operatorId, 'РћРїРµСЂР°С‚РѕСЂ РѕР±РЅРѕРІРёР» СЂР°Р±РѕС‡РёРµ РїРѕР»СЏ Р·Р°СЏРІРєРё', {
             priority: saved.priority,
             responsibleOperatorId: saved.responsibleOperatorId,
             executorName: saved.executorName,
@@ -554,8 +482,8 @@ export class ServiceRequestsService {
         if (!serviceType) {
             serviceType = await this.serviceTypesRepo.save(this.serviceTypesRepo.create({
                 code: 'atol_consent',
-                title: 'Согласие на доступ АТОЛ',
-                description: 'Подписанное согласие клиента на дистанционный доступ и управление ККТ через кабинет АТОЛ.',
+                title: 'РЎРѕРіР»Р°СЃРёРµ РЅР° РґРѕСЃС‚СѓРї РђРўРћР›',
+                description: 'РџРѕРґРїРёСЃР°РЅРЅРѕРµ СЃРѕРіР»Р°СЃРёРµ РєР»РёРµРЅС‚Р° РЅР° РґРёСЃС‚Р°РЅС†РёРѕРЅРЅС‹Р№ РґРѕСЃС‚СѓРї Рё СѓРїСЂР°РІР»РµРЅРёРµ РљРљРў С‡РµСЂРµР· РєР°Р±РёРЅРµС‚ РђРўРћР›.',
                 flow: 'simple',
                 isActive: false,
                 settings: null,
@@ -578,11 +506,11 @@ export class ServiceRequestsService {
 
     private getCurrentAtolConsentStep(request: ServiceRequestEntity) {
         const steps = [
-            { key: 'city', label: 'Укажите город. Если город Красноярск, просто напишите: Красноярск' },
-            { key: 'clientName', label: 'Укажите полное название организации или ИП, как в документах' },
-            { key: 'inn', label: 'Укажите ИНН' },
-            { key: 'representativeName', label: 'В лице кого составляется согласие? Например: Иванова Ивана Ивановича' },
-            { key: 'representativeBasis', label: 'На основании чего действует представитель? Например: Устава, свидетельства ОГРНИП, доверенности' },
+            { key: 'city', label: 'РЈРєР°Р¶РёС‚Рµ РіРѕСЂРѕРґ. Р•СЃР»Рё РіРѕСЂРѕРґ РљСЂР°СЃРЅРѕСЏСЂСЃРє, РїСЂРѕСЃС‚Рѕ РЅР°РїРёС€РёС‚Рµ: РљСЂР°СЃРЅРѕСЏСЂСЃРє' },
+            { key: 'clientName', label: 'РЈРєР°Р¶РёС‚Рµ РїРѕР»РЅРѕРµ РЅР°Р·РІР°РЅРёРµ РѕСЂРіР°РЅРёР·Р°С†РёРё РёР»Рё РРџ, РєР°Рє РІ РґРѕРєСѓРјРµРЅС‚Р°С…' },
+            { key: 'inn', label: 'РЈРєР°Р¶РёС‚Рµ РРќРќ' },
+            { key: 'representativeName', label: 'Р’ Р»РёС†Рµ РєРѕРіРѕ СЃРѕСЃС‚Р°РІР»СЏРµС‚СЃСЏ СЃРѕРіР»Р°СЃРёРµ? РќР°РїСЂРёРјРµСЂ: РРІР°РЅРѕРІР° РРІР°РЅР° РРІР°РЅРѕРІРёС‡Р°' },
+            { key: 'representativeBasis', label: 'РќР° РѕСЃРЅРѕРІР°РЅРёРё С‡РµРіРѕ РґРµР№СЃС‚РІСѓРµС‚ РїСЂРµРґСЃС‚Р°РІРёС‚РµР»СЊ? РќР°РїСЂРёРјРµСЂ: РЈСЃС‚Р°РІР°, СЃРІРёРґРµС‚РµР»СЊСЃС‚РІР° РћР“Р РќРРџ, РґРѕРІРµСЂРµРЅРЅРѕСЃС‚Рё' },
         ];
         return steps[request.currentStep] ?? null;
     }
@@ -666,7 +594,7 @@ export class ServiceRequestsService {
             return;
         }
 
-        const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.`;
+        const message = `РЎС‡РµС‚ РїРѕ Р·Р°СЏРІРєРµ #${request.id} РіРѕС‚РѕРІ. РЎС‚Р°С‚СѓСЃ Р·Р°СЏРІРєРё: РѕР¶РёРґР°РµС‚ РѕРїР»Р°С‚С‹.`;
         if (request.invoiceFileId && fs.existsSync(request.invoiceFileId)) {
             await this.messengerService.sendMessage(request.chatId, message, { platform: request.platform });
             await this.messengerService.sendDocument(
@@ -682,7 +610,7 @@ export class ServiceRequestsService {
 
         await this.messengerService.sendMessage(
             request.chatId,
-            `${message} Счет: ${request.invoiceFileName || request.invoiceFileId}.`,
+            `${message} РЎС‡РµС‚: ${request.invoiceFileName || request.invoiceFileId}.`,
             { platform: request.platform },
         );
     }
@@ -713,7 +641,7 @@ export class ServiceRequestsService {
         request.status = status;
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(saved, status, operatorId, status === 'completed' ? 'Заявка завершена' : 'Заявка отменена');
+        await this.addEvent(saved, status, operatorId, status === 'completed' ? 'Р—Р°СЏРІРєР° Р·Р°РІРµСЂС€РµРЅР°' : 'Р—Р°СЏРІРєР° РѕС‚РјРµРЅРµРЅР°');
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -721,7 +649,7 @@ export class ServiceRequestsService {
             chatId: saved.chatId,
             type: status === 'completed' ? 'service_request_completed' : 'service_request_cancelled',
             title: saved.serviceTypeTitle,
-            description: status === 'completed' ? 'Заявка завершена' : 'Заявка отменена',
+            description: status === 'completed' ? 'Р—Р°СЏРІРєР° Р·Р°РІРµСЂС€РµРЅР°' : 'Р—Р°СЏРІРєР° РѕС‚РјРµРЅРµРЅР°',
             serviceRequestId: saved.id,
         });
 
