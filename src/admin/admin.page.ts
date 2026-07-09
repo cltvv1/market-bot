@@ -798,7 +798,7 @@ export const adminPageHtml = `<!doctype html>
       if (!entry || !holder) return;
 
       const data = await api('/admin/api/service-requests/' + entry.item.id);
-      holder.innerHTML = renderScenarioServiceDetail(data.request, data.events || [], data.context);
+      holder.innerHTML = renderScenarioServiceDetail(data.request, data.events || []);
     }
     async function loadCustomerContext(item) {
       const params = new URLSearchParams();
@@ -808,20 +808,52 @@ export const adminPageHtml = `<!doctype html>
       if (item.chatId || item.userChatId) params.set('chatId', item.chatId || item.userChatId);
       return api('/admin/api/customer-context?' + params.toString());
     }
-    function renderScenarioServiceDetail(request, events, context) {
+    function renderScenarioServiceDetail(request, events) {
       const answers = request.answers || {};
       const hiddenAnswerKeys = new Set(['generatedPdfPath', 'signedConsentPath']);
       const answerFields = Object.entries(answers).filter(([key]) => !hiddenAnswerKeys.has(key)).map(([key, value]) => field(serviceAnswerLabel(key), value)).join('');
       const signedConsentButton = answers.signedConsentPath ? '<div class="actions"><button onclick="downloadSignedConsent(' + request.id + ')">Скачать подписанное согласие</button></div>' : '';
-      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сервисная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div></div>' +
-        '<div class="ticket-main-body"><div class="detail-layout"><div class="detail-primary"><div class="fields">' +
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Сервисная заявка #' + request.id + ' · ' + esc(request.serviceTypeTitle) + '</div><div class="ticket-main-subtitle">' + esc(request.platform) + ' · ' + statusText(request.status) + ' · ' + fmtDate(request.createdAt) + '</div></div>' +
+        '<div class="actions" style="margin-top:0"><button onclick="openServiceCustomerCard(' + request.id + ')">Карточка клиента</button></div></div>' +
+        '<div class="ticket-main-body"><div class="detail-primary"><div class="fields">' +
             field('Статус', statusText(request.status)) +
             field('Приоритет', servicePriorityText(request.priority)) +
             field('Куратор', request.responsibleOperatorId) +
             field('Исполнитель', request.executorName) +
             field('Стоимость', request.calculatedPrice ? request.calculatedPrice + ' ₽' : 'Не рассчитана') +
             answerFields +
-          '</div>' + signedConsentButton + renderServiceRequestDetails(request, events) + '</div>' + renderContextCard(context) + '</div></div>';
+          '</div>' + signedConsentButton + renderServiceRequestDetails(request, events) + '</div></div>';
+    }
+    async function openServiceCustomerCard(id) {
+      const data = await api('/admin/api/service-requests/' + id);
+      const request = data.request || {};
+      const params = new URLSearchParams();
+      if (request.userId) params.set('userId', request.userId);
+      if (request.organizationId) params.set('organizationId', request.organizationId);
+      if (request.platform) params.set('platform', request.platform);
+      if (request.chatId) params.set('chatId', request.chatId);
+      const card = await api('/admin/api/customer-card?' + params.toString());
+      const holder = document.querySelector('#service-detail') || document.querySelector('#service-request-' + id);
+      if (holder) holder.innerHTML = renderServiceCustomerCardScreen(card, request);
+    }
+    function renderServiceCustomerCardScreen(data, request) {
+      const user = data.user || {};
+      const registrations = data.registrations || [];
+      const serviceRequests = data.serviceRequests || [];
+      const tickets = data.tickets || [];
+      return '<div class="ticket-main-head"><div><div class="ticket-main-title">Карточка клиента</div><div class="ticket-main-subtitle">' + esc(user.platform || request.platform || '') + ' · ' + esc(user.chatId || request.chatId || '') + '</div></div>' +
+        '<button onclick="openServiceWork(\\'service-request:' + request.id + '\\')">Закрыть</button></div>' +
+        '<div class="ticket-main-body"><div class="ticket-customer-card"><div class="customer-card-grid">' +
+          '<div class="context-block"><h3>Клиент</h3>' +
+            contextLine('Платформа', user.platform || request.platform) +
+            contextLine('Chat ID', user.chatId || request.chatId) +
+            contextLine('User ID', user.id || request.userId) +
+            contextLine('Имя', user.name || user.username) +
+          '</div>' +
+          '<div class="context-block"><h3>История обращений</h3><div class="customer-card-list">' +
+            renderCustomerHistoryItems(registrations, serviceRequests, tickets) +
+          '</div></div>' +
+        '</div></div></div>';
     }
     function selectTicket(id) {
       state.openTicketId = id;
