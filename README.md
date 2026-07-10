@@ -96,3 +96,12 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+# Vitma bot service
+
+## Development
+
+- `npm run start:dev:system-ca` starts Nest with the last built admin UI at `http://localhost:3000/admin`.
+- `npm run start:dev:all` starts Nest and the React admin UI dev server. Open `http://localhost:5173/admin/` for frontend hot reload.
+- `npm run build` builds both the React admin UI and the Nest application.
+
+The legacy server-rendered admin page remains as a fallback when `admin-ui/dist` has not been built yet.

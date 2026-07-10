@@ -596,6 +596,16 @@ export const adminPageHtml = `<!doctype html>
     async function openRegistrationFromCustomer(id) {
       state.customerRegistrationId = null;
       state.openRegistrationId = id;
+      if (state.tab !== 'registrations') {
+        state.tab = 'registrations';
+        statusFilter.value = 'all';
+        platformFilter.value = '';
+        priorityFilter.value = '';
+        responsibleFilter.value = '';
+        document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item.dataset.tab === 'registrations'));
+        await load();
+        return;
+      }
       let item = state.registrationItems.find((registration) => registration.id === id);
       if (!item) {
         item = await api('/admin/api/registrations/' + id);
@@ -614,6 +624,9 @@ export const adminPageHtml = `<!doctype html>
       state.tab = 'service';
       state.openServiceWorkKey = 'service-request:' + id;
       statusFilter.value = 'all';
+      platformFilter.value = '';
+      priorityFilter.value = '';
+      responsibleFilter.value = '';
       document.querySelectorAll('[data-tab]').forEach((item) => item.classList.toggle('active', item.dataset.tab === 'service'));
       await load();
     }

@@ -28,7 +28,20 @@ export class AdminController {
     @Header('Content-Type', 'text/html; charset=utf-8')
     @Header('Cache-Control', 'no-store')
     getPage() {
-        return adminPageHtml;
+        const reactPagePath = path.join(process.cwd(), 'admin-ui', 'dist', 'index.html');
+        return fs.existsSync(reactPagePath)
+            ? fs.readFileSync(reactPagePath, 'utf8')
+            : adminPageHtml;
+    }
+
+    @Get('admin.js')
+    getReactScript(@Res() response: Response) {
+        return response.sendFile(path.join(process.cwd(), 'admin-ui', 'dist', 'admin.js'));
+    }
+
+    @Get('admin.css')
+    getReactStyles(@Res() response: Response) {
+        return response.sendFile(path.join(process.cwd(), 'admin-ui', 'dist', 'admin.css'));
     }
 
     @Get('api/me')

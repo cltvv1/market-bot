@@ -226,7 +226,7 @@ export class AdminService {
             ? commonWhere
             : status === 'processed'
                 ? [{ ...commonWhere, status: 'processed' as RegistrationRequestStatus }, { ...commonWhere, isProcessed: true }]
-                : { ...commonWhere, status, isFilled: true };
+                : { ...commonWhere, status, isFilled: true, isProcessed: false };
 
         return this.registrationsRepo.find({
             where,
