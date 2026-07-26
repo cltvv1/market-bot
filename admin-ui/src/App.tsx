@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, Check, ExternalLink, FileText, Link, LogOut, MessageSquare, RefreshCw, Send, UserRound, X } from 'lucide-react';
+import { Bell, Check, ExternalLink, FileText, KeyRound, Link, LogOut, RefreshCw, Send, ShieldCheck, UserPlus, UserRound, X } from 'lucide-react';
 import { ApiError, api, post, upload } from './api';
 import { answerLabels, fmtDate, priorityText, registrationStatus, statusText, value } from './format';
-import type { Admin, CustomerCard, EquipmentKit, NotificationSettings, Priority, Registration, ServiceEvent, ServiceRequest, Summary, Tab, Ticket, TicketMessage } from './types';
+import type { Admin, AdminRole, CustomerCard, EquipmentKit, NotificationSettings, Priority, Registration, ServiceEvent, ServiceRequest, Staff, Summary, Tab, Ticket, TicketMessage } from './types';
 
-const tabs: Array<{ id: Tab; label: string }> = [
-  { id: 'registrations', label: 'Регистрации' },
-  { id: 'service', label: 'Заявки по сервису' },
-  { id: 'tickets', label: 'Вопросы' },
-  { id: 'organizations', label: 'Организации' },
-  { id: 'equipment-kits', label: 'Комплекты' },
+const tabs: Array<{ id: Tab; label: string; permissions: string[] }> = [
+  { id: 'registrations', label: 'Регистрации', permissions: ['registrations.read'] },
+  { id: 'service', label: 'Заявки по сервису', permissions: ['serviceRequests.read.all', 'serviceRequests.read.assigned'] },
+  { id: 'tickets', label: 'Вопросы', permissions: ['tickets.read'] },
+  { id: 'organizations', label: 'Организации', permissions: ['organizations.read'] },
+  { id: 'equipment-kits', label: 'Комплекты', permissions: ['assets.read'] },
+  { id: 'staff', label: 'Сотрудники', permissions: ['staff.roles.manage'] },
 ];
 
 const priorities: Array<{ value: Priority | ''; label: string }> = [
@@ -29,6 +30,7 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [selection, setSelection] = useState<{ tab: Tab; id: number } | null>(null);
   const [notice, setNotice] = useState('');
+  const visibleTabs = useMemo(() => tabs.filter((item) => item.permissions.some((permission) => admin?.permissions.includes(permission))), [admin]);
 
   useEffect(() => {
     api<{ admin: Admin }>('/admin/api/me')
@@ -36,6 +38,26 @@ export function App() {
       .catch(() => setAdmin(null))
       .finally(() => setChecking(false));
   }, []);
+
+  useEffect(() => {
+    const expired = () => { setAdmin(null); setNotice('Сессия завершена. Войдите снова.'); };
+    const forbidden = (event: Event) => {
+      const message = event instanceof CustomEvent && typeof event.detail === 'string'
+        ? event.detail
+        : 'Недостаточно прав для этого действия.';
+      setNotice(message);
+    };
+    window.addEventListener('vitma:unauthorized', expired);
+    window.addEventListener('vitma:forbidden', forbidden);
+    return () => {
+      window.removeEventListener('vitma:unauthorized', expired);
+      window.removeEventListener('vitma:forbidden', forbidden);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (admin && !visibleTabs.some((item) => item.id === tab) && visibleTabs[0]) setTab(visibleTabs[0].id);
+  }, [admin, tab, visibleTabs]);
 
   const refresh = useCallback(() => {
     setRefreshKey((key) => key + 1);
@@ -62,7 +84,7 @@ export function App() {
         <div className="brand"><span className="brand-mark">В</span><div><strong>Витма</strong><span>Рабочее место оператора</span></div></div>
         <div className="topbar-actions">
           <NotificationMenu notice={notice} onNotice={setNotice} />
-          <span className="admin-name">{admin.displayName} · {admin.role}</span>
+          <span className="admin-name">{admin.displayName} · {admin.roles.join(', ')}</span>
           <button className="icon-button" title="Обновить" onClick={refresh}><RefreshCw size={18} /></button>
           <button className="icon-button" title="Выйти" onClick={() => post('/admin/api/logout').finally(() => setAdmin(null))}><LogOut size={18} /></button>
         </div>
@@ -71,16 +93,16 @@ export function App() {
       <main>
         {notice && <div className="notice"><Bell size={16} />{notice}<button title="Закрыть" onClick={() => setNotice('')}><X size={16} /></button></div>}
         <section className="stats">
-          <Stat label="Новые регистрации" count={summary.newRegistrations} onClick={() => navigate('registrations')} />
-          <Stat label="Активные заявки" count={summary.activeServiceRequests} onClick={() => navigate('service')} />
-          <Stat label="Открытые вопросы" count={summary.openTickets} onClick={() => navigate('tickets')} />
+          {can(admin, 'registrations.read') && <Stat label="Новые регистрации" count={summary.newRegistrations} onClick={() => navigate('registrations')} />}
+          {(can(admin, 'serviceRequests.read.all') || can(admin, 'serviceRequests.read.assigned')) && <Stat label="Активные заявки" count={summary.activeServiceRequests} onClick={() => navigate('service')} />}
+          {can(admin, 'tickets.read') && <Stat label="Открытые вопросы" count={summary.openTickets} onClick={() => navigate('tickets')} />}
         </section>
 
         <nav className="tabs">
-          {tabs.map((item) => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setSelection(null); setStatus('new'); }}>{item.label}</button>)}
+          {visibleTabs.map((item) => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setSelection(null); setStatus('new'); }}>{item.label}</button>)}
         </nav>
 
-        {tab !== 'organizations' && tab !== 'equipment-kits' && (
+        {tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'staff' && (
           <section className="filters">
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="new">Новые</option><option value="in_work">В работе</option>
@@ -97,9 +119,11 @@ export function App() {
 
         {tab === 'registrations' && <Registrations status={status} platform={platform} priority={priority} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} />}
         {tab === 'tickets' && <Tickets status={status} platform={platform} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} />}
-        {tab === 'service' && <ServiceRequests status={status} platform={platform} priority={priority} responsible={responsible} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} />}
+        {tab === 'service' && <ServiceRequests status={status} platform={platform} priority={priority} responsible={responsible} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} permissions={admin.permissions} />}
         {tab === 'organizations' && <Organizations refreshKey={refreshKey} />}
         {tab === 'equipment-kits' && <EquipmentKits refreshKey={refreshKey} onChanged={refresh} />}
+        {tab === 'staff' && <StaffManagement refreshKey={refreshKey} onChanged={refresh} />}
+        {!visibleTabs.length && <Empty text="Для назначенных ролей пока нет рабочих разделов" />}
       </main>
     </div>
   );
@@ -182,28 +206,31 @@ function TicketDetail({ id, onNavigate, onChanged }: { id: number; onNavigate: N
   return <><DetailHeader title={`Вопрос #${id} · ${ticket.name || ticket.username || ticket.userChatId}`} subtitle={`${ticket.platform} · ${fmtDate(ticket.createdAt)}`} onCustomer={openCard} right={!ticket.isAnswered ? <button className="danger" onClick={close}>Закрыть</button> : <Badge>Закрыт</Badge>} /><div className="chat-body"><div className="messages">{data.messages?.map((message) => <Message key={message.id} message={message} />)}</div>{!ticket.isAnswered && <div className="chat-composer"><textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Ответ клиенту" /><div className="composer-actions"><label className="file-picker"><FileText size={16} />{file?.name || 'Прикрепить файл'}<input type="file" onChange={(e) => setFile(e.target.files?.[0])} /></label>{file && <button onClick={sendFile}>Отправить файл</button>}<button className="primary" onClick={send}><Send size={16} />Отправить</button></div></div>}</div></>;
 }
 
-function ServiceRequests(props: ListProps & { responsible: string }) {
+function ServiceRequests(props: ListProps & { responsible: string; permissions: string[] }) {
   const statuses = serviceApiStatuses(props.status); const paths = statuses.map((status) => `/admin/api/service-requests?${new URLSearchParams({ status, ...(props.platform ? { platform: props.platform } : {}) })}`);
   const [items, setItems] = useState<ServiceRequest[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [selectedId, setSelectedId] = useState<number>();
   useEffect(() => { setLoading(true); Promise.all(paths.map((path) => api<ServiceRequest[]>(path))).then((groups) => setItems(groups.flat())).catch(() => setError('Ошибка загрузки')).finally(() => setLoading(false)); }, [paths.join('|'), props.refreshKey]);
   const filtered = items.filter((item) => (!props.priority || (item.priority || 'normal') === props.priority) && (!props.responsible || `${item.responsibleOperatorId || ''} ${item.executorName || ''}`.toLowerCase().includes(props.responsible.toLowerCase())));
   useEffect(() => { const id = props.requestedId || filtered[0]?.id; if (id) setSelectedId(id); }, [items, props.requestedId, props.priority, props.responsible]);
-  return <Workbench title="Заявки по сервису" items={filtered} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} row={(item) => <><div className="row-top"><strong>Заявка #{item.id} · {item.serviceTypeTitle}</strong><span>{fmtDate(item.createdAt)}</span></div><div className="badges"><Badge>{statusText(item.status)}</Badge><Badge priority={item.priority}>{priorityText(item.priority)}</Badge></div><span className="row-preview">{item.executorName ? `Исполнитель: ${item.executorName}` : item.platform}</span></>} detail={selectedId ? <ServiceDetail id={selectedId} onNavigate={props.onNavigate} onChanged={props.onChanged} /> : null} />;
+  return <Workbench title="Заявки по сервису" items={filtered} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} row={(item) => <><div className="row-top"><strong>Заявка #{item.id} · {item.serviceTypeTitle}</strong><span>{fmtDate(item.createdAt)}</span></div><div className="badges"><Badge>{statusText(item.status)}</Badge><Badge priority={item.priority}>{priorityText(item.priority)}</Badge></div><span className="row-preview">{item.executorName ? `Исполнитель: ${item.executorName}` : item.platform}</span></>} detail={selectedId ? <ServiceDetail id={selectedId} onNavigate={props.onNavigate} onChanged={props.onChanged} permissions={props.permissions} /> : null} />;
 }
 
-function ServiceDetail({ id, onNavigate, onChanged }: { id: number; onNavigate: Navigate; onChanged: () => void }) {
-  const [data, setData] = useState<{ request: ServiceRequest; events: ServiceEvent[] }>(); const [card, setCard] = useState<CustomerCard | null>(null); const [priority, setPriority] = useState<Priority>('normal'); const [executor, setExecutor] = useState(''); const [comment, setComment] = useState(''); const [invoice, setInvoice] = useState<File>(); const [address, setAddress] = useState(''); const [visitTime, setVisitTime] = useState('');
-  const load = useCallback(() => api<{ request: ServiceRequest; events: ServiceEvent[] }>(`/admin/api/service-requests/${id}`).then((result) => { setData(result); setPriority(result.request.priority || 'normal'); setExecutor(result.request.executorName || ''); setComment(result.request.operatorComment || ''); }), [id]);
+function ServiceDetail({ id, onNavigate, onChanged, permissions }: { id: number; onNavigate: Navigate; onChanged: () => void; permissions: string[] }) {
+  const [data, setData] = useState<{ request: ServiceRequest; events: ServiceEvent[] }>(); const [card, setCard] = useState<CustomerCard | null>(null); const [priority, setPriority] = useState<Priority>('normal'); const [comment, setComment] = useState(''); const [invoice, setInvoice] = useState<File>(); const [address, setAddress] = useState(''); const [visitTime, setVisitTime] = useState(''); const [engineers, setEngineers] = useState<Staff[]>([]); const [engineerId, setEngineerId] = useState('');
+  const allowed = (permission: string) => permissions.includes(permission);
+  const load = useCallback(() => api<{ request: ServiceRequest; events: ServiceEvent[] }>(`/admin/api/service-requests/${id}`).then((result) => { setData(result); setPriority(result.request.priority || 'normal'); setComment(result.request.operatorComment || ''); setEngineerId(result.request.assignedEngineerId ? String(result.request.assignedEngineerId) : ''); }), [id]);
   useEffect(() => { setCard(null); load(); }, [load]);
+  useEffect(() => { if (allowed('serviceRequests.assign')) api<Staff[]>('/admin/api/staff/engineers').then(setEngineers); }, [permissions.join('|')]);
   if (!data) return <Empty text="Загрузка заявки..." />;
   const request = data.request; const answers = Object.entries(request.answers || {}).filter(([key]) => !['generatedPdfPath', 'signedConsentPath'].includes(key));
-  const save = async () => { await post(`/admin/api/service-requests/${id}/operator-state`, { priority, executorName: executor, operatorComment: comment }); await load(); onChanged(); };
+  const save = async () => { await post(`/admin/api/service-requests/${id}/operator-state`, { priority, operatorComment: comment }); await load(); onChanged(); };
+  const assign = async () => { if (!engineerId) return; await post(`/admin/api/service-requests/${id}/assign-engineer`, { assignedEngineerId: Number(engineerId) }); await load(); onChanged(); };
   const uploadInvoice = async () => { if (!invoice) return; const form = new FormData(); form.append('file', invoice); await upload(`/admin/api/service-requests/${id}/invoice-file`, form); await load(); };
   const action = async (name: string) => { await post(`/admin/api/service-requests/${id}/${name}`); await load(); onChanged(); };
   const schedule = async () => { if (!address) return; await post(`/admin/api/service-requests/${id}/schedule`, { visitAddress: address, visitTime, operatorComment: comment }); await load(); onChanged(); };
   const openCard = async () => setCard(await loadCustomerCard(request));
   if (card) return <CustomerCardView card={card} onClose={() => setCard(null)} onNavigate={onNavigate} />;
-  return <><DetailHeader title={`Сервисная заявка #${id} · ${request.serviceTypeTitle}`} subtitle={`${request.platform} · ${statusText(request.status)} · ${fmtDate(request.createdAt)}`} onCustomer={openCard} /><div className="detail-body"><FieldGrid fields={[['Статус', statusText(request.status)], ['Приоритет', priorityText(request.priority)], ['Куратор', request.responsibleOperatorId], ['Исполнитель', request.executorName], ['Стоимость', request.calculatedPrice ? `${request.calculatedPrice} ₽` : 'Не рассчитана'], ...answers.map(([key, val]) => [answerLabels[key] || key, val] as [string, unknown])]} /><div className="messages event-list">{data.events?.map((event) => <div className="message" key={event.id}><div>{event.type === 'answered' && event.payload?.value !== undefined ? String(event.payload.value) : event.message || event.type}</div><span>{event.actor} · {fmtDate(event.createdAt)}</span></div>)}</div><div className="operator-panel"><div className="form-row"><PrioritySelect value={priority} onChange={setPriority} /><input value={executor} onChange={(e) => setExecutor(e.target.value)} placeholder="Исполнитель" /><button className="primary" onClick={save}><Check size={16} />Сохранить</button></div><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Внутренний комментарий или поручение" /><div className="form-row"><input type="file" accept="application/pdf" onChange={(e) => setInvoice(e.target.files?.[0])} /><button onClick={uploadInvoice}>Загрузить PDF</button>{request.invoiceFileId && <a className="button" href={`/admin/api/service-requests/${id}/invoice`} target="_blank">Скачать счёт</a>}{Boolean(request.answers?.signedConsentPath) && <a className="button" href={`/admin/api/service-requests/${id}/signed-consent`} target="_blank">Согласие</a>}</div><div className="form-row"><input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Адрес визита" /><input type="datetime-local" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} /><button onClick={schedule}>Назначить визит</button></div><div className="actions"><button onClick={() => action('payment-received')}>Оплата получена</button><button onClick={() => action('complete')}>Завершить</button><button className="danger" onClick={() => action('cancel')}>Отменить</button></div></div></div></>;
+  return <><DetailHeader title={`Сервисная заявка #${id} · ${request.serviceTypeTitle}`} subtitle={`${request.platform} · ${statusText(request.status)} · ${fmtDate(request.createdAt)}`} onCustomer={allowed('organizations.read') ? openCard : undefined} /><div className="detail-body"><FieldGrid fields={[['Статус', statusText(request.status)], ['Приоритет', priorityText(request.priority)], ['Куратор', request.responsibleOperatorId], ['Исполнитель', request.executorName], ['Внутренний комментарий', request.operatorComment], ['Стоимость', request.calculatedPrice ? `${request.calculatedPrice} ₽` : 'Не рассчитана'], ...answers.map(([key, val]) => [answerLabels[key] || key, val] as [string, unknown])]} /><div className="messages event-list">{data.events?.map((event) => <div className="message" key={event.id}><div>{event.type === 'answered' && event.payload?.value !== undefined ? String(event.payload.value) : event.message || event.type}</div><span>{event.actor} · {fmtDate(event.createdAt)}</span></div>)}</div>{allowed('serviceRequests.update') && <div className="operator-panel"><div className="form-row"><PrioritySelect value={priority} onChange={setPriority} /><button className="primary" onClick={save}><Check size={16} />Сохранить</button></div><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Внутренний комментарий или поручение" />{allowed('serviceRequests.assign') && <div className="form-row"><select value={engineerId} onChange={(e) => setEngineerId(e.target.value)}><option value="">Выберите инженера</option>{engineers.map((engineer) => <option value={engineer.id} key={engineer.id}>{engineer.displayName}</option>)}</select><button onClick={assign}>Назначить</button></div>}{allowed('serviceRequests.invoice') && <div className="form-row"><input type="file" accept="application/pdf" onChange={(e) => setInvoice(e.target.files?.[0])} /><button onClick={uploadInvoice}>Загрузить PDF</button>{request.invoiceFileId && <a className="button" href={`/admin/api/service-requests/${id}/invoice`} target="_blank">Скачать счёт</a>}{Boolean(request.answers?.signedConsentPath) && <a className="button" href={`/admin/api/service-requests/${id}/signed-consent`} target="_blank">Согласие</a>}</div>}{allowed('serviceRequests.schedule') && <div className="form-row"><input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Адрес визита" /><input type="datetime-local" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} /><button onClick={schedule}>Назначить визит</button></div>}<div className="actions">{allowed('serviceRequests.payment') && <button onClick={() => action('payment-received')}>Оплата получена</button>}{allowed('serviceRequests.close') && <><button onClick={() => action('complete')}>Завершить</button><button className="danger" onClick={() => action('cancel')}>Отменить</button></>}</div></div>}</div></>;
 }
 
 function CustomerCardView({ card, onClose, onNavigate }: { card: CustomerCard; onClose: () => void; onNavigate: Navigate }) {
@@ -220,9 +247,43 @@ function EquipmentKits({ refreshKey, onChanged }: { refreshKey: number; onChange
   return <><form className="kit-form" onSubmit={create}>{input('cashRegisterModel', 'Модель ККТ')}{input('cashRegisterSerial', 'Заводской номер ККТ')}{input('fiscalDriveSerial', 'Номер ФН')}{input('ofdActivationCode', 'Код активации ОФД')}{input('marketplaceOrderId', 'Номер заказа')}<button className="primary">Добавить комплект</button></form><section className="simple-grid">{data.items.map((kit) => <article className="simple-card" key={kit.id}><h3>Комплект #{kit.id}</h3><Badge>{kit.status || 'Новый'}</Badge><Info label="ККТ" value={`${kit.cashRegisterModel || ''} ${kit.cashRegisterSerial || ''}`.trim()} /><Info label="ФН" value={kit.fiscalDriveSerial} /><Info label="ОФД" value={kit.ofdActivationCode} /><Info label="Заказ" value={kit.marketplaceOrderId} /></article>)}</section></>;
 }
 
+const roleOptions: Array<{ value: AdminRole; label: string }> = [
+  { value: 'operator', label: 'Оператор' },
+  { value: 'engineer', label: 'Инженер' },
+  { value: 'sales_manager', label: 'Менеджер продаж' },
+  { value: 'superadmin', label: 'Superadmin' },
+];
+
+function StaffManagement({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
+  const data = useList<Staff>('/admin/api/staff', refreshKey);
+  const [form, setForm] = useState({ login: '', displayName: '', password: '', roles: ['operator'] as AdminRole[] });
+  const create = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await post('/admin/api/staff', form);
+    setForm({ login: '', displayName: '', password: '', roles: ['operator'] });
+    onChanged();
+  };
+  const toggle = (role: AdminRole) => setForm((current) => ({ ...current, roles: current.roles.includes(role) ? current.roles.filter((item) => item !== role) : [...current.roles, role] }));
+  return <><form className="staff-form" onSubmit={create}><div className="form-row"><input required minLength={3} placeholder="Логин" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /><input required placeholder="Имя сотрудника" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /><input required minLength={12} type="password" autoComplete="new-password" placeholder="Пароль" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /><button className="primary" disabled={!form.roles.length}><UserPlus size={16} />Создать</button></div><div className="role-picker">{roleOptions.map((role) => <label key={role.value}><input type="checkbox" checked={form.roles.includes(role.value)} onChange={() => toggle(role.value)} />{role.label}</label>)}</div></form><section className="simple-grid">{data.loading ? <Empty text="Загрузка..." /> : data.error ? <Empty text={data.error} /> : data.items.map((staff) => <StaffCard key={staff.id} staff={staff} onChanged={onChanged} />)}</section></>;
+}
+
+function StaffCard({ staff, onChanged }: { staff: Staff; onChanged: () => void }) {
+  const [password, setPassword] = useState('');
+  const changeRole = async (role: AdminRole) => {
+    const roles = staff.roles.includes(role) ? staff.roles.filter((item) => item !== role) : [...staff.roles, role];
+    if (!roles.length) return;
+    await post(`/admin/api/staff/${staff.id}/roles`, { roles });
+    onChanged();
+  };
+  const toggleActive = async () => { await post(`/admin/api/staff/${staff.id}/active`, { isActive: !staff.isActive }); onChanged(); };
+  const resetPassword = async () => { if (password.length < 12) return; await post(`/admin/api/staff/${staff.id}/password`, { password }); setPassword(''); onChanged(); };
+  const revoke = async () => { await post(`/admin/api/staff/${staff.id}/sessions/revoke`); onChanged(); };
+  return <article className="simple-card staff-card"><div className="row-top"><h3>{staff.displayName}</h3><Badge>{staff.isActive ? 'Активен' : 'Отключён'}</Badge></div><Info label="Логин" value={staff.login} /><Info label="Создан" value={fmtDate(staff.createdAt)} /><Info label="Последний вход" value={staff.lastLoginAt ? fmtDate(staff.lastLoginAt) : 'Ещё не входил'} /><div className="role-picker">{roleOptions.map((role) => <label key={role.value}><input type="checkbox" checked={staff.roles.includes(role.value)} onChange={() => changeRole(role.value)} />{role.label}</label>)}</div><div className="form-row"><input type="password" autoComplete="new-password" placeholder="Новый пароль" value={password} onChange={(e) => setPassword(e.target.value)} /><button disabled={password.length < 12} onClick={resetPassword}><KeyRound size={16} />Сбросить</button></div><div className="actions"><button onClick={revoke}><ShieldCheck size={16} />Отозвать сессии</button><button className={staff.isActive ? 'danger' : ''} onClick={toggleActive}>{staff.isActive ? 'Отключить' : 'Активировать'}</button></div></article>;
+}
+
 type Navigate = (tab: Tab, id?: number) => void;
-interface ListProps { status: string; platform: string; priority?: string; refreshKey: number; requestedId?: number; onNavigate: Navigate; onChanged: () => void }
-function DetailHeader({ title, subtitle, onCustomer, right }: { title: string; subtitle: string; onCustomer: () => void; right?: React.ReactNode }) { return <div className="detail-header"><div><h2>{title}</h2><span>{subtitle}</span></div><div className="actions"><button onClick={onCustomer}><UserRound size={16} />Карточка клиента</button>{right}</div></div>; }
+interface ListProps { status: string; platform: string; priority?: string; refreshKey: number; requestedId?: number; onNavigate: Navigate; onChanged: () => void; permissions?: string[] }
+function DetailHeader({ title, subtitle, onCustomer, right }: { title: string; subtitle: string; onCustomer?: () => void; right?: React.ReactNode }) { return <div className="detail-header"><div><h2>{title}</h2><span>{subtitle}</span></div><div className="actions">{onCustomer && <button onClick={onCustomer}><UserRound size={16} />Карточка клиента</button>}{right}</div></div>; }
 function FieldGrid({ fields }: { fields: Array<[string, unknown]> }) { return <div className="field-grid">{fields.map(([label, val]) => <Info key={label} label={label} value={val} />)}</div>; }
 function Info({ label, value: input }: { label: string; value: unknown }) { return <div className="info"><span>{label}</span><strong>{value(input)}</strong></div>; }
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div>; }
@@ -233,3 +294,4 @@ async function loadCustomerCard(item: { userId?: number; organizationId?: number
 function standardApiStatus(status: string) { return status === 'closed' ? 'processed' : status === 'all' ? 'all' : 'new'; }
 function registrationApiStatus(status: string) { return status === 'closed' ? 'processed' : status === 'in_work' ? 'in_work' : status === 'all' ? 'all' : 'new'; }
 function serviceApiStatuses(status: string) { if (status === 'all') return ['all']; if (status === 'closed') return ['completed', 'cancelled']; if (status === 'waiting_payment') return ['waiting_payment']; if (status === 'in_work') return ['draft', 'price_confirmed', 'review_required', 'invoice_required', 'paid', 'scheduled']; return ['active']; }
+function can(admin: Admin, permission: string) { return admin.permissions.includes(permission); }

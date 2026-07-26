@@ -1,216 +1,294 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { randomUUID } from 'crypto';
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import {
+    BadRequestException,
+    Body,
+    Controller,
+    Get,
+    Param,
+    Post,
+    Res,
+    UploadedFile,
+    UseGuards,
+    UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { RegistrationsService } from 'src/registrations/registrations.service';
-import type { UserPlatform } from 'src/users/entities/user.entity';
-import type { RegistrationField } from 'src/registrations/registration.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import { CurrentWebSession } from 'src/web-session/web-session.decorators';
+import { WebSessionGuard } from 'src/web-session/web-session.guard';
+import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import { ClientWorkflowService } from './client-workflow.service';
 import type { ClientIdentity } from './client-workflow.types';
+import {
+    ClientContextDto,
+    ClientIdParamDto,
+    RegistrationAnswerDto,
+    RegistrationFormDto,
+    ServiceRequestAnswerDto,
+    ServiceRequestStartDto,
+    TicketMediaDto,
+    TicketMessageDto,
+} from './dto/client-api.dto';
+import { RateLimit } from 'src/security/rate-limit';
 
-interface ClientIdentityBody {
-    platform?: UserPlatform;
-    chatId?: string;
-    username?: string;
-    name?: string;
-    organizationId?: number;
+interface UploadedMemoryFile {
+    buffer: Buffer;
+    originalname?: string;
+    mimetype?: string;
+    size?: number;
 }
 
 @Controller('api/client')
 @ApiTags('client')
+@UseGuards(WebSessionGuard)
 export class ClientApiController {
     constructor(
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly registrationsService: RegistrationsService,
         private readonly serviceRequestsService: ServiceRequestsService,
-    ) { }
+    ) {}
 
     @Post('users')
-    upsertUser(@Body() body: ClientIdentityBody) {
-        return this.clientWorkflow.upsertClient(this.parseIdentity(body));
+    @RateLimit('public-form', 30, 600)
+    upsertUser(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: ClientContextDto,
+    ) {
+        return this.clientWorkflow.upsertClient(this.identity(session, body));
     }
 
     @Get('registration-fields')
+    @RateLimit('public-read', 120, 60)
     getRegistrationFields() {
         return this.registrationsService.getAllFields();
     }
 
     @Post('registrations/start')
-    startRegistration(@Body() body: ClientIdentityBody) {
-        return this.clientWorkflow.startRegistration(this.parseIdentity(body));
+    @RateLimit('public-form', 30, 600)
+    startRegistration(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: ClientContextDto,
+    ) {
+        return this.clientWorkflow.startRegistration(
+            this.identity(session, body),
+        );
     }
 
     @Post('registrations/answer')
-    submitRegistrationAnswer(@Body() body: ClientIdentityBody & { value?: string }) {
+    @RateLimit('public-form', 30, 600)
+    submitRegistrationAnswer(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: RegistrationAnswerDto,
+    ) {
         return this.clientWorkflow.submitRegistrationAnswer(
-            this.parseIdentity(body),
-            this.parseText(body.value, 'Registration answer is required'),
+            this.identity(session, body),
+            body.value,
         );
     }
 
     @Post('registrations/form')
-    submitRegistrationForm(@Body() body: ClientIdentityBody & { values?: Partial<Record<RegistrationField, string>> }) {
-        if (!body.values || typeof body.values !== 'object') {
-            throw new BadRequestException('Registration values are required');
-        }
-
-        return this.clientWorkflow.submitRegistrationForm(this.parseIdentity(body), body.values);
+    @RateLimit('public-form', 30, 600)
+    submitRegistrationForm(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: RegistrationFormDto,
+    ) {
+        return this.clientWorkflow.submitRegistrationForm(
+            this.identity(session, body),
+            body.values,
+        );
     }
 
     @Get('service-requests/types')
+    @RateLimit('public-read', 120, 60)
     getServiceTypes() {
         return this.serviceRequestsService.getServiceTypes();
     }
 
     @Get('service-requests')
-    getServiceRequests(@Query() query: ClientIdentityBody) {
-        return this.serviceRequestsService.listForClient(this.parseIdentity(query));
+    @RateLimit('public-sensitive-read', 60, 60)
+    getServiceRequests(@CurrentWebSession() session: WebSessionPrincipal) {
+        return this.serviceRequestsService.listForClient(
+            this.identity(session),
+        );
     }
 
     @Post('service-requests/start')
-    startServiceRequest(@Body() body: ClientIdentityBody & { serviceTypeCode?: string }) {
-        const serviceTypeCode = this.parseText(body.serviceTypeCode, 'Service type code is required');
-        return this.serviceRequestsService.start(this.parseIdentity(body), serviceTypeCode);
+    @RateLimit('public-form', 30, 600)
+    startServiceRequest(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: ServiceRequestStartDto,
+    ) {
+        return this.serviceRequestsService.start(
+            this.identity(session, body),
+            body.serviceTypeCode,
+        );
     }
 
     @Post('service-requests/:id/answers')
-    submitServiceRequestAnswer(@Param('id') id: string, @Body() body: ClientIdentityBody & { value?: string }) {
+    @RateLimit('public-form', 30, 600)
+    submitServiceRequestAnswer(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: ServiceRequestAnswerDto,
+    ) {
         return this.serviceRequestsService.answer(
-            this.parseIdentity(body),
-            this.parsePositiveNumber(id, 'id'),
-            this.parseText(body.value, 'Service request answer is required'),
+            this.identity(session, body),
+            Number(params.id),
+            body.value,
         );
     }
 
     @Post('service-requests/:id/confirm-price')
-    confirmServiceRequestPrice(@Param('id') id: string, @Body() body: ClientIdentityBody) {
+    @RateLimit('public-form', 30, 600)
+    confirmServiceRequestPrice(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: ClientContextDto,
+    ) {
         return this.serviceRequestsService.confirmPrice(
-            this.parseIdentity(body),
-            this.parsePositiveNumber(id, 'id'),
+            this.identity(session, body),
+            Number(params.id),
         );
     }
 
     @Post('tickets/open')
-    openTicket(@Body() body: ClientIdentityBody) {
-        return this.clientWorkflow.openTicket(this.parseIdentity(body));
+    @RateLimit('public-message', 60, 600)
+    openTicket(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: ClientContextDto,
+    ) {
+        return this.clientWorkflow.openTicket(this.identity(session, body));
     }
 
     @Get('tickets/active')
-    getActiveTicket(@Query() query: ClientIdentityBody) {
-        return this.clientWorkflow.getActiveTicket(this.parseIdentity(query));
+    @RateLimit('public-sensitive-read', 60, 60)
+    getActiveTicket(@CurrentWebSession() session: WebSessionPrincipal) {
+        return this.clientWorkflow.getActiveTicket(this.identity(session));
     }
 
     @Get('tickets/:id/messages')
-    getTicketMessages(@Param('id') id: string, @Query() query: ClientIdentityBody) {
-        return this.clientWorkflow.getTicketMessages(this.parseIdentity(query), this.parsePositiveNumber(id, 'id'));
+    @RateLimit('public-sensitive-read', 60, 60)
+    getTicketMessages(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+    ) {
+        return this.clientWorkflow.getTicketMessages(
+            this.identity(session),
+            Number(params.id),
+        );
     }
 
     @Post('tickets/messages')
-    submitTicketMessage(@Body() body: ClientIdentityBody & { text?: string }) {
+    @RateLimit('public-message', 60, 600)
+    submitTicketMessage(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: TicketMessageDto,
+    ) {
         return this.clientWorkflow.submitTicketMessage(
-            this.parseIdentity(body),
-            this.parseText(body.text, 'Ticket message text is required'),
+            this.identity(session, body),
+            body.text,
         );
     }
 
     @Post('tickets/media')
+    @RateLimit('public-message', 60, 600)
     @UseInterceptors(FileInterceptor('file'))
-    submitTicketMedia(@UploadedFile() file: any, @Body() body: ClientIdentityBody & { text?: string }) {
-        if (!file) {
-            throw new BadRequestException('File is required');
-        }
-
+    async submitTicketMedia(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @UploadedFile() file: UploadedMemoryFile | undefined,
+        @Body() body: TicketMediaDto,
+    ) {
+        if (!file) throw new BadRequestException('Ticket file is required');
         const mediaDir = path.join(process.cwd(), 'storage', 'ticket-media');
         fs.mkdirSync(mediaDir, { recursive: true });
         const safeName = `${randomUUID()}-${file.originalname || 'file'}`;
         const filePath = path.join(mediaDir, safeName);
         fs.writeFileSync(filePath, file.buffer);
-
-        return this.clientWorkflow.submitTicketMedia(this.parseIdentity(body), {
-            messageType: this.detectMessageType(file.mimetype, file.originalname),
-            text: body.text?.trim() || undefined,
-            fileName: file.originalname || safeName,
-            mimeType: file.mimetype,
-            fileSize: file.size,
-            localPath: filePath,
-        });
+        return this.clientWorkflow.submitTicketMedia(
+            this.identity(session, body),
+            {
+                messageType: this.detectMessageType(
+                    file.mimetype,
+                    file.originalname,
+                ),
+                localPath: filePath,
+                fileName: file.originalname || safeName,
+                mimeType: file.mimetype,
+                fileSize: file.size,
+                text: body.text,
+            },
+        );
     }
 
     @Post('tickets/:id/messages')
-    submitTicketMessageById(@Param('id') _id: string, @Body() body: ClientIdentityBody & { text?: string }) {
-        return this.submitTicketMessage(body);
+    @RateLimit('public-message', 60, 600)
+    async submitTicketMessageAlias(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: TicketMessageDto,
+    ) {
+        const identity = this.identity(session, body);
+        await this.clientWorkflow.getTicketMessages(
+            identity,
+            Number(params.id),
+        );
+        return this.clientWorkflow.submitTicketMessage(
+            identity,
+            body.text,
+        );
     }
 
     @Get('ticket-messages/:id/file')
-    async downloadTicketMessageFile(@Param('id') id: string, @Query() query: ClientIdentityBody, @Res() response: Response) {
+    @RateLimit('public-sensitive-read', 60, 60)
+    async getTicketMessageFile(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Res() response: Response,
+    ) {
         const message = await this.clientWorkflow.getTicketMessageFile(
-            this.parseIdentity(query),
-            this.parsePositiveNumber(id, 'id'),
+            this.identity(session),
+            Number(params.id),
         );
         if (!message.localPath || !fs.existsSync(message.localPath)) {
-            throw new BadRequestException('File not found');
+            throw new BadRequestException('Ticket file was not found');
         }
-
-        return response.download(message.localPath, message.fileName || `ticket_message_${id}`);
+        return response.download(
+            message.localPath,
+            message.fileName || `ticket_message_${params.id}`,
+        );
     }
 
-    private parseIdentity(body: ClientIdentityBody): ClientIdentity {
-        const platform = body.platform ?? 'web';
-        if (platform !== 'telegram' && platform !== 'max' && platform !== 'web') {
-            throw new BadRequestException('Valid platform is required');
-        }
-
-        const chatId = body.chatId?.trim();
-        if (!chatId) {
-            throw new BadRequestException('chatId is required');
-        }
-
+    private identity(
+        session: WebSessionPrincipal,
+        input?: ClientContextDto,
+    ): ClientIdentity {
         return {
-            platform,
-            chatId,
-            username: body.username?.trim() || undefined,
-            name: body.name?.trim() || undefined,
-            organizationId: this.parseOptionalNumber(body.organizationId, 'organizationId'),
+            platform: 'web',
+            chatId: session.chatId,
+            name: input?.name,
+            organizationId: input?.organizationId,
         };
     }
 
-    private parseText(value: string | undefined, message: string) {
-        const text = value?.trim();
-        if (!text) {
-            throw new BadRequestException(message);
-        }
-
-        return text;
-    }
-
-    private parseOptionalNumber(value: number | undefined, fieldName: string) {
-        if (value === undefined || value === null) {
-            return undefined;
-        }
-
-        return this.parsePositiveNumber(value, fieldName);
-    }
-
-    private parsePositiveNumber(value: number | string | undefined, fieldName: string) {
-        const numberValue = Number(value);
-        if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
-            throw new BadRequestException(`${fieldName} must be a positive integer`);
-        }
-
-        return numberValue;
-    }
-
     private detectMessageType(mimeType?: string, fileName?: string) {
-        if (mimeType?.startsWith('image/')) return 'image';
-        if (mimeType?.startsWith('video/')) return 'video';
-        if (mimeType?.startsWith('audio/')) return 'audio';
-        if (fileName?.toLowerCase().endsWith('.ogg')) return 'voice';
-
-        return 'document';
+        const mime = mimeType?.toLowerCase() || '';
+        const extension = path.extname(fileName || '').toLowerCase();
+        if (mime.startsWith('image/')) return 'image' as const;
+        if (mime.startsWith('video/')) return 'video' as const;
+        if (mime.startsWith('audio/')) return 'audio' as const;
+        if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(extension)) {
+            return 'image' as const;
+        }
+        if (['.mp4', '.mov', '.webm'].includes(extension)) {
+            return 'video' as const;
+        }
+        if (['.mp3', '.wav', '.ogg', '.m4a'].includes(extension)) {
+            return 'audio' as const;
+        }
+        return 'document' as const;
     }
-
 }

@@ -34,6 +34,12 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
     ) { }
 
     async onModuleInit() {
+        const pollingEnabled = this.configService.get<boolean>('BOT_POLLING_ENABLED') ?? true;
+        if (!pollingEnabled) {
+            this.logger.log('Messenger polling is disabled by BOT_POLLING_ENABLED');
+            return;
+        }
+
         const token = this.configService.get<string>('MAX_BOT_TOKEN');
         if (!token) {
             this.logger.warn('MAX_BOT_TOKEN is not defined, MAX bot polling is disabled');

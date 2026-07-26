@@ -1,5 +1,15 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+    Column,
+    CreateDateColumn,
+    Entity,
+    Index,
+    JoinColumn,
+    ManyToOne,
+    PrimaryGeneratedColumn,
+    UpdateDateColumn,
+} from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
+import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 
 export type ServiceRequestStatus =
     | 'draft'
@@ -15,6 +25,7 @@ export type ServiceRequestStatus =
 export type ServiceRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 @Entity('service_requests')
+@Index('IDX_service_requests_assigned_engineer', ['assignedEngineerId'])
 export class ServiceRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -72,6 +83,16 @@ export class ServiceRequestEntity {
 
     @Column({ type: 'varchar', nullable: true })
     executorName: string | null;
+
+    @Column({ type: 'integer', nullable: true })
+    assignedEngineerId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({
+        name: 'assignedEngineerId',
+        foreignKeyConstraintName: 'FK_service_requests_assigned_engineer',
+    })
+    assignedEngineer: AdminUserEntity | null;
 
     @Column({ type: 'varchar', default: 'normal' })
     priority: ServiceRequestPriority;

@@ -1,9 +1,7 @@
 import * as fs from 'fs';
-import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from 'crypto';
-import { Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { randomBytes } from 'crypto';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { MoreThan } from 'typeorm';
 import { IsNull, Not, In } from 'typeorm';
 import { Repository } from 'typeorm';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
@@ -25,8 +23,8 @@ import { ServiceRequestEntity } from 'src/service-requests/entities/service-requ
 import type { ServiceRequestPriority, ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { TicketMessageType } from 'src/tickets/entities/ticket-message.entity';
-import { AdminSessionEntity } from './entities/admin-session.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
+import type { AdminPrincipal } from './admin-auth.types';
 
 export type AdminStatusFilter = 'all' | 'new' | 'in_work' | 'processed';
 
@@ -59,55 +57,10 @@ export class AdminService {
         private readonly serviceRequestsRepo: Repository<ServiceRequestEntity>,
         @InjectRepository(AdminUserEntity)
         private readonly adminUsersRepo: Repository<AdminUserEntity>,
-        @InjectRepository(AdminSessionEntity)
-        private readonly adminSessionsRepo: Repository<AdminSessionEntity>,
         private readonly serviceRequestsService: ServiceRequestsService,
-        private readonly configService: ConfigService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
     ) { }
-
-    async loginAdmin(login: string, password: string) {
-        await this.ensureDefaultAdmin();
-        const admin = await this.adminUsersRepo.findOne({ where: { login: login.trim().toLowerCase(), isActive: true } });
-        if (!admin || !this.verifyPassword(password, admin.passwordHash)) {
-            return null;
-        }
-
-        const token = randomBytes(32).toString('base64url');
-        const days = this.configService.get<number>('ADMIN_SESSION_DAYS') || 180;
-        const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-        await this.adminSessionsRepo.save(this.adminSessionsRepo.create({
-            tokenHash: this.hashSessionToken(token),
-            userId: admin.id,
-            expiresAt,
-        }));
-
-        return {
-            token,
-            expiresAt,
-            admin: this.presentAdmin(admin),
-        };
-    }
-
-    async getAdminBySessionToken(token?: string | null) {
-        if (!token) return null;
-        const session = await this.adminSessionsRepo.findOne({
-            where: { tokenHash: this.hashSessionToken(token), expiresAt: MoreThan(new Date()) },
-            relations: { user: true },
-        });
-
-        if (!session?.user?.isActive) {
-            return null;
-        }
-
-        return this.presentAdmin(session.user);
-    }
-
-    async logoutAdmin(token?: string | null) {
-        if (!token) return;
-        await this.adminSessionsRepo.delete({ tokenHash: this.hashSessionToken(token) });
-    }
 
     async getNotificationBindings(adminId: number) {
         const admin = await this.adminUsersRepo.findOne({ where: { id: adminId } });
@@ -163,56 +116,29 @@ export class AdminService {
         return this.getNotificationBindings(admin.id);
     }
 
-    private async ensureDefaultAdmin() {
-        const count = await this.adminUsersRepo.count();
-        if (count > 0) return;
 
-        const login = (this.configService.get<string>('ADMIN_LOGIN') || 'admin').trim().toLowerCase();
-        const password = this.configService.get<string>('ADMIN_PASSWORD') || this.configService.get<string>('ADMIN_TOKEN') || 'admin';
-        const displayName = this.configService.get<string>('ADMIN_NAME') || login;
-        await this.adminUsersRepo.save(this.adminUsersRepo.create({
-            login,
-            displayName,
-            role: 'admin',
-            passwordHash: this.hashPassword(password),
-            isActive: true,
-        }));
-    }
-
-    private presentAdmin(admin: AdminUserEntity) {
-        return {
-            id: admin.id,
-            login: admin.login,
-            displayName: admin.displayName,
-            role: admin.role,
-        };
-    }
-
-    private hashPassword(password: string) {
-        const salt = randomBytes(16).toString('base64url');
-        const iterations = 120000;
-        const hash = pbkdf2Sync(password, salt, iterations, 32, 'sha256').toString('base64url');
-        return `pbkdf2$${iterations}$${salt}$${hash}`;
-    }
-
-    private verifyPassword(password: string, storedHash: string) {
-        const [method, iterationsText, salt, expectedHash] = storedHash.split('$');
-        if (method !== 'pbkdf2' || !iterationsText || !salt || !expectedHash) return false;
-        const actual = pbkdf2Sync(password, salt, Number(iterationsText), 32, 'sha256');
-        const expected = Buffer.from(expectedHash, 'base64url');
-        return actual.length === expected.length && timingSafeEqual(actual, expected);
-    }
-
-    private hashSessionToken(token: string) {
-        return createHash('sha256').update(token).digest('base64url');
-    }
-
-    async getSummary() {
-        const [newRegistrations, openTickets, activeServiceRequests] = await Promise.all([
-            this.registrationsRepo.count({ where: { isFilled: true, isProcessed: false } }),
-            this.ticketsRepo.count({ where: { isAnswered: false } }),
-            this.serviceRequestsService.listForAdmin('active').then((items) => items.length),
-        ]);
+    async getSummary(admin: AdminPrincipal) {
+        const permissions = new Set(admin.permissions);
+        const [newRegistrations, openTickets, activeServiceRequests] =
+            await Promise.all([
+                permissions.has('registrations.read')
+                    ? this.registrationsRepo.count({
+                          where: { isFilled: true, isProcessed: false },
+                      })
+                    : 0,
+                permissions.has('tickets.read')
+                    ? this.ticketsRepo.count({ where: { isAnswered: false } })
+                    : 0,
+                permissions.has('serviceRequests.read.all')
+                    ? this.serviceRequestsService
+                          .listForAdmin('active')
+                          .then((items) => items.length)
+                    : permissions.has('serviceRequests.read.assigned')
+                      ? this.serviceRequestsService
+                            .listForAdmin('active', undefined, admin.id)
+                            .then((items) => items.length)
+                      : 0,
+            ]);
 
         return { newRegistrations, openTickets, activeServiceRequests };
     }
@@ -255,8 +181,76 @@ export class AdminService {
         return this.serviceRequestsService.listForAdmin(status, platform);
     }
 
+    getServiceRequestsForAdmin(
+        admin: AdminPrincipal,
+        status: ServiceRequestStatus | 'active' | 'all' = 'active',
+        platform?: UserPlatform,
+    ) {
+        const assignedEngineerId = admin.permissions.includes(
+            'serviceRequests.read.all',
+        )
+            ? undefined
+            : admin.id;
+        return this.serviceRequestsService.listForAdmin(
+            status,
+            platform,
+            assignedEngineerId,
+        );
+    }
+
     getServiceRequest(id: number) {
         return this.serviceRequestsService.getRequestDetails(id);
+    }
+
+    async getServiceRequestDetailsForAdmin(
+        admin: AdminPrincipal,
+        id: number,
+    ) {
+        if (!admin.permissions.includes('serviceRequests.read.all')) {
+            const request = await this.serviceRequestsRepo.findOne({
+                where: { id, assignedEngineerId: admin.id },
+            });
+            if (!request) {
+                throw new BadRequestException(
+                    'Service request was not found for this staff member',
+                );
+            }
+        }
+        return this.serviceRequestsService.getRequestDetails(id);
+    }
+
+    async assignEngineer(
+        id: number,
+        assignedEngineerId: number,
+        operatorId: string,
+    ) {
+        const engineer = await this.adminUsersRepo
+            .createQueryBuilder('user')
+            .innerJoinAndSelect('user.roleAssignments', 'assignment')
+            .where('user.id = :assignedEngineerId', { assignedEngineerId })
+            .andWhere('user.isActive = true')
+            .andWhere('assignment.role = :role', { role: 'engineer' })
+            .getOne();
+        if (!engineer) {
+            throw new BadRequestException(
+                'Active engineer staff account was not found',
+            );
+        }
+
+        const request = await this.serviceRequestsRepo.findOne({
+            where: { id },
+        });
+        if (!request) {
+            throw new BadRequestException('Service request was not found');
+        }
+        request.assignedEngineerId = engineer.id;
+        request.executorName = engineer.displayName;
+        await this.serviceRequestsRepo.save(request);
+        return this.serviceRequestsService.updateOperatorState(
+            id,
+            { executorName: engineer.displayName },
+            operatorId,
+        );
     }
 
     attachServiceRequestInvoice(id: number, invoiceFileId: string, invoiceFileName?: string, operatorId = 'admin-panel') {

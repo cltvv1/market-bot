@@ -1,6 +1,7 @@
 # compiled output
 /dist
 /admin-ui/dist
+/client-ui/dist
 /node_modules
 /build
 

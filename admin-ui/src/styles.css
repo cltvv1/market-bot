@@ -102,6 +102,10 @@ main { max-width: 1540px; margin: 0 auto; padding: 20px; }
 
 .simple-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 .kit-form { margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)) auto; gap: 8px; background: #fff; }
+.staff-form { margin-bottom: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 7px; display: grid; gap: 10px; background: #fff; }
+.staff-card { display: grid; gap: 10px; }
+.role-picker { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.role-picker label { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .empty { min-height: 120px; padding: 24px; display: grid; place-items: center; color: var(--muted); text-align: center; }
 .center-screen { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 12px; }
 .loader { width: 28px; height: 28px; border: 3px solid #dce3e9; border-top-color: var(--brand); border-radius: 50%; animation: spin .8s linear infinite; }

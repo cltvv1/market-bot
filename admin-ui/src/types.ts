@@ -1,7 +1,26 @@
-export type Tab = 'registrations' | 'service' | 'tickets' | 'organizations' | 'equipment-kits';
+export type Tab = 'registrations' | 'service' | 'tickets' | 'organizations' | 'equipment-kits' | 'staff';
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
+export type AdminRole = 'operator' | 'engineer' | 'sales_manager' | 'superadmin';
 
-export interface Admin { id: number; login: string; displayName: string; role: string }
+export interface Admin {
+  id: number;
+  login: string;
+  displayName: string;
+  roles: AdminRole[];
+  permissions: string[];
+  isActive: boolean;
+  sessionId: number;
+}
+export interface Staff {
+  id: number;
+  login: string;
+  displayName: string;
+  roles: AdminRole[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+}
 export interface Summary { newRegistrations: number; activeServiceRequests: number; openTickets: number }
 export interface NotificationSettings {
   notifyRegistrations: boolean;
@@ -70,6 +89,7 @@ export interface ServiceRequest extends BaseItem {
   priority?: Priority;
   responsibleOperatorId?: string;
   executorName?: string;
+  assignedEngineerId?: number;
   operatorComment?: string;
   calculatedPrice?: number;
   invoiceFileId?: string;

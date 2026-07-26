@@ -1,85 +1,87 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import type { UserPlatform } from 'src/users/entities/user.entity';
+import {
+    ClientContextDto,
+    ClientIdParamDto,
+    ServiceRequestAnswerDto,
+    ServiceRequestStartDto,
+} from 'src/client/dto/client-api.dto';
+import { CurrentWebSession } from 'src/web-session/web-session.decorators';
+import { WebSessionGuard } from 'src/web-session/web-session.guard';
+import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import { ServiceRequestsService } from './service-requests.service';
-
-interface ClientIdentityBody {
-    platform?: UserPlatform;
-    chatId?: string;
-    username?: string;
-    name?: string;
-    organizationId?: number;
-}
+import { RateLimit } from 'src/security/rate-limit';
 
 @Controller('api/client/service-requests')
 @ApiTags('service-requests')
+@UseGuards(WebSessionGuard)
 export class ServiceRequestsController {
-    constructor(private readonly serviceRequestsService: ServiceRequestsService) { }
+    constructor(
+        private readonly serviceRequestsService: ServiceRequestsService,
+    ) {}
 
     @Get('types')
+    @RateLimit('public-read', 120, 60)
     getTypes() {
         return this.serviceRequestsService.getServiceTypes();
     }
 
     @Get()
-    getClientRequests(@Query('platform') platform: UserPlatform = 'web', @Query('chatId') chatId?: string) {
-        return this.serviceRequestsService.listForClient(this.parseIdentity({ platform, chatId }));
+    @RateLimit('public-sensitive-read', 60, 60)
+    getClientRequests(@CurrentWebSession() session: WebSessionPrincipal) {
+        return this.serviceRequestsService.listForClient(
+            this.identity(session),
+        );
     }
 
     @Post('start')
-    start(@Body() body: ClientIdentityBody & { serviceTypeCode?: string }) {
-        if (!body.serviceTypeCode?.trim()) {
-            throw new BadRequestException('serviceTypeCode is required');
-        }
-
-        return this.serviceRequestsService.start(this.parseIdentity(body), body.serviceTypeCode.trim());
+    @RateLimit('public-form', 30, 600)
+    start(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: ServiceRequestStartDto,
+    ) {
+        return this.serviceRequestsService.start(
+            this.identity(session, body),
+            body.serviceTypeCode,
+        );
     }
 
     @Post(':id/answers')
-    answer(@Param('id') id: string, @Body() body: ClientIdentityBody & { value?: string }) {
-        const value = body.value?.trim();
-        if (!value) {
-            throw new BadRequestException('Answer value is required');
-        }
-
-        return this.serviceRequestsService.answer(this.parseIdentity(body), Number(id), value);
+    @RateLimit('public-form', 30, 600)
+    answer(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: ServiceRequestAnswerDto,
+    ) {
+        return this.serviceRequestsService.answer(
+            this.identity(session, body),
+            Number(params.id),
+            body.value,
+        );
     }
 
     @Post(':id/confirm-price')
-    confirmPrice(@Param('id') id: string, @Body() body: ClientIdentityBody) {
-        return this.serviceRequestsService.confirmPrice(this.parseIdentity(body), Number(id));
+    @RateLimit('public-form', 30, 600)
+    confirmPrice(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: ClientContextDto,
+    ) {
+        return this.serviceRequestsService.confirmPrice(
+            this.identity(session, body),
+            Number(params.id),
+        );
     }
 
-    private parseIdentity(body: ClientIdentityBody) {
-        const platform = body.platform ?? 'web';
-        if (platform !== 'telegram' && platform !== 'max' && platform !== 'web') {
-            throw new BadRequestException('Valid platform is required');
-        }
-
-        const chatId = body.chatId?.trim();
-        if (!chatId) {
-            throw new BadRequestException('chatId is required');
-        }
-
+    private identity(
+        session: WebSessionPrincipal,
+        body?: ClientContextDto,
+    ) {
         return {
-            platform,
-            chatId,
-            username: body.username?.trim() || undefined,
-            name: body.name?.trim() || undefined,
-            organizationId: this.parseOptionalNumber(body.organizationId, 'organizationId'),
+            platform: 'web' as const,
+            chatId: session.chatId,
+            name: body?.name,
+            organizationId: body?.organizationId,
         };
-    }
-
-    private parseOptionalNumber(value: number | undefined, fieldName: string) {
-        if (value === undefined || value === null) {
-            return undefined;
-        }
-
-        const numberValue = Number(value);
-        if (!Number.isSafeInteger(numberValue) || numberValue <= 0) {
-            throw new BadRequestException(`${fieldName} must be a positive integer`);
-        }
-
-        return numberValue;
     }
 }

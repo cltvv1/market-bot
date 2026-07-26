@@ -1,7 +1,9 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { AdminUserEntity } from './admin-user.entity';
 
 @Entity('admin_sessions')
+@Index('IDX_admin_sessions_user', ['userId'])
+@Index('IDX_admin_sessions_expiry_active', ['expiresAt', 'revokedAt'])
 export class AdminSessionEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -18,6 +20,12 @@ export class AdminSessionEntity {
 
     @Column({ type: 'timestamp' })
     expiresAt: Date;
+
+    @Column({ type: 'timestamp', nullable: true })
+    lastUsedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    revokedAt: Date | null;
 
     @CreateDateColumn()
     createdAt: Date;

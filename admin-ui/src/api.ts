@@ -1,5 +1,10 @@
 export class ApiError extends Error {
-  constructor(message: string, public status: number) {
+  constructor(
+    message: string,
+    public status: number,
+    public code = 'REQUEST_FAILED',
+    public errors: Array<{ field?: string; code: string; message: string }> = [],
+  ) {
     super(message);
   }
 }
@@ -7,14 +12,35 @@ export class ApiError extends Error {
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...options,
+    credentials: 'include',
     headers: options.body instanceof FormData
       ? options.headers
       : { 'Content-Type': 'application/json', ...options.headers },
   });
   if (!response.ok) {
-    throw new ApiError((await response.text()) || response.statusText, response.status);
+    const payload = await readError(response);
+    if (response.status === 401) window.dispatchEvent(new Event('vitma:unauthorized'));
+    if (response.status === 403) {
+      window.dispatchEvent(new CustomEvent('vitma:forbidden', {
+        detail: payload.message || 'Недостаточно прав для этого действия',
+      }));
+    }
+    throw new ApiError(payload.message, response.status, payload.code, payload.errors);
   }
   return response.json() as Promise<T>;
+}
+
+async function readError(response: Response) {
+  const fallback = { message: response.statusText || 'Ошибка запроса', code: 'REQUEST_FAILED', errors: [] };
+  if (!(response.headers.get('content-type') || '').includes('application/json')) {
+    return { ...fallback, message: (await response.text()) || fallback.message };
+  }
+  const payload = await response.json() as Partial<typeof fallback>;
+  return {
+    message: payload.message || fallback.message,
+    code: payload.code || fallback.code,
+    errors: Array.isArray(payload.errors) ? payload.errors : [],
+  };
 }
 
 export function post<T>(path: string, body: unknown = {}): Promise<T> {

@@ -1,566 +1,716 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { randomUUID } from 'crypto';
-import { BadRequestException, Body, Controller, Get, Header, Param, Post, Query, Req, Res, UnauthorizedException, UploadedFile, UseInterceptors } from '@nestjs/common';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import {
+    BadRequestException,
+    Body,
+    Controller,
+    Get,
+    Header,
+    Param,
+    Post,
+    Query,
+    Req,
+    Res,
+    UnauthorizedException,
+    UploadedFile,
+    UseGuards,
+    UseInterceptors,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiSecurity, ApiTags } from '@nestjs/swagger';
+import { ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
-import type { UserPlatform } from 'src/users/entities/user.entity';
-import type { ServiceRequestPriority, ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
-import type { RegistrationRequestPriority, RegistrationRequestStatus } from 'src/registrations/entities/registration.entity';
 import { AdminService } from './admin.service';
-import type { AdminStatusFilter } from './admin.service';
 import { adminPageHtml } from './admin.page';
+import { AdminAuthService } from './admin-auth.service';
+import {
+    CurrentAdmin,
+    PublicAdmin,
+    RequireAnyPermission,
+    RequirePermissions,
+} from './admin-auth.decorators';
+import {
+    AdminPermissionGuard,
+    AdminSessionGuard,
+} from './admin-auth.guard';
+import type { AdminPrincipal } from './admin-auth.types';
+import {
+    AdminIdParamDto,
+    AdminLoginDto,
+    CreateAdminUserDto,
+    NotificationBindCodeDto,
+    NotificationSettingsDto,
+    ResetAdminPasswordDto,
+    SetAdminActiveDto,
+    SetAdminRolesDto,
+} from './dto/admin-auth.dto';
+import {
+    ActivityQueryDto,
+    AdminListQueryDto,
+    AssignEngineerDto,
+    CustomerContextQueryDto,
+    EquipmentKitDto,
+    InvoiceReferenceDto,
+    LinkEquipmentKitDto,
+    OptionalMediaTextDto,
+    PositiveIdParamDto,
+    RegistrationOperatorStateDto,
+    ScheduleServiceRequestDto,
+    SearchQueryDto,
+    ServiceRequestListQueryDto,
+    ServiceRequestOperatorStateDto,
+    TextMessageDto,
+} from './dto/admin-api.dto';
+import { RateLimit } from 'src/security/rate-limit';
+
+interface UploadedMemoryFile {
+    buffer: Buffer;
+    originalname?: string;
+    mimetype?: string;
+    size?: number;
+}
 
 @Controller('admin')
 @ApiTags('admin')
-@ApiSecurity('admin-token')
+@UseGuards(AdminSessionGuard, AdminPermissionGuard)
 export class AdminController {
-    private readonly sessionCookieName = 'admin_session';
-
     constructor(
         private readonly adminService: AdminService,
-        private readonly configService: ConfigService,
-    ) { }
+        private readonly authService: AdminAuthService,
+        private readonly config: ConfigService,
+    ) {}
 
     @Get()
+    @PublicAdmin()
     @Header('Content-Type', 'text/html; charset=utf-8')
     @Header('Cache-Control', 'no-store')
     getPage() {
-        const reactPagePath = path.join(process.cwd(), 'admin-ui', 'dist', 'index.html');
+        const reactPagePath = path.join(
+            process.cwd(),
+            'admin-ui',
+            'dist',
+            'index.html',
+        );
         return fs.existsSync(reactPagePath)
             ? fs.readFileSync(reactPagePath, 'utf8')
             : adminPageHtml;
     }
 
     @Get('admin.js')
+    @PublicAdmin()
     getReactScript(@Res() response: Response) {
-        return response.sendFile(path.join(process.cwd(), 'admin-ui', 'dist', 'admin.js'));
+        return response.sendFile(
+            path.join(process.cwd(), 'admin-ui', 'dist', 'admin.js'),
+        );
     }
 
     @Get('admin.css')
+    @PublicAdmin()
     getReactStyles(@Res() response: Response) {
-        return response.sendFile(path.join(process.cwd(), 'admin-ui', 'dist', 'admin.css'));
+        return response.sendFile(
+            path.join(process.cwd(), 'admin-ui', 'dist', 'admin.css'),
+        );
     }
 
     @Get('api/me')
-    async getCurrentAdmin(@Req() request: Request) {
-        const admin = await this.getSessionAdmin(request);
-        if (!admin) {
-            throw new UnauthorizedException();
-        }
-
+    getCurrentAdmin(@CurrentAdmin() admin: AdminPrincipal) {
         return { admin };
     }
 
     @Post('api/login')
-    async login(@Body('login') login: string, @Body('password') password: string, @Res({ passthrough: true }) response: Response) {
-        if (!login?.trim() || !password) {
-            throw new BadRequestException('Login and password are required');
-        }
-
-        const result = await this.adminService.loginAdmin(login, password);
+    @PublicAdmin()
+    @RateLimit('admin-login', 10, 60)
+    async login(
+        @Body() body: AdminLoginDto,
+        @Res({ passthrough: true }) response: Response,
+    ) {
+        const result = await this.authService.login(body.login, body.password);
         if (!result) {
-            throw new UnauthorizedException();
+            throw new UnauthorizedException('Invalid login or password');
         }
-
-        response.setHeader('Set-Cookie', this.buildSessionCookie(result.token, result.expiresAt));
+        response.cookie(
+            this.authService.getSessionCookieName(),
+            result.token,
+            this.sessionCookieOptions(result.expiresAt),
+        );
         return { admin: result.admin };
     }
 
     @Post('api/logout')
-    async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
-        await this.adminService.logoutAdmin(this.getCookie(request, this.sessionCookieName));
-        response.setHeader('Set-Cookie', this.buildExpiredSessionCookie());
+    async logout(
+        @Req() request: Request,
+        @Res({ passthrough: true }) response: Response,
+    ) {
+        await this.authService.logout(
+            this.getCookie(
+                request,
+                this.authService.getSessionCookieName(),
+            ),
+        );
+        response.clearCookie(
+            this.authService.getSessionCookieName(),
+            this.sessionCookieOptions(),
+        );
         return { ok: true };
     }
 
-    @Get('api/notification-bindings')
-    async getNotificationBindings(@Req() request: Request) {
-        const admin = await this.getSessionAdmin(request);
-        if (!admin) throw new UnauthorizedException();
+    @Get('api/staff')
+    @RequirePermissions('staff.roles.manage')
+    listStaff() {
+        return this.authService.listStaff();
+    }
 
+    @Get('api/staff/engineers')
+    @RequirePermissions('staff.read')
+    listEngineers() {
+        return this.authService.listActiveEngineers();
+    }
+
+    @Post('api/staff')
+    @RequirePermissions('staff.create')
+    createStaff(@Body() body: CreateAdminUserDto) {
+        return this.authService.createStaff(body);
+    }
+
+    @Post('api/staff/:id/roles')
+    @RequirePermissions('staff.roles.manage')
+    setStaffRoles(
+        @Param() params: AdminIdParamDto,
+        @Body() body: SetAdminRolesDto,
+    ) {
+        return this.authService.setRoles(Number(params.id), body.roles);
+    }
+
+    @Post('api/staff/:id/active')
+    @RequirePermissions('staff.update')
+    setStaffActive(
+        @Param() params: AdminIdParamDto,
+        @Body() body: SetAdminActiveDto,
+    ) {
+        return this.authService.setActive(Number(params.id), body.isActive);
+    }
+
+    @Post('api/staff/:id/password')
+    @RequirePermissions('staff.update')
+    resetStaffPassword(
+        @Param() params: AdminIdParamDto,
+        @Body() body: ResetAdminPasswordDto,
+    ) {
+        return this.authService.resetPassword(
+            Number(params.id),
+            body.password,
+        );
+    }
+
+    @Post('api/staff/:id/sessions/revoke')
+    @RequirePermissions('staff.sessions.revoke')
+    revokeStaffSessions(@Param() params: AdminIdParamDto) {
+        return this.authService.revokeAllSessions(Number(params.id));
+    }
+
+    @Get('api/notification-bindings')
+    getNotificationBindings(@CurrentAdmin() admin: AdminPrincipal) {
         return this.adminService.getNotificationBindings(admin.id);
     }
 
     @Post('api/notification-bindings/code')
-    async createNotificationBindCode(@Req() request: Request, @Body('platform') platform?: 'telegram' | 'max') {
-        const admin = await this.getSessionAdmin(request);
-        if (!admin) throw new UnauthorizedException();
-        if (platform !== 'telegram' && platform !== 'max') {
-            throw new BadRequestException('platform must be telegram or max');
-        }
-
-        return this.adminService.createMessengerBindCode(admin.id, platform);
+    createNotificationBindCode(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Body() body: NotificationBindCodeDto,
+    ) {
+        return this.adminService.createMessengerBindCode(
+            admin.id,
+            body.platform,
+        );
     }
 
     @Post('api/notification-bindings/settings')
-    async updateNotificationSettings(
-        @Req() request: Request,
-        @Body('notifyRegistrations') notifyRegistrations?: boolean,
-        @Body('notifyTickets') notifyTickets?: boolean,
-        @Body('notifyServiceRequests') notifyServiceRequests?: boolean,
+    updateNotificationSettings(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Body() body: NotificationSettingsDto,
     ) {
-        const admin = await this.getSessionAdmin(request);
-        if (!admin) throw new UnauthorizedException();
-
-        return this.adminService.updateNotificationSettings(admin.id, {
-            ...(notifyRegistrations !== undefined ? { notifyRegistrations } : {}),
-            ...(notifyTickets !== undefined ? { notifyTickets } : {}),
-            ...(notifyServiceRequests !== undefined ? { notifyServiceRequests } : {}),
-        });
+        return this.adminService.updateNotificationSettings(admin.id, body);
     }
 
     @Get('api/summary')
-    async getSummary(@Req() request: Request) {
-        await this.assertAuthorized(request);
-        return this.adminService.getSummary();
+    getSummary(@CurrentAdmin() admin: AdminPrincipal) {
+        return this.adminService.getSummary(admin);
     }
 
     @Get('api/registrations')
-    async getRegistrations(
-        @Req() request: Request,
-        @Query('status') status?: AdminStatusFilter,
-        @Query('platform') platform?: UserPlatform,
-        @Query('priority') priority?: RegistrationRequestPriority,
-    ) {
-        await this.assertAuthorized(request);
-        return this.adminService.getRegistrations(this.normalizeStatus(status), this.normalizePlatform(platform), this.normalizeRegistrationPriority(priority));
+    @RequirePermissions('registrations.read')
+    getRegistrations(@Query() query: AdminListQueryDto) {
+        return this.adminService.getRegistrations(
+            query.status || 'new',
+            query.platform,
+            query.priority,
+        );
     }
 
     @Get('api/registrations/:id')
-    async getRegistration(@Req() request: Request, @Param('id') id: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.getRegistration(Number(id));
+    @RequirePermissions('registrations.read')
+    getRegistration(@Param() params: PositiveIdParamDto) {
+        return this.adminService.getRegistration(Number(params.id));
     }
 
     @Get('api/tickets')
-    async getTickets(@Req() request: Request, @Query('status') status?: AdminStatusFilter, @Query('platform') platform?: UserPlatform) {
-        await this.assertAuthorized(request);
-        return this.adminService.getTickets(this.normalizeStatus(status), this.normalizePlatform(platform));
+    @RequirePermissions('tickets.read')
+    getTickets(@Query() query: AdminListQueryDto) {
+        return this.adminService.getTickets(
+            query.status || 'new',
+            query.platform,
+        );
     }
 
     @Get('api/service-requests')
-    async getServiceRequests(@Req() request: Request, @Query('status') status?: ServiceRequestStatus | 'active' | 'all', @Query('platform') platform?: UserPlatform) {
-        await this.assertAuthorized(request);
-        return this.adminService.getServiceRequests(this.normalizeServiceRequestStatus(status), this.normalizePlatform(platform));
+    @RequireAnyPermission(
+        'serviceRequests.read.all',
+        'serviceRequests.read.assigned',
+    )
+    getServiceRequests(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Query() query: ServiceRequestListQueryDto,
+    ) {
+        return this.adminService.getServiceRequestsForAdmin(
+            admin,
+            query.status || 'active',
+            query.platform,
+        );
     }
 
     @Get('api/service-requests/:id')
-    async getServiceRequest(@Req() request: Request, @Param('id') id: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.getServiceRequestDetails(Number(id));
+    @RequireAnyPermission(
+        'serviceRequests.read.all',
+        'serviceRequests.read.assigned',
+    )
+    getServiceRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+    ) {
+        return this.adminService.getServiceRequestDetailsForAdmin(
+            admin,
+            Number(params.id),
+        );
+    }
+
+    @Post('api/service-requests/:id/assign-engineer')
+    @RequirePermissions('serviceRequests.assign')
+    assignEngineer(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: AssignEngineerDto,
+    ) {
+        return this.adminService.assignEngineer(
+            Number(params.id),
+            body.assignedEngineerId,
+            admin.displayName,
+        );
     }
 
     @Get('api/customer-context')
-    async getCustomerContext(
-        @Req() request: Request,
-        @Query('userId') userId?: string,
-        @Query('organizationId') organizationId?: string,
-        @Query('platform') platform?: UserPlatform,
-        @Query('chatId') chatId?: string,
-    ) {
-        await this.assertAuthorized(request);
-        return this.adminService.getCustomerContext({
-            userId: userId ? Number(userId) : undefined,
-            organizationId: organizationId ? Number(organizationId) : undefined,
-            platform: this.normalizePlatform(platform),
-            chatId,
-        });
+    @RequirePermissions('organizations.read')
+    getCustomerContext(@Query() query: CustomerContextQueryDto) {
+        return this.adminService.getCustomerContext(query);
     }
 
     @Get('api/customer-card')
-    async getCustomerCard(
-        @Req() request: Request,
-        @Query('userId') userId?: string,
-        @Query('organizationId') organizationId?: string,
-        @Query('platform') platform?: UserPlatform,
-        @Query('chatId') chatId?: string,
-    ) {
-        await this.assertAuthorized(request);
-        return this.adminService.getCustomerCard({
-            userId: userId ? Number(userId) : undefined,
-            organizationId: organizationId ? Number(organizationId) : undefined,
-            platform: this.normalizePlatform(platform),
-            chatId,
-        });
+    @RequirePermissions('organizations.read')
+    getCustomerCard(@Query() query: CustomerContextQueryDto) {
+        return this.adminService.getCustomerCard(query);
     }
 
     @Post('api/service-requests/:id/invoice')
-    async attachServiceRequestInvoice(@Req() request: Request, @Param('id') id: string, @Body('invoiceFileId') invoiceFileId?: string, @Body('invoiceFileName') invoiceFileName?: string) {
-        const actor = await this.assertAuthorized(request);
-        if (!invoiceFileId?.trim()) {
-            throw new BadRequestException('invoiceFileId is required');
-        }
-
-        return this.adminService.attachServiceRequestInvoice(Number(id), invoiceFileId.trim(), invoiceFileName?.trim() || undefined, actor);
+    @RequirePermissions('serviceRequests.invoice')
+    attachServiceRequestInvoice(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: InvoiceReferenceDto,
+    ) {
+        return this.adminService.attachServiceRequestInvoice(
+            Number(params.id),
+            body.invoiceFileId,
+            body.invoiceFileName,
+            admin.displayName,
+        );
     }
 
     @Post('api/service-requests/:id/invoice-file')
+    @RequirePermissions('serviceRequests.invoice')
     @UseInterceptors(FileInterceptor('file'))
-    async attachServiceRequestInvoiceFile(@Req() request: Request, @Param('id') id: string, @UploadedFile() file?: any) {
-        const actor = await this.assertAuthorized(request);
-        if (!file) {
-            throw new BadRequestException('PDF file is required');
-        }
-
+    async attachServiceRequestInvoiceFile(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @UploadedFile() file?: UploadedMemoryFile,
+    ) {
+        if (!file) throw new BadRequestException('PDF file is required');
         if (file.mimetype !== 'application/pdf') {
             throw new BadRequestException('Only PDF files are supported');
         }
-
         const invoicesDir = path.join(process.cwd(), 'storage', 'invoices');
         fs.mkdirSync(invoicesDir, { recursive: true });
         const filePath = path.join(invoicesDir, `${randomUUID()}.pdf`);
         fs.writeFileSync(filePath, file.buffer);
-
-        return this.adminService.attachServiceRequestInvoice(Number(id), filePath, file.originalname || `invoice_${id}.pdf`, actor);
+        return this.adminService.attachServiceRequestInvoice(
+            Number(params.id),
+            filePath,
+            file.originalname || `invoice_${params.id}.pdf`,
+            admin.displayName,
+        );
     }
 
     @Get('api/service-requests/:id/invoice')
-    async downloadServiceRequestInvoice(@Req() request: Request, @Param('id') id: string, @Query('token') token: string, @Res() response: Response) {
-        await this.assertAuthorized(request, token);
-        const details = await this.adminService.getServiceRequest(Number(id));
+    @RequirePermissions('serviceRequests.read.all')
+    async downloadServiceRequestInvoice(
+        @Param() params: PositiveIdParamDto,
+        @Res() response: Response,
+    ) {
+        const details = await this.adminService.getServiceRequest(
+            Number(params.id),
+        );
         const invoicePath = details.request.invoiceFileId;
         if (!invoicePath || !fs.existsSync(invoicePath)) {
             throw new BadRequestException('Invoice PDF not found');
         }
-
-        return response.download(invoicePath, details.request.invoiceFileName || `invoice_${id}.pdf`);
+        return response.download(
+            invoicePath,
+            details.request.invoiceFileName || `invoice_${params.id}.pdf`,
+        );
     }
 
     @Get('api/service-requests/:id/signed-consent')
-    async downloadServiceRequestSignedConsent(@Req() request: Request, @Param('id') id: string, @Query('token') token: string, @Res() response: Response) {
-        await this.assertAuthorized(request, token);
-        const details = await this.adminService.getServiceRequest(Number(id));
+    @RequirePermissions('serviceRequests.read.all')
+    async downloadServiceRequestSignedConsent(
+        @Param() params: PositiveIdParamDto,
+        @Res() response: Response,
+    ) {
+        const details = await this.adminService.getServiceRequest(
+            Number(params.id),
+        );
         const answers = details.request.answers || {};
-        const filePath = typeof answers.signedConsentPath === 'string' ? answers.signedConsentPath : '';
-        const fileName = typeof answers.signedConsentName === 'string' ? answers.signedConsentName : `signed_consent_${id}`;
+        const filePath =
+            typeof answers.signedConsentPath === 'string'
+                ? answers.signedConsentPath
+                : '';
+        const fileName =
+            typeof answers.signedConsentName === 'string'
+                ? answers.signedConsentName
+                : `signed_consent_${params.id}`;
         if (!filePath || !fs.existsSync(filePath)) {
             throw new BadRequestException('Signed consent file not found');
         }
-
         return response.download(filePath, fileName);
     }
 
     @Post('api/service-requests/:id/payment-received')
-    async markServiceRequestPaymentReceived(@Req() request: Request, @Param('id') id: string) {
-        const actor = await this.assertAuthorized(request);
-        return this.adminService.markServiceRequestPaymentReceived(Number(id), actor);
+    @RequirePermissions('serviceRequests.payment')
+    markServiceRequestPaymentReceived(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+    ) {
+        return this.adminService.markServiceRequestPaymentReceived(
+            Number(params.id),
+            admin.displayName,
+        );
     }
 
     @Post('api/service-requests/:id/schedule')
-    async scheduleServiceRequestVisit(@Req() request: Request, @Param('id') id: string, @Body('visitAddress') visitAddress?: string, @Body('visitTime') visitTime?: string, @Body('operatorComment') operatorComment?: string) {
-        const actor = await this.assertAuthorized(request);
-        if (!visitAddress?.trim()) {
-            throw new BadRequestException('visitAddress is required');
-        }
-
-        return this.adminService.scheduleServiceRequestVisit(Number(id), visitAddress.trim(), visitTime?.trim() || undefined, operatorComment?.trim() || undefined, actor);
+    @RequirePermissions('serviceRequests.schedule')
+    scheduleServiceRequestVisit(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: ScheduleServiceRequestDto,
+    ) {
+        return this.adminService.scheduleServiceRequestVisit(
+            Number(params.id),
+            body.visitAddress,
+            body.visitTime,
+            body.operatorComment,
+            admin.displayName,
+        );
     }
 
     @Post('api/service-requests/:id/complete')
-    async completeServiceRequest(@Req() request: Request, @Param('id') id: string) {
-        const actor = await this.assertAuthorized(request);
-        return this.adminService.completeServiceRequest(Number(id), actor);
+    @RequirePermissions('serviceRequests.close')
+    completeServiceRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+    ) {
+        return this.adminService.completeServiceRequest(
+            Number(params.id),
+            admin.displayName,
+        );
     }
 
     @Post('api/service-requests/:id/cancel')
-    async cancelServiceRequest(@Req() request: Request, @Param('id') id: string) {
-        const actor = await this.assertAuthorized(request);
-        return this.adminService.cancelServiceRequest(Number(id), actor);
+    @RequirePermissions('serviceRequests.close')
+    cancelServiceRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+    ) {
+        return this.adminService.cancelServiceRequest(
+            Number(params.id),
+            admin.displayName,
+        );
     }
 
     @Post('api/service-requests/:id/operator-state')
-    async updateServiceRequestOperatorState(
-        @Req() request: Request,
-        @Param('id') id: string,
-        @Body('priority') priority?: ServiceRequestPriority,
-        @Body('executorName') executorName?: string | null,
-        @Body('operatorComment') operatorComment?: string | null,
+    @RequirePermissions('serviceRequests.update')
+    updateServiceRequestOperatorState(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: ServiceRequestOperatorStateDto,
     ) {
-        const actor = await this.assertAuthorized(request);
-        return this.adminService.updateServiceRequestOperatorState(Number(id), {
-            ...(priority !== undefined ? { priority } : {}),
-            ...(executorName !== undefined ? { executorName } : {}),
-            ...(operatorComment !== undefined ? { operatorComment } : {}),
-        }, actor);
+        return this.adminService.updateServiceRequestOperatorState(
+            Number(params.id),
+            body,
+            admin.displayName,
+        );
     }
 
     @Get('api/activities')
-    async getActivities(@Req() request: Request, @Query('userId') userId?: string, @Query('organizationId') organizationId?: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.getActivities(userId ? Number(userId) : undefined, organizationId ? Number(organizationId) : undefined);
+    @RequirePermissions('organizations.read')
+    getActivities(@Query() query: ActivityQueryDto) {
+        return this.adminService.getActivities(
+            query.userId,
+            query.organizationId,
+        );
     }
 
     @Get('api/organizations')
-    async getOrganizations(@Req() request: Request) {
-        await this.assertAuthorized(request);
+    @RequirePermissions('organizations.read')
+    getOrganizations() {
         return this.adminService.getOrganizations();
     }
 
     @Get('api/equipment-kits')
-    async getEquipmentKits(@Req() request: Request, @Query('q') query?: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.getEquipmentKits(query);
+    @RequirePermissions('assets.read')
+    getEquipmentKits(@Query() query: SearchQueryDto) {
+        return this.adminService.getEquipmentKits(query.q);
     }
 
     @Get('api/equipment-kits/free')
-    async getFreeEquipmentKits(@Req() request: Request, @Query('q') query?: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.getFreeEquipmentKits(query);
+    @RequirePermissions('assets.read')
+    getFreeEquipmentKits(@Query() query: SearchQueryDto) {
+        return this.adminService.getFreeEquipmentKits(query.q);
     }
 
     @Post('api/equipment-kits')
-    async createEquipmentKit(@Req() request: Request, @Body() body: any) {
-        await this.assertAuthorized(request);
-        return this.adminService.createEquipmentKit(body || {});
+    @RequirePermissions('assets.update')
+    createEquipmentKit(@Body() body: EquipmentKitDto) {
+        return this.adminService.createEquipmentKit(body);
     }
 
     @Post('api/registrations/:id/equipment-kit')
-    async linkEquipmentKitToRegistration(@Req() request: Request, @Param('id') id: string, @Body('kitId') kitId?: number) {
-        await this.assertAuthorized(request);
-        if (!kitId) throw new BadRequestException('kitId is required');
-        return this.adminService.linkEquipmentKitToRegistration(Number(id), Number(kitId));
+    @RequirePermissions('registrations.update')
+    linkEquipmentKitToRegistration(
+        @Param() params: PositiveIdParamDto,
+        @Body() body: LinkEquipmentKitDto,
+    ) {
+        return this.adminService.linkEquipmentKitToRegistration(
+            Number(params.id),
+            body.kitId,
+        );
     }
 
     @Get('api/organizations/:id/assets')
-    async getOrganizationAssets(@Req() request: Request, @Param('id') id: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.getOrganizationAssets(Number(id));
+    @RequirePermissions('assets.read')
+    getOrganizationAssets(@Param() params: PositiveIdParamDto) {
+        return this.adminService.getOrganizationAssets(Number(params.id));
     }
 
     @Get('api/tickets/:id')
-    async getTicket(@Req() request: Request, @Param('id') id: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.getTicket(Number(id));
+    @RequirePermissions('tickets.read')
+    getTicket(@Param() params: PositiveIdParamDto) {
+        return this.adminService.getTicket(Number(params.id));
     }
 
     @Post('api/registrations/:id/process')
-    async processRegistration(@Req() request: Request, @Param('id') id: string) {
-        await this.assertAuthorized(request);
-        return this.adminService.processRegistration(Number(id));
+    @RequirePermissions('registrations.update')
+    processRegistration(@Param() params: PositiveIdParamDto) {
+        return this.adminService.processRegistration(Number(params.id));
     }
 
     @Post('api/registrations/:id/operator-state')
-    async updateRegistrationOperatorState(
-        @Req() request: Request,
-        @Param('id') id: string,
-        @Body('status') status?: RegistrationRequestStatus,
-        @Body('priority') priority?: RegistrationRequestPriority,
+    @RequirePermissions('registrations.update')
+    updateRegistrationOperatorState(
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationOperatorStateDto,
     ) {
-        await this.assertAuthorized(request);
-        return this.adminService.updateRegistrationOperatorState(Number(id), {
-            ...(this.normalizeRegistrationStatus(status) ? { status: this.normalizeRegistrationStatus(status) } : {}),
-            ...(this.normalizeRegistrationPriority(priority) ? { priority: this.normalizeRegistrationPriority(priority) } : {}),
-        });
+        return this.adminService.updateRegistrationOperatorState(
+            Number(params.id),
+            body,
+        );
     }
 
     @Post('api/tickets/:id/reply')
-    async replyToTicket(@Req() request: Request, @Param('id') id: string, @Body('text') text?: string) {
-        const actor = await this.assertAuthorized(request);
-        if (!text?.trim()) {
-            throw new BadRequestException('Reply text is required');
-        }
-
-        return this.adminService.replyToTicket(Number(id), text.trim(), actor);
+    @RequirePermissions('tickets.reply')
+    replyToTicket(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: TextMessageDto,
+    ) {
+        return this.adminService.replyToTicket(
+            Number(params.id),
+            body.text,
+            admin.displayName,
+        );
     }
 
     @Post('api/tickets/:id/messages')
-    async sendTicketMessage(@Req() request: Request, @Param('id') id: string, @Body('text') text?: string) {
-        const actor = await this.assertAuthorized(request);
-        if (!text?.trim()) {
-            throw new BadRequestException('Message text is required');
-        }
-
-        return this.adminService.sendTicketMessage(Number(id), text.trim(), actor);
+    @RequirePermissions('tickets.reply')
+    sendTicketMessage(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: TextMessageDto,
+    ) {
+        return this.adminService.sendTicketMessage(
+            Number(params.id),
+            body.text,
+            admin.displayName,
+        );
     }
 
     @Post('api/tickets/:id/media')
+    @RequirePermissions('tickets.reply')
     @UseInterceptors(FileInterceptor('file'))
-    async sendTicketMedia(@Req() request: Request, @Param('id') id: string, @UploadedFile() file?: any, @Body('text') text?: string) {
-        const actor = await this.assertAuthorized(request);
-        if (!file) {
-            throw new BadRequestException('File is required');
-        }
-
-        const mediaDir = path.join(process.cwd(), 'storage', 'ticket-media');
+    async sendTicketMedia(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @UploadedFile() file?: UploadedMemoryFile,
+        @Body() body?: OptionalMediaTextDto,
+    ) {
+        if (!file) throw new BadRequestException('File is required');
+        const mediaDir = path.join(
+            process.cwd(),
+            'storage',
+            'ticket-media',
+        );
         fs.mkdirSync(mediaDir, { recursive: true });
         const safeName = `${randomUUID()}-${file.originalname || 'file'}`;
         const filePath = path.join(mediaDir, safeName);
         fs.writeFileSync(filePath, file.buffer);
-
-        return this.adminService.sendTicketMedia(Number(id), {
-            messageType: this.detectMessageType(file.mimetype, file.originalname),
-            localPath: filePath,
-            fileName: file.originalname || safeName,
-            mimeType: file.mimetype,
-            fileSize: file.size,
-            text: text?.trim() || undefined,
-        }, actor);
+        return this.adminService.sendTicketMedia(
+            Number(params.id),
+            {
+                messageType: this.detectMessageType(
+                    file.mimetype,
+                    file.originalname,
+                ),
+                localPath: filePath,
+                fileName: file.originalname || safeName,
+                mimeType: file.mimetype,
+                fileSize: file.size,
+                text: body?.text,
+            },
+            admin.displayName,
+        );
     }
 
     @Get('api/ticket-messages/:id/file')
-    async downloadTicketMessageFile(@Req() request: Request, @Param('id') id: string, @Query('token') token: string, @Res() response: Response) {
-        await this.assertAuthorized(request, token);
-        const data = await this.adminService.getTicketMessage(Number(id));
+    @RequirePermissions('tickets.read')
+    async downloadTicketMessageFile(
+        @Param() params: PositiveIdParamDto,
+        @Res() response: Response,
+    ) {
+        const data = await this.adminService.getTicketMessage(
+            Number(params.id),
+        );
         if (!data?.localPath || !fs.existsSync(data.localPath)) {
             throw new BadRequestException('File not found');
         }
-
-        return response.download(data.localPath, data.fileName || `ticket_message_${id}`);
+        return response.download(
+            data.localPath,
+            data.fileName || `ticket_message_${params.id}`,
+        );
     }
 
     @Post('api/tickets/:id/close')
-    async closeTicket(@Req() request: Request, @Param('id') id: string) {
-        const actor = await this.assertAuthorized(request);
-        return this.adminService.closeTicket(Number(id), actor);
+    @RequirePermissions('tickets.close')
+    closeTicket(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+    ) {
+        return this.adminService.closeTicket(
+            Number(params.id),
+            admin.displayName,
+        );
     }
 
     @Get('api/registrations/:id/pdf')
-    async getRegistrationPdf(@Req() request: Request, @Param('id') id: string, @Query('token') token: string, @Res() response: Response) {
-        await this.assertAuthorized(request, token);
-        const registration = await this.adminService.getRegistration(Number(id));
+    @RequirePermissions('registrations.read')
+    async getRegistrationPdf(
+        @Param() params: PositiveIdParamDto,
+        @Res() response: Response,
+    ) {
+        const registration = await this.adminService.getRegistration(
+            Number(params.id),
+        );
         if (!registration?.pdfPath || !fs.existsSync(registration.pdfPath)) {
             throw new BadRequestException('PDF not found');
         }
-
-        return response.download(registration.pdfPath, `registration_${registration.id}.pdf`);
+        return response.download(
+            registration.pdfPath,
+            `registration_${registration.id}.pdf`,
+        );
     }
 
     @Get('api/registrations/:id/equipment-photo')
-    async getRegistrationEquipmentPhoto(@Req() request: Request, @Param('id') id: string, @Query('token') token: string, @Res() response: Response) {
-        await this.assertAuthorized(request, token);
-        const registration = await this.adminService.getRegistration(Number(id));
-        if (!registration?.equipmentPhotoPath || !fs.existsSync(registration.equipmentPhotoPath)) {
+    @RequirePermissions('registrations.read')
+    async getRegistrationEquipmentPhoto(
+        @Param() params: PositiveIdParamDto,
+        @Res() response: Response,
+    ) {
+        const registration = await this.adminService.getRegistration(
+            Number(params.id),
+        );
+        if (
+            !registration?.equipmentPhotoPath ||
+            !fs.existsSync(registration.equipmentPhotoPath)
+        ) {
             throw new BadRequestException('Equipment photo not found');
         }
-
-        return response.download(registration.equipmentPhotoPath, registration.equipmentPhotoName || `registration_${registration.id}_equipment_photo`);
-    }
-
-    private async assertAuthorized(request: Request, queryToken?: string) {
-        const sessionAdmin = await this.getSessionAdmin(request);
-        if (sessionAdmin) {
-            return sessionAdmin.displayName;
-        }
-
-        const expectedToken = this.configService.get<string>('ADMIN_TOKEN') || 'admin';
-        const headerToken = request.header('x-admin-token');
-        const bearerToken = request.header('authorization')?.replace(/^Bearer\s+/i, '');
-        const actualToken = headerToken || bearerToken || queryToken;
-        const configuredUser = actualToken ? this.getAdminUserByToken(actualToken) : null;
-
-        if (configuredUser) {
-            return configuredUser;
-        }
-
-        if (actualToken !== expectedToken) {
-            throw new UnauthorizedException();
-        }
-
-        return this.configService.get<string>('ADMIN_NAME') || 'admin-panel';
-    }
-
-    private getSessionAdmin(request: Request) {
-        return this.adminService.getAdminBySessionToken(this.getCookie(request, this.sessionCookieName));
+        return response.download(
+            registration.equipmentPhotoPath,
+            registration.equipmentPhotoName ||
+                `registration_${registration.id}_equipment_photo`,
+        );
     }
 
     private getCookie(request: Request, name: string) {
-        const cookieHeader = request.header('cookie');
-        if (!cookieHeader) return null;
-
-        const cookies = cookieHeader.split(';').map((part) => part.trim());
         const prefix = `${name}=`;
-        const cookie = cookies.find((part) => part.startsWith(prefix));
-        return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : null;
-    }
-
-    private buildSessionCookie(token: string, expiresAt: Date) {
-        return `${this.sessionCookieName}=${encodeURIComponent(token)}; Path=/admin; HttpOnly; SameSite=Lax; Expires=${expiresAt.toUTCString()}`;
-    }
-
-    private buildExpiredSessionCookie() {
-        return `${this.sessionCookieName}=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0`;
-    }
-
-    private getAdminUserByToken(token: string) {
-        const users = this.configService.get<string>('ADMIN_USERS');
-        if (!users) return null;
-
-        return users
+        const item = (request.header('cookie') || '')
             .split(';')
-            .map((item) => item.trim())
-            .filter(Boolean)
-            .map((item) => {
-                const separatorIndex = item.indexOf('=');
-                if (separatorIndex < 1) return null;
-                return {
-                    name: item.slice(0, separatorIndex).trim(),
-                    token: item.slice(separatorIndex + 1).trim(),
-                };
-            })
-            .find((item) => item?.token === token)?.name || null;
+            .map((part) => part.trim())
+            .find((part) => part.startsWith(prefix));
+        return item ? decodeURIComponent(item.slice(prefix.length)) : null;
     }
 
-    private normalizeStatus(status?: AdminStatusFilter): AdminStatusFilter {
-        if (status === 'all' || status === 'processed' || status === 'new' || status === 'in_work') {
-            return status;
-        }
-
-        return 'new';
-    }
-
-    private normalizeRegistrationStatus(status?: RegistrationRequestStatus) {
-        if (status === 'new' || status === 'in_work' || status === 'processed') {
-            return status;
-        }
-
-        return undefined;
-    }
-
-    private normalizeRegistrationPriority(priority?: RegistrationRequestPriority) {
-        if (priority === 'low' || priority === 'normal' || priority === 'high' || priority === 'urgent') {
-            return priority;
-        }
-
-        return undefined;
-    }
-
-    private normalizePlatform(platform?: UserPlatform) {
-        if (platform === 'telegram' || platform === 'max' || platform === 'web') {
-            return platform;
-        }
-
-        return undefined;
-    }
-
-    private normalizeServiceRequestStatus(status?: ServiceRequestStatus | 'active' | 'all') {
-        if (
-            status === 'all' ||
-            status === 'active' ||
-            status === 'draft' ||
-            status === 'price_confirmed' ||
-            status === 'review_required' ||
-            status === 'invoice_required' ||
-            status === 'waiting_payment' ||
-            status === 'paid' ||
-            status === 'scheduled' ||
-            status === 'completed' ||
-            status === 'cancelled'
-        ) {
-            return status;
-        }
-
-        return 'active';
+    private sessionCookieOptions(expires?: Date) {
+        return {
+            httpOnly: true,
+            sameSite: 'strict' as const,
+            secure: this.config.get<string>('NODE_ENV') === 'production',
+            path: '/admin',
+            ...(expires ? { expires } : {}),
+        };
     }
 
     private detectMessageType(mimeType?: string, fileName?: string) {
-        if (mimeType?.startsWith('image/')) return 'image';
-        if (mimeType?.startsWith('video/')) return 'video';
-        if (mimeType?.startsWith('audio/')) return 'audio';
-        if (fileName?.toLowerCase().endsWith('.ogg')) return 'voice';
-
-        return 'document';
+        const mime = mimeType?.toLowerCase() || '';
+        const extension = path.extname(fileName || '').toLowerCase();
+        if (mime.startsWith('image/')) return 'image' as const;
+        if (mime.startsWith('video/')) return 'video' as const;
+        if (mime.startsWith('audio/')) return 'audio' as const;
+        if (['.jpg', '.jpeg', '.png', '.webp', '.gif'].includes(extension)) {
+            return 'image' as const;
+        }
+        if (['.mp4', '.mov', '.webm'].includes(extension)) {
+            return 'video' as const;
+        }
+        if (['.mp3', '.wav', '.ogg', '.m4a'].includes(extension)) {
+            return 'audio' as const;
+        }
+        return 'document' as const;
     }
 }

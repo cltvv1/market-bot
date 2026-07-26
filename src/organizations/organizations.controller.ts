@@ -1,50 +1,39 @@
-import { BadRequestException, Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import type { UserPlatform } from 'src/users/entities/user.entity';
+import { CurrentWebSession } from 'src/web-session/web-session.decorators';
+import { WebSessionGuard } from 'src/web-session/web-session.guard';
+import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
+import { LinkOrganizationDto } from './dto/organization-api.dto';
 import { OrganizationsService } from './organizations.service';
-import type { OrganizationMemberRole } from './entities/organization-member.entity';
-
-interface OrganizationIdentityBody {
-    platform?: UserPlatform;
-    chatId?: string;
-    username?: string;
-    name?: string;
-}
-
-interface LinkOrganizationBody extends OrganizationIdentityBody {
-    inn?: string;
-    kpp?: string;
-    ogrn?: string;
-    organizationName?: string;
-    legalAddress?: string;
-    actualAddress?: string;
-    taxSystem?: string;
-    role?: OrganizationMemberRole;
-}
+import { RateLimit } from 'src/security/rate-limit';
 
 @Controller('api/client/organizations')
 @ApiTags('organizations')
+@UseGuards(WebSessionGuard)
 export class OrganizationsController {
-    constructor(private readonly organizationsService: OrganizationsService) { }
+    constructor(
+        private readonly organizationsService: OrganizationsService,
+    ) {}
 
     @Get()
-    getMyOrganizations(@Query('platform') platform?: UserPlatform, @Query('chatId') chatId?: string) {
-        const identity = this.parseIdentity({ platform, chatId });
-        return this.organizationsService.getUserOrganizations(identity.chatId, identity.platform);
+    @RateLimit('public-sensitive-read', 60, 60)
+    getMyOrganizations(@CurrentWebSession() session: WebSessionPrincipal) {
+        return this.organizationsService.getUserOrganizations(
+            session.chatId,
+            'web',
+        );
     }
 
     @Post('link-by-inn')
-    linkByInn(@Body() body: LinkOrganizationBody) {
-        const identity = this.parseIdentity(body);
-        if (!body.inn?.trim()) {
-            throw new BadRequestException('INN is required');
-        }
-
+    @RateLimit('public-form', 30, 600)
+    linkByInn(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Body() body: LinkOrganizationDto,
+    ) {
         return this.organizationsService.linkUserByInn({
-            chatId: identity.chatId,
-            platform: identity.platform,
-            username: body.username?.trim() || undefined,
-            userName: body.name?.trim() || undefined,
+            chatId: session.chatId,
+            platform: 'web',
+            userName: body.name,
             inn: body.inn,
             kpp: body.kpp,
             ogrn: body.ogrn,
@@ -54,19 +43,5 @@ export class OrganizationsController {
             taxSystem: body.taxSystem,
             role: body.role,
         });
-    }
-
-    private parseIdentity(body: OrganizationIdentityBody) {
-        const platform = body.platform ?? 'web';
-        if (platform !== 'telegram' && platform !== 'max' && platform !== 'web') {
-            throw new BadRequestException('Valid platform is required');
-        }
-
-        const chatId = body.chatId?.trim();
-        if (!chatId) {
-            throw new BadRequestException('chatId is required');
-        }
-
-        return { platform, chatId };
     }
 }

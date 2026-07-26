@@ -1,6 +1,14 @@
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+    Column,
+    CreateDateColumn,
+    Entity,
+    OneToMany,
+    PrimaryGeneratedColumn,
+    UpdateDateColumn,
+} from 'typeorm';
+import { AdminUserRoleEntity } from './admin-user-role.entity';
 
-export type AdminRole = 'admin' | 'operator';
+export type LegacyAdminRole = 'admin' | 'operator';
 
 @Entity('admin_users')
 export class AdminUserEntity {
@@ -17,7 +25,10 @@ export class AdminUserEntity {
     passwordHash: string;
 
     @Column({ type: 'varchar', default: 'operator' })
-    role: AdminRole;
+    role: LegacyAdminRole;
+
+    @OneToMany(() => AdminUserRoleEntity, (assignment) => assignment.user)
+    roleAssignments: AdminUserRoleEntity[];
 
     @Column({ default: true })
     isActive: boolean;
@@ -45,6 +56,9 @@ export class AdminUserEntity {
 
     @Column({ type: 'timestamp', nullable: true })
     messengerBindCodeExpiresAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    lastLoginAt: Date | null;
 
     @CreateDateColumn()
     createdAt: Date;

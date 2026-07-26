@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
@@ -17,6 +18,9 @@ import { AssetsModule } from './assets/assets.module';
 import { SiteModule } from './site/site.module';
 import { CustomerActivityModule } from './customer-activity/customer-activity.module';
 import { ServiceRequestsModule } from './service-requests/service-requests.module';
+import { WebSessionModule } from './web-session/web-session.module';
+import { HealthModule } from './health/health.module';
+import { RateLimitGuard } from './security/rate-limit';
 
 @Module({
   imports: [
@@ -26,16 +30,20 @@ import { ServiceRequestsModule } from './service-requests/service-requests.modul
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'postgres',
-        host: config.get<string>('DB_HOST'),
-        port: config.get<number>('DB_PORT'),
-        database: config.get<string>('DB_NAME'),
-        username: config.get<string>('DB_USER'),
-        password: config.get<string>('DB_PASS'),
-        autoLoadEntities: true,
-        synchronize: true,
-      }),
+      useFactory: (config: ConfigService) => {
+        const test = config.get<string>('NODE_ENV') === 'test';
+        return {
+          type: 'postgres',
+          host: test ? config.get<string>('TEST_DB_HOST') || config.get<string>('DB_HOST') : config.get<string>('DB_HOST'),
+          port: test ? config.get<number>('TEST_DB_PORT') || config.get<number>('DB_PORT') : config.get<number>('DB_PORT'),
+          database: test ? config.get<string>('TEST_DB_NAME') : config.get<string>('DB_NAME'),
+          username: test ? config.get<string>('TEST_DB_USER') || config.get<string>('DB_USER') : config.get<string>('DB_USER'),
+          password: test ? config.get<string>('TEST_DB_PASS') || config.get<string>('DB_PASS') : config.get<string>('DB_PASS'),
+          autoLoadEntities: true,
+          synchronize: false,
+          migrationsRun: false,
+        };
+      },
     }),
     TelegrafModule.forRootAsync({
       inject: [ConfigService],
@@ -44,23 +52,35 @@ import { ServiceRequestsModule } from './service-requests/service-requests.modul
         if (!token) {
           throw new Error('BOT_TOKEN is not defined in environment variables');
         }
-        return { token };
+        const pollingEnabled = config.get<boolean>('BOT_POLLING_ENABLED') ?? true;
+        return {
+          token,
+          launchOptions: pollingEnabled ? undefined : false,
+        };
       },
     }),
     RegistrationsModule,
     DatabaseSeedModule,
     TelegramModule,
     MaxModule,
+    WebSessionModule,
     AdminModule,
     ClientModule,
     AssetsModule,
     SiteModule,
     CustomerActivityModule,
     ServiceRequestsModule,
+    HealthModule,
     UsersModule,
     TicketsModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: RateLimitGuard,
+    },
+  ],
 })
 export class AppModule { }

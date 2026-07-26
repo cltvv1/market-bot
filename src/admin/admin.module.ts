@@ -16,9 +16,15 @@ import { MessengerModule } from 'src/messenger/messenger.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { AdminSessionEntity } from './entities/admin-session.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
+import { AdminUserRoleEntity } from './entities/admin-user-role.entity';
 import { AdminNotificationsModule } from './admin-notifications.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { AdminAuthService } from './admin-auth.service';
+import {
+    AdminPermissionGuard,
+    AdminSessionGuard,
+} from './admin-auth.guard';
 
 @Module({
     imports: [
@@ -36,6 +42,7 @@ import { AdminService } from './admin.service';
             UserEntity,
             ServiceRequestEntity,
             AdminUserEntity,
+            AdminUserRoleEntity,
             AdminSessionEntity,
         ]),
         MessengerModule,
@@ -43,6 +50,12 @@ import { AdminService } from './admin.service';
         AdminNotificationsModule,
     ],
     controllers: [AdminController],
-    providers: [AdminService],
+    providers: [
+        AdminService,
+        AdminAuthService,
+        AdminSessionGuard,
+        AdminPermissionGuard,
+    ],
+    exports: [AdminAuthService],
 })
 export class AdminModule { }

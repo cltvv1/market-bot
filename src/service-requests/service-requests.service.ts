@@ -95,11 +95,16 @@ export class ServiceRequestsService {
         });
     }
 
-    async listForAdmin(status?: ServiceRequestStatus | 'active' | 'all', platform?: UserPlatform) {
+    async listForAdmin(
+        status?: ServiceRequestStatus | 'active' | 'all',
+        platform?: UserPlatform,
+        assignedEngineerId?: number,
+    ) {
         return this.serviceRequestsRepo.find({
             where: {
                 ...(status && status !== 'all' && status !== 'active' ? { status } : {}),
                 ...(platform ? { platform } : {}),
+                ...(assignedEngineerId ? { assignedEngineerId } : {}),
             },
             order: { createdAt: 'DESC' },
             take: 100,
