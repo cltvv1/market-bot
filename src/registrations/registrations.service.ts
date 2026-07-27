@@ -149,13 +149,11 @@ export class RegistrationsService {
     }
 
     async finishReg(reg: RegistrationRequestEntity) {
-        reg.isFilled = true;
-        await this.registrationRepo.save(reg);
-
         const fields = await this.fieldsRepo.find();
         const pdfPath = await this.pdfService.generateRegistrationPdf(reg, fields);
 
         reg.pdfPath = pdfPath;
+        reg.isFilled = true;
         await this.registrationRepo.save(reg);
 
         return pdfPath

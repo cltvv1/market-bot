@@ -18,6 +18,7 @@ export interface AtolConsentPdfData {
 @Injectable()
 export class PdfGeneratorService {
     private readonly pdfDir: string;
+    private readonly fontsDir = path.join(process.cwd(), 'src', 'pdf', 'fonts');
 
     constructor(
         private configService: ConfigService,
@@ -27,10 +28,10 @@ export class PdfGeneratorService {
 
     private fonts = {
         Roboto: {
-            normal: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-Regular.ttf'),
-            bold: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-Bold.ttf'),
-            italics: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-Italic.ttf'),
-            bolditalics: path.join(__dirname, '..', '..', 'src', 'pdf', 'fonts', 'Roboto-BoldItalic.ttf'),
+            normal: path.join(this.fontsDir, 'Roboto-Regular.ttf'),
+            bold: path.join(this.fontsDir, 'Roboto-Bold.ttf'),
+            italics: path.join(this.fontsDir, 'Roboto-Italic.ttf'),
+            bolditalics: path.join(this.fontsDir, 'Roboto-BoldItalic.ttf'),
         }
     };
 
@@ -86,14 +87,18 @@ export class PdfGeneratorService {
 
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
-        const filePath = path.join(process.cwd(), this.pdfDir, `registration_${request.id}.pdf`);
+        const outputDir = path.join(process.cwd(), this.pdfDir);
+        await fs.promises.mkdir(outputDir, { recursive: true });
+        const filePath = path.join(outputDir, `registration_${request.id}.pdf`);
         const writeStream = fs.createWriteStream(filePath);
 
         pdfDoc.pipe(writeStream);
         pdfDoc.end();
 
-        await new Promise<void>((resolve) => {
+        await new Promise<void>((resolve, reject) => {
             writeStream.on('finish', () => resolve());
+            writeStream.on('error', reject);
+            pdfDoc.on('error', reject);
         });
 
         return filePath;
@@ -192,8 +197,10 @@ export class PdfGeneratorService {
         pdfDoc.pipe(writeStream);
         pdfDoc.end();
 
-        await new Promise<void>((resolve) => {
+        await new Promise<void>((resolve, reject) => {
             writeStream.on('finish', () => resolve());
+            writeStream.on('error', reject);
+            pdfDoc.on('error', reject);
         });
 
         return filePath;

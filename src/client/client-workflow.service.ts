@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { RegistrationsService } from 'src/registrations/registrations.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { TicketsService } from 'src/tickets/tickets.service';
@@ -8,9 +8,12 @@ import { OrganizationsService } from 'src/organizations/organizations.service';
 import { CustomerActivityService } from 'src/customer-activity/customer-activity.service';
 import type { ClientFlowResult, ClientIdentity, StartSimpleServiceRequestInput } from './client-workflow.types';
 import type { RegistrationField } from 'src/registrations/registration.types';
+import type { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 
 @Injectable()
 export class ClientWorkflowService {
+    private readonly logger = new Logger(ClientWorkflowService.name);
+
     constructor(
         private readonly usersService: UsersService,
         private readonly registrationsService: RegistrationsService,
@@ -99,7 +102,7 @@ export class ClientWorkflowService {
         }
 
         const filePath = await this.registrationsService.finishReg(registration);
-        await this.registrationsService.notifyAdminsAboutNewReg(registration, filePath);
+        await this.notifyAdminsAboutRegistration(registration, filePath);
 
         return {
             status: 'completed',
@@ -130,7 +133,7 @@ export class ClientWorkflowService {
         }
 
         const filePath = await this.registrationsService.finishReg(filled);
-        await this.registrationsService.notifyAdminsAboutNewReg(filled, filePath);
+        await this.notifyAdminsAboutRegistration(filled, filePath);
 
         return {
             status: 'completed',
@@ -181,7 +184,7 @@ export class ClientWorkflowService {
         }
 
         const filePath = await this.registrationsService.finishReg(registration);
-        await this.registrationsService.notifyAdminsAboutNewReg(registration, filePath);
+        await this.notifyAdminsAboutRegistration(registration, filePath);
 
         return {
             status: 'completed',
@@ -212,6 +215,23 @@ export class ClientWorkflowService {
             nextField,
             data: result.request,
         };
+    }
+
+    private async notifyAdminsAboutRegistration(
+        registration: RegistrationRequestEntity,
+        filePath: string,
+    ) {
+        try {
+            await this.registrationsService.notifyAdminsAboutNewReg(
+                registration,
+                filePath,
+            );
+        } catch (error) {
+            this.logger.error(
+                `Registration ${registration.id} was completed, but admin notification failed`,
+                error,
+            );
+        }
     }
 
     async openTicket(input: ClientIdentity): Promise<ClientFlowResult> {

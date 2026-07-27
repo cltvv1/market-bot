@@ -4,6 +4,7 @@ import path from 'node:path';
 
 export default defineConfig({
     root: path.resolve(__dirname),
+    cacheDir: path.resolve(__dirname, '..', 'node_modules', '.vite-client'),
     base: '/site/',
     plugins: [react()],
     build: {
@@ -21,6 +22,7 @@ export default defineConfig({
         },
     },
     server: {
+        host: '0.0.0.0',
         port: 5174,
         proxy: {
             '/api': 'http://localhost:3000',
