@@ -680,3 +680,27 @@ guards, repeated clean migrations and schema-drift checks, a reviewed lint
 ratchet, route ownership metadata tests, explicit UI serving modes, offline
 health/browser smoke, and a manual full backup restore drill. No database schema
 or business workflow changed in this package.
+
+Hosted verification completed successfully in
+[GitHub Actions run 30332957415](https://github.com/cltvv1/market-bot/actions/runs/30332957415)
+for commit `5178035fa2ef79371c9b22339b997c011bbedb7e`. All required jobs passed:
+`Quality`, `Production builds`, and `PostgreSQL, tests, and offline smoke`.
+
+Hosted Linux verification found and resolved three portability issues:
+
+- cross-platform absolute-path validation now rejects both POSIX and Windows
+  paths regardless of runner OS;
+- e2e HTTP requests no longer race Supertest's temporary server lifecycle;
+- the supported npm engine range now matches the npm 10 bundled with Node
+  22.20 as well as npm 11.
+
+The standard Jest integration run no longer emits its previous open-handle
+warning. Remaining non-blocking observations are the reviewed lint baseline,
+40 npm dependency advisories, and a 677.57 kB client Vite chunk on Linux.
+
+The coordinated database/file backup drill passed locally with restored row
+counts and SHA-256 checksums. A hosted manual drill cannot be claimed yet:
+`backup-drill.yml` must first be available on the repository default branch,
+then an operator can start its `workflow_dispatch` run. Therefore Stage 0 is
+code-complete and verified by required hosted CI, with this single operational
+verification still pending.

@@ -155,7 +155,18 @@
 Только после E0-08 следует выполнять `E0-12` как повторяемый backup/restore БД и всех managed files. Страховочный архив не делает E0-12 завершённой.
 # Phase-zero backlog update
 
-E0-13, E0-14, and E0-15 are implemented in the working tree. Remaining
-operational actions are publication, one observed hosted CI run, and enabling
-the three documented required checks in GitHub branch protection. Legacy lint
-debt remains tracked by `scripts/lint-baseline.json`.
+E0-13, E0-14, and E0-15 are committed and the three required jobs passed in
+[GitHub Actions run 30332957415](https://github.com/cltvv1/market-bot/actions/runs/30332957415).
+The remaining operational actions are:
+
+- merge the workflow into the default branch and run the manual hosted
+  backup/restore drill once;
+- enable `Quality`, `Production builds`, and
+  `PostgreSQL, tests, and offline smoke` in branch protection;
+- reduce legacy lint debt tracked by `scripts/lint-baseline.json`;
+- split the client production bundle, which is currently 677.57 kB on the
+  Linux hosted build;
+- review the 40 dependency advisories by dependency chain and regression risk.
+
+The next implementation package remains the first real shop vertical slice.
+No shop or 1C implementation belongs to this phase-zero package.

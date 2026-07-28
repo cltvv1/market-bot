@@ -71,14 +71,45 @@ npm run backup:drill
 
 ## Branch protection
 
-After this branch is published and one hosted run succeeds, protect `main` and
-require these checks:
+Protect `main` and require these checks:
 
 - `Quality`
 - `Production builds`
 - `PostgreSQL, tests, and offline smoke`
 
 Do not require the manual backup drill on every pull request.
+
+## Hosted verification
+
+The phase-zero workflow was verified on GitHub-hosted runners on 2026-07-28:
+
+- run: [30332957415](https://github.com/cltvv1/market-bot/actions/runs/30332957415);
+- verified commit: `5178035fa2ef79371c9b22339b997c011bbedb7e`;
+- `Quality`: passed in 57 seconds;
+- `Production builds`: passed in 52 seconds;
+- `PostgreSQL, tests, and offline smoke`: passed in 96 seconds.
+
+The first hosted attempts exposed Linux-only path validation and concurrent
+Supertest server-lifecycle issues. The storage provider now recognizes both
+POSIX and Windows absolute paths on every host, and the HTTP e2e checks run
+sequentially. The workflow also uses job-level `RUNNER_TEMP` initialization
+because the `runner` context is unavailable in workflow-level `env`.
+
+The full manual backup/restore drill passed locally with synthetic database and
+file-storage fixtures, including restored row counts and file checksums. The
+hosted `workflow_dispatch` drill remains to be run after this workflow is
+present on the default branch; it is intentionally not an automatic PR check.
+
+Known non-blocking debt:
+
+- the reviewed lint ratchet remains in `scripts/lint-baseline.json`; the hosted
+  quality job rejects regressions without rewriting legacy modules;
+- the previous Jest open-handle warning was removed by explicitly stopping the
+  mocked Telegram adapter during route-inventory teardown;
+- the Linux client production build reports a 677.57 kB Vite chunk, above the
+  500 kB advisory threshold; code splitting is deferred to the frontend backlog;
+- `npm ci` reports 40 dependency advisories (4 low, 16 moderate, 19 high, and
+  1 critical); no blind `npm audit fix` was applied.
 
 ## How to trace one CI run
 
