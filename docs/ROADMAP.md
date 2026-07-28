@@ -1297,16 +1297,17 @@ flowchart LR
 - проверяет каталог, заказ, файлы, роли, admin и client frontend в одном завершённом потоке.
 # Phase 0 completion package
 
-- E0-13: required CI jobs passed on GitHub-hosted runners in
-  [run 30332957415](https://github.com/cltvv1/market-bot/actions/runs/30332957415)
-  for commit `5178035fa2ef79371c9b22339b997c011bbedb7e`.
+- E0-13: required CI jobs passed on `main` in
+  [run 30334738735](https://github.com/cltvv1/market-bot/actions/runs/30334738735)
+  for merge commit `3bf9d3be679bbe5e6ed8da76682676839adb2b98`.
 - E0-14: duplicate public service-request handlers removed and guarded by metadata test.
 - E0-15: production React mode and development-only explicit legacy mode implemented.
 
-The full backup/restore drill passed locally. Its manual GitHub workflow still
-needs one operator-triggered run after the workflow reaches the default branch,
-so Stage 0 is code-complete and required-CI-verified but not yet fully
-hosted-drill-verified.
+The hosted backup/restore drill passed from `main` in
+[run 30334884014](https://github.com/cltvv1/market-bot/actions/runs/30334884014)
+using only synthetic database and file-storage fixtures.
+
+Stage 0: completed and verified in hosted CI and hosted backup restore drill.
 
 The recommended next package is the first real shop vertical slice described
 later in this document. It was deliberately not started here.

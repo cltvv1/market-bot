@@ -156,11 +156,11 @@
 # Phase-zero backlog update
 
 E0-13, E0-14, and E0-15 are committed and the three required jobs passed in
-[GitHub Actions run 30332957415](https://github.com/cltvv1/market-bot/actions/runs/30332957415).
-The remaining operational actions are:
+[the `main` GitHub Actions run 30334738735](https://github.com/cltvv1/market-bot/actions/runs/30334738735).
+The hosted backup/restore drill also passed in
+[run 30334884014](https://github.com/cltvv1/market-bot/actions/runs/30334884014).
+Stage 0 is complete. The remaining follow-up items are:
 
-- merge the workflow into the default branch and run the manual hosted
-  backup/restore drill once;
 - enable `Quality`, `Production builds`, and
   `PostgreSQL, tests, and offline smoke` in branch protection;
 - reduce legacy lint debt tracked by `scripts/lint-baseline.json`;

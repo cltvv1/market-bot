@@ -81,13 +81,15 @@ Do not require the manual backup drill on every pull request.
 
 ## Hosted verification
 
-The phase-zero workflow was verified on GitHub-hosted runners on 2026-07-28:
+Stage 0 was merged through
+[pull request #1](https://github.com/cltvv1/market-bot/pull/1) with merge commit
+`3bf9d3be679bbe5e6ed8da76682676839adb2b98`. The resulting `main` workflow was
+verified on GitHub-hosted runners on 2026-07-28:
 
-- run: [30332957415](https://github.com/cltvv1/market-bot/actions/runs/30332957415);
-- verified commit: `5178035fa2ef79371c9b22339b997c011bbedb7e`;
+- run: [30334738735](https://github.com/cltvv1/market-bot/actions/runs/30334738735);
 - `Quality`: passed in 57 seconds;
-- `Production builds`: passed in 52 seconds;
-- `PostgreSQL, tests, and offline smoke`: passed in 96 seconds.
+- `Production builds`: passed in 38 seconds;
+- `PostgreSQL, tests, and offline smoke`: passed in 106 seconds.
 
 The first hosted attempts exposed Linux-only path validation and concurrent
 Supertest server-lifecycle issues. The storage provider now recognizes both
@@ -95,10 +97,15 @@ POSIX and Windows absolute paths on every host, and the HTTP e2e checks run
 sequentially. The workflow also uses job-level `RUNNER_TEMP` initialization
 because the `runner` context is unavailable in workflow-level `env`.
 
-The full manual backup/restore drill passed locally with synthetic database and
-file-storage fixtures, including restored row counts and file checksums. The
-hosted `workflow_dispatch` drill remains to be run after this workflow is
-present on the default branch; it is intentionally not an automatic PR check.
+The full manual backup/restore drill passed both locally and in hosted
+`workflow_dispatch`
+[run 30334884014](https://github.com/cltvv1/market-bot/actions/runs/30334884014)
+from `main`. The hosted job used an isolated PostgreSQL 16 container and
+temporary runner storage, created synthetic fixtures, ran migrations, created
+and verified the coordinated backup, restored and inspected the separate copy,
+and removed its ephemeral resources. It published no dump or storage artifact.
+
+Stage 0: completed and verified in hosted CI and hosted backup restore drill.
 
 Known non-blocking debt:
 
