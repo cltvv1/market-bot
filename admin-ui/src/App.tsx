@@ -48,11 +48,18 @@ export function App() {
         : 'Недостаточно прав для этого действия.';
       setNotice(message);
     };
+    const notify = (event: Event) => {
+      if (event instanceof CustomEvent && typeof event.detail === 'string') {
+        setNotice(event.detail);
+      }
+    };
     window.addEventListener('vitma:unauthorized', expired);
     window.addEventListener('vitma:forbidden', forbidden);
+    window.addEventListener('vitma:notice', notify);
     return () => {
       window.removeEventListener('vitma:unauthorized', expired);
       window.removeEventListener('vitma:forbidden', forbidden);
+      window.removeEventListener('vitma:notice', notify);
     };
   }, []);
 
@@ -298,9 +305,19 @@ function StaffManagement({ refreshKey, onChanged }: { refreshKey: number; onChan
   const [form, setForm] = useState({ login: '', displayName: '', password: '', roles: ['operator'] as AdminRole[] });
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
-    await post('/admin/api/staff', form);
-    setForm({ login: '', displayName: '', password: '', roles: ['operator'] });
-    onChanged();
+    try {
+      await post('/admin/api/staff', form);
+      setForm({ login: '', displayName: '', password: '', roles: ['operator'] });
+      onChanged();
+    } catch (error) {
+      let message = 'Не удалось создать сотрудника. Проверьте данные и повторите попытку.';
+      if (error instanceof ApiError && error.status === 409) {
+        message = 'Сотрудник с таким логином уже существует.';
+      } else if (error instanceof ApiError && error.status === 400) {
+        message = 'Пароль должен содержать 12-128 символов, не включать логин и использовать минимум три группы: строчные, заглавные, цифры или специальные символы.';
+      }
+      window.dispatchEvent(new CustomEvent('vitma:notice', { detail: message }));
+    }
   };
   const toggle = (role: AdminRole) => setForm((current) => ({ ...current, roles: current.roles.includes(role) ? current.roles.filter((item) => item !== role) : [...current.roles, role] }));
   return <><form className="staff-form" onSubmit={create}><div className="form-row"><input required minLength={3} placeholder="Логин" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /><input required placeholder="Имя сотрудника" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /><input required minLength={12} type="password" autoComplete="new-password" placeholder="Пароль" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /><button className="primary" disabled={!form.roles.length}><UserPlus size={16} />Создать</button></div><div className="role-picker">{roleOptions.map((role) => <label key={role.value}><input type="checkbox" checked={form.roles.includes(role.value)} onChange={() => toggle(role.value)} />{role.label}</label>)}</div></form><section className="simple-grid">{data.loading ? <Empty text="Загрузка..." /> : data.error ? <Empty text={data.error} /> : data.items.map((staff) => <StaffCard key={staff.id} staff={staff} onChanged={onChanged} />)}</section></>;

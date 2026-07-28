@@ -99,17 +99,38 @@ export class ServiceRequestsService {
     }
 
     async listForAdmin(status?: ServiceRequestStatus | 'active' | 'all', platform?: UserPlatform, assignedEngineerId?: number) {
-        return this.serviceRequestsRepo
-            .find({
-                where: {
-                    ...(status && status !== 'all' && status !== 'active' ? { status } : {}),
-                    ...(platform ? { platform } : {}),
-                    ...(assignedEngineerId ? { assignedEngineerId } : {}),
-                },
-                order: { createdAt: 'DESC' },
-                take: 100,
-            })
-            .then((items) => (status === 'active' ? items.filter((item) => item.status !== 'completed' && item.status !== 'cancelled') : items));
+        const query = this.serviceRequestsRepo
+            .createQueryBuilder('request')
+            .andWhere(
+                `(request.status <> 'draft'
+                    OR request.currentStep > 0
+                    OR request.assignedEngineerId IS NOT NULL
+                    OR request.responsibleOperatorId IS NOT NULL
+                    OR request.operatorComment IS NOT NULL)`,
+            );
+
+        if (status === 'active') {
+            query.andWhere(
+                'request.status NOT IN (:...closedStatuses)',
+                { closedStatuses: ['completed', 'cancelled'] },
+            );
+        } else if (status && status !== 'all') {
+            query.andWhere('request.status = :status', { status });
+        }
+        if (platform) {
+            query.andWhere('request.platform = :platform', { platform });
+        }
+        if (assignedEngineerId) {
+            query.andWhere(
+                'request.assignedEngineerId = :assignedEngineerId',
+                { assignedEngineerId },
+            );
+        }
+
+        return query
+            .orderBy('request.createdAt', 'DESC')
+            .take(100)
+            .getMany();
     }
 
     async start(identity: ServiceRequestIdentity, serviceTypeCode: string) {
@@ -122,6 +143,13 @@ export class ServiceRequestsService {
         });
         if (!serviceType) {
             throw new BadRequestException('Service type was not found');
+        }
+
+        const existing = await this.getLatestDraftForClient(identity, [
+            serviceTypeCode,
+        ]);
+        if (existing) {
+            return this.present(existing);
         }
 
         const request = await this.serviceRequestsRepo.save(

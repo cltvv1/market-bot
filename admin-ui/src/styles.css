@@ -85,7 +85,7 @@ main { max-width: 1540px; margin: 0 auto; padding: 20px; }
 .message.operator { align-self: flex-end; background: #e8f4f1; border-color: #a9d7cd; }
 .message span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
 .message img { max-width: 100%; max-height: 360px; border-radius: 5px; }
-.event-list { max-height: 320px; min-height: 100px; margin-top: 16px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--soft); }
+.event-list { display: none; }
 .chat-composer { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 .chat-composer textarea { width: 100%; }
 .composer-actions { justify-content: flex-end; margin-top: 8px; }

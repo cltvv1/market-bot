@@ -250,6 +250,45 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         );
     });
 
+    it('reuses an untouched FN draft and hides it from admin work', async () => {
+        const first = await serviceRequestsService.start(
+            testIdentity,
+            'fn_replacement',
+        );
+        const second = await serviceRequestsService.start(
+            testIdentity,
+            'fn_replacement',
+        );
+
+        expect(second.request.id).toBe(first.request.id);
+        expect(
+            await dataSource
+                .getRepository(ServiceRequestEntity)
+                .countBy({ serviceTypeCode: 'fn_replacement' }),
+        ).toBe(1);
+        expect(
+            await dataSource
+                .getRepository(ServiceRequestEventEntity)
+                .countBy({ serviceRequestId: first.request.id }),
+        ).toBe(1);
+        expect(await serviceRequestsService.listForAdmin('active')).toEqual(
+            [],
+        );
+        expect(await serviceRequestsService.listForAdmin('all')).toEqual([]);
+
+        await serviceRequestsService.answer(
+            testIdentity,
+            first.request.id,
+            '2460000000',
+        );
+
+        expect(
+            (await serviceRequestsService.listForAdmin('active')).map(
+                (request) => request.id,
+            ),
+        ).toEqual([first.request.id]);
+    });
+
     it('submits a simple service request without external delivery', async () => {
         const started = await serviceRequestsService.start(
             testIdentity,
