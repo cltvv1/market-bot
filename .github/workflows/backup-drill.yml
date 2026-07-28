@@ -17,8 +17,6 @@ env:
   DB_NAME: vitma_backup_test
   DB_USER: vitma_backup
   DB_PASS: vitma_backup_password
-  FILE_STORAGE_ROOT: ${{ runner.temp }}/vitma-backup-storage
-  BACKUP_DIR: ${{ runner.temp }}/vitma-backups
   BACKUP_OFFLINE: 'true'
   BOT_TOKEN: ci-offline-telegram-token
   BOT_POLLING_ENABLED: 'false'
@@ -35,6 +33,10 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Configure ephemeral backup paths
+        run: |
+          echo "FILE_STORAGE_ROOT=$RUNNER_TEMP/vitma-backup-storage" >> "$GITHUB_ENV"
+          echo "BACKUP_DIR=$RUNNER_TEMP/vitma-backups" >> "$GITHUB_ENV"
       - run: npm ci
       - name: Start isolated PostgreSQL
         run: |

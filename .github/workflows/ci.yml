@@ -28,7 +28,6 @@ env:
   TEST_DB_NAME: vitma_ci_test
   TEST_DB_USER: vitma_ci
   TEST_DB_PASS: vitma_ci_password
-  FILE_STORAGE_ROOT: ${{ runner.temp }}/vitma-storage
   SERVE_BUILT_UI: 'false'
   ENABLE_LEGACY_UI: 'false'
 
@@ -43,6 +42,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Configure ephemeral storage
+        run: echo "FILE_STORAGE_ROOT=$RUNNER_TEMP/vitma-storage" >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm run ci:quality
 
@@ -83,6 +84,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+      - name: Configure ephemeral storage
+        run: echo "FILE_STORAGE_ROOT=$RUNNER_TEMP/vitma-storage" >> "$GITHUB_ENV"
       - run: npm ci
       - run: npm run ci:build
       - run: npm run ci:database
