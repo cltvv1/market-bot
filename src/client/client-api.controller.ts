@@ -16,7 +16,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { RegistrationsService } from 'src/registrations/registrations.service';
-import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { CurrentWebSession } from 'src/web-session/web-session.decorators';
 import { WebSessionGuard } from 'src/web-session/web-session.guard';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
@@ -27,8 +26,6 @@ import {
     ClientIdParamDto,
     RegistrationAnswerDto,
     RegistrationFormDto,
-    ServiceRequestAnswerDto,
-    ServiceRequestStartDto,
     TicketMediaDto,
     TicketMessageDto,
 } from './dto/client-api.dto';
@@ -49,7 +46,6 @@ export class ClientApiController {
     constructor(
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly registrationsService: RegistrationsService,
-        private readonly serviceRequestsService: ServiceRequestsService,
         private readonly filesService: FilesService,
     ) {}
 
@@ -100,59 +96,6 @@ export class ClientApiController {
         return this.clientWorkflow.submitRegistrationForm(
             this.identity(session, body),
             body.values,
-        );
-    }
-
-    @Get('service-requests/types')
-    @RateLimit('public-read', 120, 60)
-    getServiceTypes() {
-        return this.serviceRequestsService.getServiceTypes();
-    }
-
-    @Get('service-requests')
-    @RateLimit('public-sensitive-read', 60, 60)
-    getServiceRequests(@CurrentWebSession() session: WebSessionPrincipal) {
-        return this.serviceRequestsService.listForClient(
-            this.identity(session),
-        );
-    }
-
-    @Post('service-requests/start')
-    @RateLimit('public-form', 30, 600)
-    startServiceRequest(
-        @CurrentWebSession() session: WebSessionPrincipal,
-        @Body() body: ServiceRequestStartDto,
-    ) {
-        return this.serviceRequestsService.start(
-            this.identity(session, body),
-            body.serviceTypeCode,
-        );
-    }
-
-    @Post('service-requests/:id/answers')
-    @RateLimit('public-form', 30, 600)
-    submitServiceRequestAnswer(
-        @CurrentWebSession() session: WebSessionPrincipal,
-        @Param() params: ClientIdParamDto,
-        @Body() body: ServiceRequestAnswerDto,
-    ) {
-        return this.serviceRequestsService.answer(
-            this.identity(session, body),
-            Number(params.id),
-            body.value,
-        );
-    }
-
-    @Post('service-requests/:id/confirm-price')
-    @RateLimit('public-form', 30, 600)
-    confirmServiceRequestPrice(
-        @CurrentWebSession() session: WebSessionPrincipal,
-        @Param() params: ClientIdParamDto,
-        @Body() body: ClientContextDto,
-    ) {
-        return this.serviceRequestsService.confirmPrice(
-            this.identity(session, body),
-            Number(params.id),
         );
     }
 

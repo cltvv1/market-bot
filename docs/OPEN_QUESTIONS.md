@@ -277,3 +277,10 @@ SMS не блокирует первые этапы, но перед реали�
 - совместное утверждение.
 
 Также нужны первые утверждённые вопросы, ответы и product attributes, на которых строится рекомендация.
+# Phase-zero operational questions
+
+- Which maintainers may manually run the full backup restore drill?
+- What retention policy should apply to future CI reports if artifacts are added?
+- When should legacy HTML be deleted after React production operation is proven?
+
+These do not block local E0-13/E0-14/E0-15 implementation.

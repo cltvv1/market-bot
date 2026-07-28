@@ -23,6 +23,7 @@ import { HealthModule } from './health/health.module';
 import { RateLimitGuard } from './security/rate-limit';
 import { FilesModule } from './files/files.module';
 import { AuditModule } from './audit/audit.module';
+import { UiServingModule } from './ui/ui-serving.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { AuditModule } from './audit/audit.module';
     TicketsModule,
     FilesModule,
     AuditModule,
+    UiServingModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_ENV: test
+  BOT_TOKEN: ci-offline-telegram-token
+  BOT_POLLING_ENABLED: 'false'
+  MAX_BOT_TOKEN: ''
+  DB_HOST: localhost
+  DB_PORT: '5432'
+  DB_NAME: vitma_ci_application
+  DB_USER: vitma_ci
+  DB_PASS: vitma_ci_password
+  TEST_DB_HOST: localhost
+  TEST_DB_PORT: '5432'
+  TEST_DB_NAME: vitma_ci_test
+  TEST_DB_USER: vitma_ci
+  TEST_DB_PASS: vitma_ci_password
+  FILE_STORAGE_ROOT: ${{ runner.temp }}/vitma-storage
+  SERVE_BUILT_UI: 'false'
+  ENABLE_LEGACY_UI: 'false'
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run ci:quality
+
+  build:
+    name: Production builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run ci:build
+
+  database-and-tests:
+    name: PostgreSQL, tests, and offline smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vitma_ci
+          POSTGRES_PASSWORD: vitma_ci_password
+          POSTGRES_DB: vitma_ci_application
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vitma_ci -d vitma_ci_application"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run ci:build
+      - run: npm run ci:database
+      - run: npm run ci:offline-smoke
+      - name: Remove ephemeral storage
+        if: always()
+        run: rm -rf "$FILE_STORAGE_ROOT"

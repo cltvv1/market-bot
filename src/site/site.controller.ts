@@ -4,28 +4,28 @@ import { Controller, Get, Header, Param, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { sitePageHtml } from './site.page';
+import { UiServingService } from 'src/ui/ui-serving.service';
 
 @Controller('site')
 @ApiTags('site')
 export class SiteController {
+    constructor(private readonly uiServing: UiServingService) {}
+
     @Get()
     @Header('Content-Type', 'text/html; charset=utf-8')
     @Header('Cache-Control', 'no-store')
     getSite() {
-        const reactPagePath = path.join(process.cwd(), 'client-ui', 'dist', 'index.html');
-        return fs.existsSync(reactPagePath)
-            ? fs.readFileSync(reactPagePath, 'utf8')
-            : sitePageHtml;
+        return this.uiServing.getEntryHtml('site', sitePageHtml);
     }
 
     @Get('site.js')
     getReactScript(@Res() response: Response) {
-        return response.sendFile(path.join(process.cwd(), 'client-ui', 'dist', 'site.js'));
+        return response.sendFile(this.uiServing.getAssetPath('site', 'site.js'));
     }
 
     @Get('site.css')
     getReactStyles(@Res() response: Response) {
-        return response.sendFile(path.join(process.cwd(), 'client-ui', 'dist', 'site.css'));
+        return response.sendFile(this.uiServing.getAssetPath('site', 'site.css'));
     }
 
     @Get('assets/:fileName')

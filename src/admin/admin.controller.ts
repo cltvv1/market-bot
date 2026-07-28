@@ -6,6 +6,7 @@ import {
     Controller,
     Get,
     Header,
+    NotFoundException,
     Param,
     Post,
     Query,
@@ -65,6 +66,7 @@ import {
 import { RateLimit } from 'src/security/rate-limit';
 import { FilesService } from 'src/files/files.service';
 import { AuditService } from 'src/audit/audit.service';
+import { UiServingService } from 'src/ui/ui-serving.service';
 
 interface UploadedMemoryFile {
     buffer: Buffer;
@@ -83,6 +85,7 @@ export class AdminController {
         private readonly config: ConfigService,
         private readonly filesService: FilesService,
         private readonly auditService: AuditService,
+        private readonly uiServing: UiServingService,
     ) {}
 
     @Get()
@@ -90,31 +93,19 @@ export class AdminController {
     @Header('Content-Type', 'text/html; charset=utf-8')
     @Header('Cache-Control', 'no-store')
     getPage() {
-        const reactPagePath = path.join(
-            process.cwd(),
-            'admin-ui',
-            'dist',
-            'index.html',
-        );
-        return fs.existsSync(reactPagePath)
-            ? fs.readFileSync(reactPagePath, 'utf8')
-            : adminPageHtml;
+        return this.uiServing.getEntryHtml('admin', adminPageHtml);
     }
 
     @Get('admin.js')
     @PublicAdmin()
     getReactScript(@Res() response: Response) {
-        return response.sendFile(
-            path.join(process.cwd(), 'admin-ui', 'dist', 'admin.js'),
-        );
+        return response.sendFile(this.uiServing.getAssetPath('admin', 'admin.js'));
     }
 
     @Get('admin.css')
     @PublicAdmin()
     getReactStyles(@Res() response: Response) {
-        return response.sendFile(
-            path.join(process.cwd(), 'admin-ui', 'dist', 'admin.css'),
-        );
+        return response.sendFile(this.uiServing.getAssetPath('admin', 'admin.css'));
     }
 
     @Get('api/me')
@@ -791,6 +782,21 @@ export class AdminController {
             registration.equipmentPhotoName ||
                 `registration_${registration.id}_equipment_photo`,
         );
+    }
+
+    @Get('*path')
+    @PublicAdmin()
+    getReactRoute(
+        @Param('path') routePath: string | string[],
+        @Res({ passthrough: true }) response: Response,
+    ) {
+        const parts = Array.isArray(routePath) ? routePath : [routePath];
+        if (parts[0] === 'api') {
+            throw new NotFoundException('Admin API route not found');
+        }
+        response.type('text/html; charset=utf-8');
+        response.setHeader('Cache-Control', 'no-store');
+        return this.getPage();
     }
 
     private getCookie(request: Request, name: string) {

@@ -21,7 +21,7 @@ export const validationSchema = Joi.object({
     }),
     TEST_DB_USER: Joi.string().trim().min(1).optional(),
     TEST_DB_PASS: Joi.string().trim().min(1).optional(),
-    MAX_BOT_TOKEN: Joi.string().optional(),
+    MAX_BOT_TOKEN: Joi.string().allow('').optional(),
     ADMIN_SESSION_COOKIE_NAME: Joi.string().trim().min(1).default('vitma_admin_session'),
     ADMIN_SESSION_TTL_HOURS: Joi.number().integer().min(1).max(720).default(12),
     WEB_SESSION_COOKIE_NAME: Joi.string().trim().min(1).default('vitma_web_session'),
@@ -33,4 +33,12 @@ export const validationSchema = Joi.object({
     HTTP_URLENCODED_LIMIT: Joi.string().pattern(/^\d+(kb|mb)$/i).default('64kb'),
     BACKUP_DIR: Joi.string().default('backups'),
     BACKUP_OFFLINE: Joi.boolean().default(false),
+    SERVE_BUILT_UI: Joi.boolean().when('NODE_ENV', {
+        is: 'production',
+        then: Joi.boolean().default(true),
+        otherwise: Joi.boolean().default(false),
+    }),
+    ENABLE_LEGACY_UI: Joi.boolean().default(false),
+    ADMIN_UI_DIST: Joi.string().default('admin-ui/dist'),
+    CLIENT_UI_DIST: Joi.string().default('client-ui/dist'),
 }).unknown(true);

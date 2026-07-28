@@ -1,5 +1,17 @@
 # VITMA MARKET
 
+## Phase 0 quality foundation
+
+The final phase-zero package adds reproducible GitHub Actions checks, unique
+service-request HTTP ownership, and explicit React/legacy UI modes. Start with
+`docs/quality/CI_GUIDE.md`,
+`docs/architecture/SERVICE_REQUEST_ROUTE_INVENTORY.md`, and
+`docs/architecture/UI_SERVING_MODES.md`.
+
+Development uses Vite by default; Nest no longer silently falls back to legacy
+HTML. Set `SERVE_BUILT_UI=true` only after `npm run build`. Production requires
+the built admin and client React assets.
+
 ## E0-08, E0-10 and E0-12
 
 Business uploads now use `FileStoragePort`; audit events are available to superadmins; PostgreSQL and `storage/` are backed up as one offline set.

@@ -14,6 +14,7 @@ const option = (name) => {
 };
 const has = (name) => process.argv.includes(name);
 const container = option('--container') || 'vitma_postgres';
+const tarCommand = process.platform === 'win32' ? 'tar.exe' : 'tar';
 const backupRoot = path.resolve(process.env.BACKUP_DIR || 'backups');
 const storageRoot = path.resolve(process.env.FILE_STORAGE_ROOT || 'storage');
 const db = {
@@ -50,7 +51,7 @@ async function createBackup() {
 
   const storageArchive = path.join(setDir, 'storage.tar.gz');
   fs.mkdirSync(storageRoot, { recursive: true });
-  run('tar.exe', ['-czf', storageArchive, '-C', storageRoot, '.']);
+  run(tarCommand, ['-czf', storageArchive, '-C', storageRoot, '.']);
   const databaseMetadata = await inspectDatabase(db.database);
   const storageFiles = await listPhysicalFiles(storageRoot);
   const manifest = {
@@ -103,7 +104,7 @@ async function verifyBackup(setDirInput) {
   }
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'vitma-verify-'));
   try {
-    run('tar.exe', ['-xzf', path.join(setDir, manifest.storage.archive), '-C', temporary]);
+    run(tarCommand, ['-xzf', path.join(setDir, manifest.storage.archive), '-C', temporary]);
     const actual = await listPhysicalFiles(temporary);
     const actualMap = new Map(actual.map((file) => [file.objectKey, file]));
     for (const expected of manifest.storage.files) {
@@ -135,7 +136,7 @@ async function restoreBackup(setDirInput, targetDatabase, targetStorageInput) {
   run('docker', ['cp', dumpPath, `${container}:${containerDump}`]);
   run('docker', ['exec', container, 'pg_restore', '-U', db.user, '-d', targetDatabase, '--no-owner', containerDump]);
   run('docker', ['exec', container, 'rm', '-f', containerDump]);
-  run('tar.exe', ['-xzf', path.join(path.resolve(setDirInput), manifest.storage.archive), '-C', targetStorage]);
+  run(tarCommand, ['-xzf', path.join(path.resolve(setDirInput), manifest.storage.archive), '-C', targetStorage]);
   const restored = await inspectDatabase(targetDatabase);
   for (const [table, count] of Object.entries(manifest.database.rowCounts)) {
     if (restored.rowCounts[table] !== count) fail(`Restored row count mismatch for ${table}`);

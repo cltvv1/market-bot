@@ -1295,3 +1295,11 @@ flowchart LR
 - не требует эквайринга;
 - не требует direct 1С API;
 - проверяет каталог, заказ, файлы, роли, admin и client frontend в одном завершённом потоке.
+# Phase 0 completion package
+
+- E0-13: implemented locally; hosted GitHub run remains to be observed after push.
+- E0-14: duplicate public service-request handlers removed and guarded by metadata test.
+- E0-15: production React mode and development-only explicit legacy mode implemented.
+
+The recommended next package is the first real shop vertical slice described
+later in this document. It was deliberately not started here.

@@ -673,3 +673,10 @@ Migration/auth/RBAC/web identity/validation/perimeter блокеры закры�
 | Автоматические тесты | Критичная foundation покрыта; bot callback/media и будущие вертикали требуют расширения |
 
 Рекомендуемый путь - не переписывание, а последовательное развитие текущего модульного монолита вертикальными сценариями, начиная с ограниченного этапа стабилизации и затем настоящего магазина.
+# E0-13/E0-14/E0-15 update (2026-07-28)
+
+Phase-zero quality work now includes GitHub Actions, isolated PostgreSQL/storage
+guards, repeated clean migrations and schema-drift checks, a reviewed lint
+ratchet, route ownership metadata tests, explicit UI serving modes, offline
+health/browser smoke, and a manual full backup restore drill. No database schema
+or business workflow changed in this package.

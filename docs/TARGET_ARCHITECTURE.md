@@ -1171,3 +1171,10 @@ Redis/Bull можно добавить только при доказанной 
 8. Отделить внутренний workflow от клиентского статуса.
 9. Все внешние доставки выполнять через outbox/jobs.
 10. Вводить оборудование как общую сущность, а ККТ как специализацию.
+# Phase-zero delivery boundaries
+
+`ServiceRequestsController` is the sole public HTTP adapter for client service
+requests; `ServiceRequestsService` remains channel-neutral application logic.
+`UiServingService` owns deployment-mode validation and prevents controllers from
+choosing legacy HTML implicitly. CI uses disposable PostgreSQL and filesystem
+roots with messenger polling disabled.

@@ -33,4 +33,46 @@ describe('AppController (e2e)', () => {
       .expect(200)
       .expect('Bot is running');
   });
+
+  it('serves React entries and nested SPA routes', async () => {
+    for (const path of [
+      '/site',
+      '/site/service/request',
+      '/admin',
+      '/admin/registrations/42',
+    ]) {
+      const response = await request(app.getHttpServer()).get(path).expect(200);
+      expect(response.headers['content-type']).toMatch(/^text\/html/);
+      expect(response.text).toContain('<div id="root"></div>');
+    }
+  });
+
+  it('does not use SPA fallback for API, health, or file routes', async () => {
+    const responses = await Promise.all([
+      request(app.getHttpServer()).get('/api/client/service-requests/types'),
+      request(app.getHttpServer()).get('/admin/api/me'),
+      request(app.getHttpServer()).get('/admin/api/ticket-messages/1/file'),
+      request(app.getHttpServer()).get('/health/live'),
+      request(app.getHttpServer()).get('/health/ready'),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([
+      401,
+      401,
+      401,
+      200,
+      200,
+    ]);
+    for (const response of responses) {
+      expect(response.headers['content-type']).not.toMatch(/^text\/html/);
+    }
+  });
+
+  it('returns an API 404 instead of React HTML for unknown admin API paths', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/admin/api/not-a-route')
+      .expect(404);
+
+    expect(response.headers['content-type']).not.toMatch(/^text\/html/);
+  });
 });

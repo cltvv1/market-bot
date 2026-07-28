@@ -1,0 +1,61 @@
+name: Manual backup restore drill
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-drill-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_ENV: test
+  DB_HOST: localhost
+  DB_PORT: '5432'
+  DB_NAME: vitma_backup_test
+  DB_USER: vitma_backup
+  DB_PASS: vitma_backup_password
+  FILE_STORAGE_ROOT: ${{ runner.temp }}/vitma-backup-storage
+  BACKUP_DIR: ${{ runner.temp }}/vitma-backups
+  BACKUP_OFFLINE: 'true'
+  BOT_TOKEN: ci-offline-telegram-token
+  BOT_POLLING_ENABLED: 'false'
+  MAX_BOT_TOKEN: ''
+
+jobs:
+  full-restore-drill:
+    name: Full database and file restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Start isolated PostgreSQL
+        run: |
+          docker run --detach --name vitma_postgres \
+            --env POSTGRES_USER="$DB_USER" \
+            --env POSTGRES_PASSWORD="$DB_PASS" \
+            --env POSTGRES_DB="$DB_NAME" \
+            --publish 5432:5432 postgres:16
+          for attempt in {1..30}; do
+            docker exec vitma_postgres pg_isready -U "$DB_USER" -d "$DB_NAME" && exit 0
+            sleep 1
+          done
+          exit 1
+      - name: Migrate and create synthetic drill data
+        run: |
+          npm run migration:run
+          node scripts/backup-drill-seed.mjs
+      - name: Create, verify, restore, and inspect backup
+        run: npm run backup:drill
+      - name: Remove ephemeral resources
+        if: always()
+        run: |
+          docker rm --force vitma_postgres || true
+          rm -rf "$FILE_STORAGE_ROOT" "$BACKUP_DIR"

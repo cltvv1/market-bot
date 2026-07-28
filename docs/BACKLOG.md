@@ -153,3 +153,9 @@
 3. Расширение E0-11 тестами file ownership/MIME/size/path traversal и audit.
 
 Только после E0-08 следует выполнять `E0-12` как повторяемый backup/restore БД и всех managed files. Страховочный архив не делает E0-12 завершённой.
+# Phase-zero backlog update
+
+E0-13, E0-14, and E0-15 are implemented in the working tree. Remaining
+operational actions are publication, one observed hosted CI run, and enabling
+the three documented required checks in GitHub branch protection. Legacy lint
+debt remains tracked by `scripts/lint-baseline.json`.
