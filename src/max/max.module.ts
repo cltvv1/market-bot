@@ -8,9 +8,10 @@ import { MessengerModule } from 'src/messenger/messenger.module';
 import { ClientModule } from 'src/client/client.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
-    imports: [RegistrationsModule, TicketsModule, UsersModule, MessengerModule, ClientModule, ServiceRequestsModule, AdminNotificationsModule],
+    imports: [RegistrationsModule, TicketsModule, UsersModule, MessengerModule, ClientModule, ServiceRequestsModule, AdminNotificationsModule, FilesModule],
     providers: [MaxUpdate, UserContextService],
 })
-export class MaxModule { }
+export class MaxModule {}

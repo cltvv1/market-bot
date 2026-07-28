@@ -1,8 +1,19 @@
 # Backlog VITMA MARKET
 
+## Bot B1 follow-ups
+
+- **Completed in B1:** Telegram callback RBAC, OFD-to-ticket routing, bounded
+  MAX media persistence, MAX operator image/document forwarding and ATOL
+  request-local cleanup.
+- **Partially mitigated:** operator chat fails closed after loss of in-memory
+  context, but conversation mode is not durable.
+- **Deferred:** durable state, incoming deduplication, per-conversation
+  serialization, Telegram provider-URL migration, outbox/retry/status and
+  handler decomposition.
+
 ## Storage follow-ups
 
-- Copy remote Telegram/MAX-only media into controlled storage through a bounded worker.
+- Copy remaining Telegram-only remote media into controlled storage through a bounded worker.
 - Complete transaction-scoped audit coverage for all business mutations.
 - Add Range responses for locally stored audio/video.
 - Agree retention, encryption and a second external backup copy.

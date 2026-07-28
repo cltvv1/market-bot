@@ -1,5 +1,12 @@
 # Bot Test Coverage Audit
 
+## B1 additions
+
+Focused direct tests now cover Telegram callback authorization and OFD routing,
+MAX media routing, role decisions, operator fail-safe behavior, ticket
+StoredFile linking and ATOL cleanup. These are regression tests, not broad
+coverage of the full update classes.
+
 ## Existing suites
 
 | Suite | Level | Bot-relevant coverage |
@@ -23,10 +30,10 @@
 | registration photo/PDF | no | no | partial | partial | no | file policy only |
 | simple service request | no | no | yes | yes | no | limited |
 | FN replacement | no | no | yes | yes | no | limited |
-| ATOL consent | no | no | yes | partial | no | no platform/media errors |
+| ATOL consent | partial | partial | yes | yes | no | cleanup success/error |
 | ticket text/history | no | no | yes | yes | no | web ownership only |
-| ticket media | no | no | partial | no | no | file policy only |
-| operator connect/chat | no | no | no | no | no | no |
+| ticket media | partial | yes | yes | partial | no | MAX download/size/type errors |
+| operator connect/chat | partial | partial | no | partial | no | stale/closed/inactive fail-safe |
 | admin chat binding | no | no | no | no | no | no |
 | outgoing routing | no | no | no | no | offline only | no |
 | polling shutdown | no | no | no | no | process smoke | no direct assertion |
@@ -40,8 +47,8 @@
 - API timeout and rate limit;
 - failed upload and post-upload send;
 - oversized remote media before buffering;
-- legacy callback access control and foreign record access;
-- MAX operator binary media;
+- broad callback concurrency and legitimate cross-ticket switching;
+- MAX operator audio/video forwarding (explicitly unsupported);
 - graceful shutdown of both MAX clients;
 - direct interception proving zero external messenger HTTP calls.
 
@@ -51,8 +58,8 @@ protection rather than adapter-level network interception.
 ## Assessment
 
 Shared happy-path business behavior has useful PostgreSQL characterization.
-Platform adapters, state routing, callback authorization, duplicates, restart,
-delivery failure and most media errors have little or no automated coverage.
+Corrected adapter branches now have direct tests. General duplicates, durable
+restart recovery and delivery failure still have little or no coverage.
 This is not enough to safely refactor either large update class.
 
 Future packages should first add focused characterization with fake contexts and
@@ -65,10 +72,10 @@ The following commands passed on 2026-07-28 with
 token, a disposable PostgreSQL 16 container on localhost and temporary storage
 outside the repository:
 
-- `npm run ci:quality`: 10 suites, 32 tests passed; lint baseline unchanged;
+- B1 unit/handler run: 17 suites, 66 tests passed; lint baseline unchanged;
 - `npm run ci:build`: admin, client and NestJS production builds passed;
 - `npm run ci:database`: all 3 migrations applied to a new `*_test` database,
-  then 3 integration suites/19 tests and 2 e2e suites/6 tests passed;
+  then 3 integration suites/21 tests and 2 e2e suites/6 tests passed;
 - `npm run ci:offline-smoke`: health, client SPA, nested route and admin
   login/logout browser smoke passed.
 

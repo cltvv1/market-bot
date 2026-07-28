@@ -1,5 +1,13 @@
 # Bot State, Recovery and Idempotency Audit
 
+## B1 mitigation
+
+Status: **partially mitigated in B1**. Durable state was not added. Forwarding
+now requires a reciprocal `talkingTo` pair, an open ticket and active staff
+with `tickets.reply`. Missing or stale context fails closed and requires
+explicit client selection. Repeated price confirmation is locally idempotent
+once status is `invoice_required`.
+
 ## State inventory
 
 | State | Storage | Restart | Notes |
@@ -9,7 +17,7 @@
 | Operator forwarding mode | in-memory context | lost | conflicts with persistent `users.talkingTo` |
 | Registration answers/step | PostgreSQL | kept | resume requires re-entering registration |
 | Service answers/step/status | PostgreSQL | kept | resume requires matching menu path |
-| ATOL answers/files | PostgreSQL/FileStorage | mostly kept | cancel cleanup is incomplete |
+| ATOL answers/files | PostgreSQL/FileStorage | kept | request-local cleanup fixed in B1 |
 | Ticket/messages | PostgreSQL | kept | IDLE customer fallback can resume |
 | Operator relationship | `users.talkingTo` | kept | forwarding does not resume |
 | Admin binding | PostgreSQL | kept | bind code is single-use/expiring |
@@ -62,7 +70,7 @@ idempotency key is persisted. There are no unique active-workflow constraints.
 | service/ATOL start | latest-draft lookup | race can create duplicates |
 | field answer | current step | duplicate may fill the next field |
 | service callback answer | owner check | transition/event may repeat |
-| price confirmation | owner check | notification/event may repeat |
+| price confirmation | owner and current-status check | repeated confirmed state has no second effect |
 | admin status action | varying status checks | commit may precede failed/repeated send |
 | outgoing notification | none | no durable retry or dedupe |
 

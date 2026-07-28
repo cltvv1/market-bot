@@ -16,6 +16,7 @@ import { defaultServiceTypes, serviceRequestFlows } from './service-request.flow
 import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 import { FilesService } from 'src/files/files.service';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
+import { AtolTemporaryFileService } from './atol-temporary-file.service';
 
 export interface ServiceRequestIdentity {
     platform: UserPlatform;
@@ -45,14 +46,17 @@ export class ServiceRequestsService {
         private readonly activityService: CustomerActivityService,
         private readonly adminNotificationsService: AdminNotificationsService,
         private readonly pdfService: PdfGeneratorService,
+        private readonly atolTemporaryFiles: AtolTemporaryFileService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
-        private readonly filesService?: FilesService,
-    ) { }
+        private readonly filesService: FilesService,
+    ) {}
 
     async ensureDefaultTypes() {
         for (const item of defaultServiceTypes) {
-            const existing = await this.serviceTypesRepo.findOne({ where: { code: item.code } });
+            const existing = await this.serviceTypesRepo.findOne({
+                where: { code: item.code },
+            });
             if (!existing) {
                 await this.serviceTypesRepo.save(this.serviceTypesRepo.create({ ...item, isActive: true }));
             }
@@ -88,31 +92,24 @@ export class ServiceRequestsService {
     async listForClient(identity: ServiceRequestIdentity) {
         const user = await this.usersService.getOrCreateOrUpdate(identity.chatId, identity.name, identity.username, identity.platform);
         return this.serviceRequestsRepo.find({
-            where: [
-                { userId: user.id },
-                { chatId: identity.chatId, platform: identity.platform },
-            ],
+            where: [{ userId: user.id }, { chatId: identity.chatId, platform: identity.platform }],
             order: { createdAt: 'DESC' },
             take: 50,
         });
     }
 
-    async listForAdmin(
-        status?: ServiceRequestStatus | 'active' | 'all',
-        platform?: UserPlatform,
-        assignedEngineerId?: number,
-    ) {
-        return this.serviceRequestsRepo.find({
-            where: {
-                ...(status && status !== 'all' && status !== 'active' ? { status } : {}),
-                ...(platform ? { platform } : {}),
-                ...(assignedEngineerId ? { assignedEngineerId } : {}),
-            },
-            order: { createdAt: 'DESC' },
-            take: 100,
-        }).then((items) => status === 'active'
-            ? items.filter((item) => item.status !== 'completed' && item.status !== 'cancelled')
-            : items);
+    async listForAdmin(status?: ServiceRequestStatus | 'active' | 'all', platform?: UserPlatform, assignedEngineerId?: number) {
+        return this.serviceRequestsRepo
+            .find({
+                where: {
+                    ...(status && status !== 'all' && status !== 'active' ? { status } : {}),
+                    ...(platform ? { platform } : {}),
+                    ...(assignedEngineerId ? { assignedEngineerId } : {}),
+                },
+                order: { createdAt: 'DESC' },
+                take: 100,
+            })
+            .then((items) => (status === 'active' ? items.filter((item) => item.status !== 'completed' && item.status !== 'cancelled') : items));
     }
 
     async start(identity: ServiceRequestIdentity, serviceTypeCode: string) {
@@ -120,23 +117,27 @@ export class ServiceRequestsService {
         await this.organizationsService.assertUserOrganization(identity.chatId, identity.platform, identity.organizationId);
         await this.ensureDefaultTypes();
 
-        const serviceType = await this.serviceTypesRepo.findOne({ where: { code: serviceTypeCode, isActive: true } });
+        const serviceType = await this.serviceTypesRepo.findOne({
+            where: { code: serviceTypeCode, isActive: true },
+        });
         if (!serviceType) {
             throw new BadRequestException('Service type was not found');
         }
 
-        const request = await this.serviceRequestsRepo.save(this.serviceRequestsRepo.create({
-            serviceTypeId: serviceType.id,
-            serviceTypeCode: serviceType.code,
-            serviceTypeTitle: serviceType.title,
-            userId: user.id,
-            organizationId: identity.organizationId,
-            platform: identity.platform,
-            chatId: identity.chatId,
-            status: 'draft',
-            currentStep: 0,
-            answers: {},
-        }));
+        const request = await this.serviceRequestsRepo.save(
+            this.serviceRequestsRepo.create({
+                serviceTypeId: serviceType.id,
+                serviceTypeCode: serviceType.code,
+                serviceTypeTitle: serviceType.title,
+                userId: user.id,
+                organizationId: identity.organizationId,
+                platform: identity.platform,
+                chatId: identity.chatId,
+                status: 'draft',
+                currentStep: 0,
+                answers: {},
+            }),
+        );
 
         await this.addEvent(request, 'created', 'client', `Создана заявка: ${serviceType.title}`);
         await this.activityService.add({
@@ -163,18 +164,20 @@ export class ServiceRequestsService {
             return this.presentAtolConsent(existing);
         }
 
-        const request = await this.serviceRequestsRepo.save(this.serviceRequestsRepo.create({
-            serviceTypeId: serviceType.id,
-            serviceTypeCode: serviceType.code,
-            serviceTypeTitle: serviceType.title,
-            userId: user.id,
-            organizationId: identity.organizationId,
-            platform: identity.platform,
-            chatId: identity.chatId,
-            status: 'draft',
-            currentStep: 0,
-            answers: {},
-        }));
+        const request = await this.serviceRequestsRepo.save(
+            this.serviceRequestsRepo.create({
+                serviceTypeId: serviceType.id,
+                serviceTypeCode: serviceType.code,
+                serviceTypeTitle: serviceType.title,
+                userId: user.id,
+                organizationId: identity.organizationId,
+                platform: identity.platform,
+                chatId: identity.chatId,
+                status: 'draft',
+                currentStep: 0,
+                answers: {},
+            }),
+        );
 
         await this.addEvent(request, 'created', 'client', 'Создан черновик согласия на доступ АТОЛ');
         await this.activityService.add({
@@ -207,13 +210,19 @@ export class ServiceRequestsService {
             throw new BadRequestException('Consent answer value is required');
         }
 
-        request.answers = { ...(request.answers || {}), [step.key]: normalizedValue };
+        request.answers = {
+            ...(request.answers || {}),
+            [step.key]: normalizedValue,
+        };
         request.currentStep += 1;
 
         let saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(saved, 'answered', 'client', step.label, { key: step.key, value: normalizedValue });
+        await this.addEvent(saved, 'answered', 'client', step.label, {
+            key: step.key,
+            value: normalizedValue,
+        });
 
-        if (!this.getCurrentAtolConsentStep(saved) && !saved.answers.generatedPdfPath) {
+        if (!this.getCurrentAtolConsentStep(saved) && !saved.generatedConsentFileId && !saved.answers.generatedPdfPath) {
             const pdfPath = await this.pdfService.generateAtolConsentPdf({
                 id: saved.id,
                 city: String(saved.answers.city || ''),
@@ -222,21 +231,28 @@ export class ServiceRequestsService {
                 representativeName: String(saved.answers.representativeName || ''),
                 representativeBasis: String(saved.answers.representativeBasis || ''),
             });
-            const generatedFile = this.filesService && fs.existsSync(pdfPath)
-                ? await this.filesService.saveBuffer({
-                purpose: 'atol-consent',
-                buffer: await fs.promises.readFile(pdfPath),
-                originalName: `atol_consent_${saved.id}.pdf`,
-                mimeType: 'application/pdf',
-                serverGenerated: true,
-                createdByCustomerId: saved.userId ?? undefined,
-                metadata: { serviceRequestId: saved.id },
-            })
-                : null;
-            saved.generatedConsentFileId = generatedFile?.id ?? null;
-            saved.answers = { ...saved.answers, generatedPdfPath: pdfPath };
-            saved = await this.serviceRequestsRepo.save(saved);
-            await this.addEvent(saved, 'generated', 'system', 'Сформирован PDF согласия на доступ АТОЛ', { generatedPdfPath: pdfPath });
+            try {
+                if (!fs.existsSync(pdfPath)) {
+                    throw new Error('Generated ATOL consent file was not found');
+                }
+                const generatedFile = await this.filesService.saveBuffer({
+                    purpose: 'atol-consent',
+                    buffer: await fs.promises.readFile(pdfPath),
+                    originalName: `atol_consent_${saved.id}.pdf`,
+                    mimeType: 'application/pdf',
+                    serverGenerated: true,
+                    createdByCustomerId: saved.userId ?? undefined,
+                    metadata: { serviceRequestId: saved.id },
+                });
+                saved.generatedConsentFileId = generatedFile.id;
+                saved.answers = { ...saved.answers, generatedPdfPath: null };
+                saved = await this.serviceRequestsRepo.save(saved);
+                await this.addEvent(saved, 'generated', 'system', 'Сформирован PDF согласия на доступ АТОЛ', {
+                    storedFileId: generatedFile.id,
+                });
+            } finally {
+                await this.atolTemporaryFiles.remove(pdfPath);
+            }
         }
 
         return this.presentAtolConsent(saved);
@@ -244,7 +260,7 @@ export class ServiceRequestsService {
 
     async attachAtolConsentSignedFile(identity: ServiceRequestIdentity, file: { buffer: Buffer; fileName?: string }) {
         const request = await this.getLatestAtolConsentDraft(identity);
-        if (!request || !request.answers?.generatedPdfPath) {
+        if (!request || (!request.generatedConsentFileId && !request.answers?.generatedPdfPath)) {
             return null;
         }
 
@@ -294,8 +310,9 @@ export class ServiceRequestsService {
             return null;
         }
 
-        const consentDir = path.join(process.cwd(), 'storage', 'consents', String(request.id));
-        await fs.promises.rm(consentDir, { recursive: true, force: true });
+        if (request.generatedConsentFileId) {
+            await this.filesService.logicalDelete(request.generatedConsentFileId);
+        }
         await this.eventsRepo.delete({ serviceRequestId: request.id });
         await this.serviceRequestsRepo.delete(request.id);
 
@@ -307,15 +324,17 @@ export class ServiceRequestsService {
         const items = await this.serviceRequestsRepo.find({
             where: [
                 { userId: user.id, status: 'draft' },
-                { chatId: identity.chatId, platform: identity.platform, status: 'draft' },
+                {
+                    chatId: identity.chatId,
+                    platform: identity.platform,
+                    status: 'draft',
+                },
             ],
             order: { createdAt: 'DESC', id: 'DESC' },
             take: 10,
         });
 
-        return serviceTypeCodes?.length
-            ? items.find((item) => serviceTypeCodes.includes(item.serviceTypeCode)) ?? null
-            : items[0] ?? null;
+        return serviceTypeCodes?.length ? (items.find((item) => serviceTypeCodes.includes(item.serviceTypeCode)) ?? null) : (items[0] ?? null);
     }
 
     async answerLatestDraft(identity: ServiceRequestIdentity, value: string, serviceTypeCodes?: string[]) {
@@ -339,7 +358,10 @@ export class ServiceRequestsService {
         }
 
         const normalizedValue = this.normalizeStepValue(step.key, value);
-        request.answers = { ...(request.answers || {}), [step.key]: normalizedValue };
+        request.answers = {
+            ...(request.answers || {}),
+            [step.key]: normalizedValue,
+        };
         request.currentStep += 1;
 
         if (!this.getCurrentStep(request)) {
@@ -347,7 +369,10 @@ export class ServiceRequestsService {
         }
 
         let saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(saved, 'answered', 'client', step.label, { key: step.key, value: normalizedValue });
+        await this.addEvent(saved, 'answered', 'client', step.label, {
+            key: step.key,
+            value: normalizedValue,
+        });
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -374,6 +399,12 @@ export class ServiceRequestsService {
         const request = await this.getClientRequest(identity, requestId);
         if (this.getCurrentStep(request)) {
             throw new BadRequestException('Service request has unanswered questions');
+        }
+        if (request.status === 'invoice_required') {
+            return this.present(request);
+        }
+        if (request.status !== 'draft') {
+            throw new BadRequestException('Service request cannot be confirmed in its current state');
         }
 
         request.status = 'invoice_required';
@@ -518,16 +549,20 @@ export class ServiceRequestsService {
     }
 
     private async ensureAtolConsentServiceType() {
-        let serviceType = await this.serviceTypesRepo.findOne({ where: { code: 'atol_consent' } });
+        let serviceType = await this.serviceTypesRepo.findOne({
+            where: { code: 'atol_consent' },
+        });
         if (!serviceType) {
-            serviceType = await this.serviceTypesRepo.save(this.serviceTypesRepo.create({
-                code: 'atol_consent',
-                title: 'Согласие на доступ АТОЛ',
-                description: 'Подписанное согласие клиента на дистанционный доступ и управление ККТ через кабинет АТОЛ.',
-                flow: 'simple',
-                isActive: false,
-                settings: null,
-            }));
+            serviceType = await this.serviceTypesRepo.save(
+                this.serviceTypesRepo.create({
+                    code: 'atol_consent',
+                    title: 'Согласие на доступ АТОЛ',
+                    description: 'Подписанное согласие клиента на дистанционный доступ и управление ККТ через кабинет АТОЛ.',
+                    flow: 'simple',
+                    isActive: false,
+                    settings: null,
+                }),
+            );
         }
         return serviceType;
     }
@@ -546,11 +581,23 @@ export class ServiceRequestsService {
 
     private getCurrentAtolConsentStep(request: ServiceRequestEntity) {
         const steps = [
-            { key: 'city', label: 'Укажите город. Если город Красноярск, просто напишите: Красноярск' },
-            { key: 'clientName', label: 'Укажите полное название организации или ИП, как в документах' },
+            {
+                key: 'city',
+                label: 'Укажите город. Если город Красноярск, просто напишите: Красноярск',
+            },
+            {
+                key: 'clientName',
+                label: 'Укажите полное название организации или ИП, как в документах',
+            },
             { key: 'inn', label: 'Укажите ИНН' },
-            { key: 'representativeName', label: 'В лице кого составляется согласие? Например: Иванова Ивана Ивановича' },
-            { key: 'representativeBasis', label: 'На основании чего действует представитель? Например: Устава, свидетельства ОГРНИП, доверенности' },
+            {
+                key: 'representativeName',
+                label: 'В лице кого составляется согласие? Например: Иванова Ивана Ивановича',
+            },
+            {
+                key: 'representativeBasis',
+                label: 'На основании чего действует представитель? Например: Устава, свидетельства ОГРНИП, доверенности',
+            },
         ];
         return steps[request.currentStep] ?? null;
     }
@@ -566,7 +613,9 @@ export class ServiceRequestsService {
     }
 
     private async requireRequest(id: number) {
-        const request = await this.serviceRequestsRepo.findOne({ where: { id } });
+        const request = await this.serviceRequestsRepo.findOne({
+            where: { id },
+        });
         if (!request) {
             throw new NotFoundException('Service request was not found');
         }
@@ -606,7 +655,9 @@ export class ServiceRequestsService {
             return null;
         }
 
-        const serviceType = await this.serviceTypesRepo.findOne({ where: { id: request.serviceTypeId } });
+        const serviceType = await this.serviceTypesRepo.findOne({
+            where: { id: request.serviceTypeId },
+        });
         const prices = serviceType?.settings?.prices as Record<string, number> | undefined;
         const term = String(request.answers?.fiscalDriveTerm ?? '');
         return prices?.[term] ?? null;
@@ -626,7 +677,9 @@ export class ServiceRequestsService {
             return;
         }
 
-        await this.messengerService.sendMessage(request.chatId, message, { platform: request.platform });
+        await this.messengerService.sendMessage(request.chatId, message, {
+            platform: request.platform,
+        });
     }
 
     private async notifyClientAboutInvoice(request: ServiceRequestEntity) {
@@ -636,9 +689,7 @@ export class ServiceRequestsService {
 
         const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.`;
         if (request.invoiceStoredFileId && this.filesService) {
-            const { file, stream } = await this.filesService.open(
-                request.invoiceStoredFileId,
-            );
+            const { file, stream } = await this.filesService.open(request.invoiceStoredFileId);
             await this.messengerService.sendMessage(request.chatId, message, {
                 platform: request.platform,
             });
@@ -646,10 +697,7 @@ export class ServiceRequestsService {
                 request.chatId,
                 {
                     source: stream,
-                    filename:
-                        request.invoiceFileName ||
-                        file.originalName ||
-                        `invoice_${request.id}.pdf`,
+                    filename: request.invoiceFileName || file.originalName || `invoice_${request.id}.pdf`,
                 },
                 { platform: request.platform },
             );
@@ -657,7 +705,9 @@ export class ServiceRequestsService {
         }
 
         if (request.invoiceFileId && fs.existsSync(request.invoiceFileId)) {
-            await this.messengerService.sendMessage(request.chatId, message, { platform: request.platform });
+            await this.messengerService.sendMessage(request.chatId, message, {
+                platform: request.platform,
+            });
             await this.messengerService.sendDocument(
                 request.chatId,
                 {
@@ -669,32 +719,29 @@ export class ServiceRequestsService {
             return;
         }
 
-        await this.messengerService.sendMessage(
-            request.chatId,
-            `${message} Счет: ${request.invoiceFileName || request.invoiceFileId}.`,
-            { platform: request.platform },
-        );
+        await this.messengerService.sendMessage(request.chatId, `${message} Счет: ${request.invoiceFileName || request.invoiceFileId}.`, { platform: request.platform });
     }
 
     private formatOperatorMessage(request: ServiceRequestEntity) {
-        const answerLines = Object.entries(request.answers || {})
-            .map(([key, value]) => `${key}: ${String(value)}`)
-            .join('\n') || 'No answers';
+        const answerLines =
+            Object.entries(request.answers || {})
+                .map(([key, value]) => `${key}: ${String(value)}`)
+                .join('\n') || 'No answers';
         const priceLine = request.calculatedPrice ? `\nPrice: ${request.calculatedPrice} RUB` : '';
 
-        return `New service request #${request.id}: ${request.serviceTypeTitle}\n\n` +
-            `${answerLines}${priceLine}\n\n` +
-            `Open the admin panel to process it.`;
+        return `New service request #${request.id}: ${request.serviceTypeTitle}\n\n` + `${answerLines}${priceLine}\n\n` + `Open the admin panel to process it.`;
     }
 
     private async addEvent(request: ServiceRequestEntity, type: string, actor: string, message?: string, payload?: Record<string, unknown>) {
-        await this.eventsRepo.save(this.eventsRepo.create({
-            serviceRequestId: request.id,
-            type,
-            actor,
-            message: message ?? null,
-            payload: payload ?? null,
-        }));
+        await this.eventsRepo.save(
+            this.eventsRepo.create({
+                serviceRequestId: request.id,
+                type,
+                actor,
+                message: message ?? null,
+                payload: payload ?? null,
+            }),
+        );
     }
 
     private async setFinalStatus(id: number, status: 'completed' | 'cancelled', operatorId: string) {

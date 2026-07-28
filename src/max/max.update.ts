@@ -1,5 +1,12 @@
 import * as fs from 'fs';
-import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Readable } from 'node:stream';
+import {
+    Inject,
+    Injectable,
+    Logger,
+    OnModuleDestroy,
+    OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Bot, Keyboard } from '@maxhub/max-bot-api';
 import { RegistrationsService } from 'src/registrations/registrations.service';
@@ -14,6 +21,11 @@ import { ServiceRequestsService } from 'src/service-requests/service-requests.se
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
 import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
 import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
+import { FilesService } from 'src/files/files.service';
+import { MessengerAdminAccessService } from 'src/admin/messenger-admin-access.service';
+import { extractMaxMedia, materializeMaxMedia } from './max-media';
+
+export const MAX_OFD_CALLBACK = 'wantToOfd';
 
 @Injectable()
 export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
@@ -29,9 +41,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly serviceRequestsService: ServiceRequestsService,
         private readonly adminNotificationsService: AdminNotificationsService,
+        private readonly filesService: FilesService,
+        private readonly adminAccess: MessengerAdminAccessService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
-    ) { }
+    ) {}
 
     async onModuleInit() {
         const pollingEnabled = this.configService.get<boolean>('BOT_POLLING_ENABLED') ?? true;
@@ -90,6 +104,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.startTicket(ctx);
         });
 
+        this.bot.action(MAX_OFD_CALLBACK, async (ctx) => {
+            await ctx.answerOnCallback({ notification: 'Активация ОФД' });
+            await this.handleOfdRequest(ctx);
+        });
+
         this.bot.action(/^serviceRequestSimple:.+/, async (ctx) => {
             const rawType = ctx.callback?.payload?.split(':')[1];
             await ctx.answerOnCallback({ notification: 'Сервисная заявка' });
@@ -107,7 +126,9 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         });
 
         this.bot.action('cancelAtolConsent', async (ctx) => {
-            await ctx.answerOnCallback({ notification: 'Подача согласия отменена' });
+            await ctx.answerOnCallback({
+                notification: 'Подача согласия отменена',
+            });
             await this.cancelAtolConsent(ctx);
         });
 
@@ -139,7 +160,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.upsertUser(ctx);
 
             const text = ctx.message?.body?.text?.trim();
-            const media = this.extractMaxMedia(ctx);
+            const media = extractMaxMedia(ctx.message);
             if (text?.startsWith('/admin')) {
                 await this.handleAdminBindCommand(ctx, text);
                 return;
@@ -192,9 +213,10 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             await this.sendMainMenu(ctx);
         });
 
-        this.bot.start({
-            allowedUpdates: ['bot_started', 'message_created', 'message_callback'],
-        })
+        this.bot
+            .start({
+                allowedUpdates: ['bot_started', 'message_created', 'message_callback'],
+            })
             .then(() => this.logger.log('MAX bot polling stopped'))
             .catch((error) => this.logger.error('MAX bot polling failed', error));
 
@@ -238,50 +260,35 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
     }
 
     private async sendMainMenu(ctx: any) {
-        await ctx.reply(
-            'Я чат-бот компании ВитмаМаркет. Чем могу помочь?',
-            {
-                attachments: [
-                    Keyboard.inlineKeyboard([
-                        [Keyboard.button.callback('Регистрация кассы', 'wantToRegister')],
-                        [Keyboard.button.callback('Замена ФН', 'fnReplacement')],
-                        [Keyboard.button.callback('Согласие на доступ АТОЛ', 'atolConsent')],
-                        [Keyboard.button.callback('Сервисная заявка: обновление прошивки', 'serviceRequestSimple:firmware_update')],
-                        [Keyboard.button.callback('Сервисная заявка: удаленные работы с ККТ', 'serviceRequestSimple:kkt_remote_work')],
-                        [Keyboard.button.callback('Вопрос оператору', 'createTicket')],
-                    ]),
-                ],
-            },
-        );
+        await ctx.reply('Я чат-бот компании ВитмаМаркет. Чем могу помочь?', {
+            attachments: [
+                Keyboard.inlineKeyboard([
+                    [Keyboard.button.callback('Регистрация кассы', 'wantToRegister')],
+                    [Keyboard.button.callback('Замена ФН', 'fnReplacement')],
+                        [Keyboard.button.callback('Активация ОФД', MAX_OFD_CALLBACK)],
+                    [Keyboard.button.callback('Согласие на доступ АТОЛ', 'atolConsent')],
+                    [Keyboard.button.callback('Сервисная заявка: обновление прошивки', 'serviceRequestSimple:firmware_update')],
+                    [Keyboard.button.callback('Сервисная заявка: удаленные работы с ККТ', 'serviceRequestSimple:kkt_remote_work')],
+                    [Keyboard.button.callback('Вопрос оператору', 'createTicket')],
+                ]),
+            ],
+        });
     }
 
     private async showRegistrationIntro(ctx: any) {
         const fields = await this.regService.getAllFields();
-        const fieldList = fields
-            .map((field) => `- ${field.label}`)
-            .join('\n');
+        const fieldList = fields.map((field) => `- ${field.label}`).join('\n');
 
-        await ctx.reply(
-            `Для регистрации кассы понадобятся данные:\n\n${fieldList}\n\nПродолжая заполнение, вы соглашаетесь с обработкой персональных данных.`,
-            {
-                attachments: [
-                    Keyboard.inlineKeyboard([
-                        [Keyboard.button.callback('Начать заполнение', 'startRegistration')],
-                        [Keyboard.button.callback('Отказаться', 'stopRegistration')],
-                        [Keyboard.button.callback('Главное меню', 'mainMenu')],
-                    ]),
-                ],
-            },
-        );
+        await ctx.reply(`Для регистрации кассы понадобятся данные:\n\n${fieldList}\n\nПродолжая заполнение, вы соглашаетесь с обработкой персональных данных.`, {
+            attachments: [Keyboard.inlineKeyboard([[Keyboard.button.callback('Начать заполнение', 'startRegistration')], [Keyboard.button.callback('Отказаться', 'stopRegistration')], [Keyboard.button.callback('Главное меню', 'mainMenu')]])],
+        });
     }
 
     private async startRegistration(ctx: any) {
         const chatId = String(ctx.chatId);
         const result = await this.clientWorkflow.startRegistration(this.toClientIdentity(ctx));
 
-        await ctx.reply(result.status === 'started'
-            ? 'Заявка создана.'
-            : 'Найдена незаполненная заявка. Продолжим с места остановки.');
+        await ctx.reply(result.status === 'started' ? 'Заявка создана.' : 'Найдена незаполненная заявка. Продолжим с места остановки.');
 
         await this.ctxService.set(chatId, { mode: 'REGISTER' }, 'max');
 
@@ -313,9 +320,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
         await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
 
-        await ctx.reply(
-            'Анкета заполнена.  ближайшее время оператор свяжется с вами по контактному телефону, указанному в заявке.',
-        );
+        await ctx.reply('Анкета заполнена.  ближайшее время оператор свяжется с вами по контактному телефону, указанному в заявке.');
         await this.sendMainMenu(ctx);
     }
 
@@ -328,12 +333,13 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        const result = await this.clientWorkflow.startSimpleServiceRequest({ ...this.toClientIdentity(ctx), serviceTypeCode: rawType });
+        const result = await this.clientWorkflow.startSimpleServiceRequest({
+            ...this.toClientIdentity(ctx),
+            serviceTypeCode: rawType,
+        });
         const request = result.data as { id?: number; serviceTypeTitle?: string } | undefined;
 
-        await ctx.reply(result.status === 'started'
-            ? `Создана сервисная заявка: ${request?.serviceTypeTitle ?? 'сервис'}.`
-            : 'Найдена незаполненная сервисная заявка. Продолжим с места остановки.');
+        await ctx.reply(result.status === 'started' ? `Создана сервисная заявка: ${request?.serviceTypeTitle ?? 'сервис'}.` : 'Найдена незаполненная сервисная заявка. Продолжим с места остановки.');
 
         await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: request?.id }, 'max');
 
@@ -384,9 +390,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         const result = await this.clientWorkflow.startAtolConsent(this.toClientIdentity(ctx));
         await this.ctxService.set(chatId, { mode: 'ATOL_CONSENT' }, 'max');
 
-        await ctx.reply(result.status === 'started'
-            ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.'
-            : 'Нашел незаполненное согласие. Продолжим с места остановки.');
+        await ctx.reply(result.status === 'started' ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.' : 'Нашел незаполненное согласие. Продолжим с места остановки.');
 
         if (result.nextField) {
             await ctx.reply(`${result.nextField}:`);
@@ -411,7 +415,17 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        if (result.filePath && fs.existsSync(result.filePath)) {
+        if (result.fileId) {
+            const opened = await this.filesService.open(result.fileId);
+            await this.messengerService.sendDocument(
+                chatId,
+                {
+                    source: opened.stream,
+                    filename: opened.file.originalName || 'atol_consent.pdf',
+                },
+                { platform: 'max' },
+            );
+        } else if (result.filePath && fs.existsSync(result.filePath)) {
             await this.messengerService.sendDocument(
                 chatId,
                 {
@@ -422,16 +436,9 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             );
         }
 
-        await ctx.reply(
-            'Теперь распечатайте эту форму и подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.',
-            {
-                attachments: [
-                    Keyboard.inlineKeyboard([
-                        [Keyboard.button.callback('Отменить подачу согласия', 'cancelAtolConsent')],
-                    ]),
-                ],
-            },
-        );
+        await ctx.reply('Теперь распечатайте эту форму и подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.', {
+            attachments: [Keyboard.inlineKeyboard([[Keyboard.button.callback('Отменить подачу согласия', 'cancelAtolConsent')]])],
+        });
     }
 
     private async cancelAtolConsent(ctx: any) {
@@ -476,13 +483,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         if (result.nextStep) {
             if (result.nextStep.options?.length) {
                 await ctx.reply(`${result.nextStep.label}:`, {
-                    attachments: [
-                        Keyboard.inlineKeyboard(
-                            result.nextStep.options.map((option) => [
-                                Keyboard.button.callback(option.label, `serviceRequestAnswer:${result.request.id}:${option.value}`),
-                            ]),
-                        ),
-                    ],
+                    attachments: [Keyboard.inlineKeyboard(result.nextStep.options.map((option) => [Keyboard.button.callback(option.label, `serviceRequestAnswer:${result.request.id}:${option.value}`)]))],
                 });
                 return;
             }
@@ -496,15 +497,9 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        const priceText = result.request.calculatedPrice
-            ? `${result.request.calculatedPrice} руб.`
-            : 'стоимость уточнит оператор';
+        const priceText = result.request.calculatedPrice ? `${result.request.calculatedPrice} руб.` : 'стоимость уточнит оператор';
         await ctx.reply(`Стоимость замены ФН: ${priceText}\n\nЕсли все верно, подтвердите заказ счета.`, {
-            attachments: [
-                Keyboard.inlineKeyboard([
-                    [Keyboard.button.callback('Согласен, заказать счет', `serviceRequestConfirm:${result.request.id}`)],
-                ]),
-            ],
+            attachments: [Keyboard.inlineKeyboard([[Keyboard.button.callback('Согласен, заказать счет', `serviceRequestConfirm:${result.request.id}`)]])],
         });
     }
 
@@ -520,6 +515,10 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
         await this.ctxService.set(chatId, { mode: 'TICKET' }, 'max');
         await ctx.reply('Введите текст вопроса для оператора:');
+    }
+
+    async handleOfdRequest(ctx: any) {
+        await this.startTicket(ctx);
     }
 
     private async handleTicketText(ctx: any, text: string) {
@@ -539,33 +538,14 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         await this.sendMainMenu(ctx);
     }
 
-    private extractMaxMedia(ctx: any): TicketMediaInput | null {
-        const attachment = ctx.message?.body?.attachments?.find((item: any) =>
-            item?.type === 'image' || item?.type === 'video' || item?.type === 'audio' || item?.type === 'file'
-        );
-        if (!attachment) return null;
-
-        const messageType = attachment.type === 'image'
-            ? 'image'
-            : attachment.type === 'file'
-                ? 'document'
-                : attachment.type;
-
-        return {
-            messageType,
-            text: ctx.message?.body?.text || undefined,
-            fileId: attachment.payload?.token,
-            fileName: attachment.filename,
-            fileSize: attachment.size,
-            externalUrl: attachment.payload?.url,
-        };
-    }
-
-    private async handleMaxMedia(ctx: any, mode: string, media: TicketMediaInput) {
+    async handleMaxMedia(ctx: any, mode: string, media: TicketMediaInput) {
         const chatId = String(ctx.chatId);
 
         if (mode === 'TICKET') {
-            await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+            await this.clientWorkflow.submitTicketMedia(
+                this.toClientIdentity(ctx),
+                await this.materializeTicketMedia(media),
+            );
             await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
             await ctx.reply('Вложение принято, оператор ответит в ближайшее время.');
             await this.sendMainMenu(ctx);
@@ -573,9 +553,13 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         }
 
         if (mode === 'REGISTER') {
+            const storedMedia = await materializeMaxMedia(
+                media,
+                this.filesService.getPolicy('registration-photo').maxBytes,
+            );
             const result = await this.clientWorkflow.submitRegistrationPhoto(this.toClientIdentity(ctx), {
-                buffer: await this.downloadMediaBuffer(media),
-                fileName: media.fileName || `${media.messageType}.jpg`,
+                buffer: storedMedia.buffer!,
+                fileName: storedMedia.fileName,
             });
             if (result.status === 'completed') {
                 await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
@@ -588,9 +572,13 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         }
 
         if (mode === 'ATOL_CONSENT') {
+            const storedMedia = await materializeMaxMedia(
+                media,
+                this.filesService.getPolicy('signed-document').maxBytes,
+            );
             const result = await this.clientWorkflow.submitAtolConsentSignedFile(this.toClientIdentity(ctx), {
-                buffer: await this.downloadMediaBuffer(media),
-                fileName: media.fileName || `${media.messageType}.jpg`,
+                buffer: storedMedia.buffer!,
+                fileName: storedMedia.fileName,
             });
             if (result.status === 'not_found') {
                 await ctx.reply('Сначала сформируйте согласие через меню сервиса.');
@@ -608,7 +596,7 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         if (mode === 'IDLE') {
             const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
             if (activeTicket?.text) {
-                await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+                await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), await this.materializeTicketMedia(media));
                 await ctx.reply('Вложение добавлено к вашему открытому вопросу.');
                 return;
             }
@@ -620,42 +608,69 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        const talkingToId = await this.usersService.getTalkingTo(chatId, 'max');
-        if (!talkingToId) return;
-
-        const activeTicket = await this.ticketService.getActiveTicket(talkingToId, 'max');
-        if (activeTicket) {
-            await this.ticketService.addMediaMessage(activeTicket.id, 'operator', media, chatId, 'bot');
+        const conversation = await this.resolveActiveConversation(chatId);
+        if (!conversation) {
+            await this.failClosedOperatorMode(ctx, chatId);
+            return;
         }
-
-        await this.messengerService.sendMessage(
-            talkingToId,
-            `Оператор отправил вложение: ${media.fileName || media.externalUrl || media.messageType}`,
-            { inlineKeyboard: disconnectFromKeyboard(chatId), platform: 'max' },
-        );
+        if (media.messageType !== 'image' && media.messageType !== 'document') {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            await ctx.reply('Этот тип вложения нельзя переслать клиенту. Отправьте изображение или документ.');
+            return;
+        }
+        const storedMedia = await this.materializeTicketMedia(media);
+        await this.ticketService.addMediaMessage(conversation.ticket.id, 'operator', storedMedia, chatId, 'bot');
+        const file = {
+            source: Readable.from(storedMedia.buffer!),
+            filename: storedMedia.fileName || 'attachment',
+        };
+        const options = {
+            inlineKeyboard: disconnectFromKeyboard(chatId),
+            platform: 'max' as const,
+        };
+        if (storedMedia.messageType === 'image') {
+            await this.messengerService.sendImage(conversation.targetChatId, file, options);
+        } else {
+            await this.messengerService.sendDocument(conversation.targetChatId, file, options);
+        }
+        return;
     }
 
-    private async downloadMediaBuffer(media: TicketMediaInput) {
-        if (!media.externalUrl) {
-            throw new Error('Media URL was not resolved');
-        }
-        const response = await fetch(media.externalUrl);
-        if (!response.ok) {
-            throw new Error(`Failed to download media: ${response.status}`);
-        }
-        return Buffer.from(await response.arrayBuffer());
+    private materializeTicketMedia(media: TicketMediaInput) {
+        const purpose = media.messageType === 'image' ? 'ticket-image' : media.messageType === 'audio' ? 'ticket-audio' : media.messageType === 'video' ? 'ticket-video' : 'ticket-document';
+        return materializeMaxMedia(media, this.filesService.getPolicy(purpose).maxBytes);
     }
 
     private async connectToClient(ctx: any, clientChatId?: string) {
         const operatorChatId = String(ctx.chatId);
         if (!operatorChatId || !clientChatId) return;
+        const admin = await this.adminAccess.authorize('max', operatorChatId, 'tickets.reply', {
+            action: 'max.ticket.connect',
+            targetType: 'customer_chat',
+            targetId: clientChatId,
+        });
 
-        if (!(await this.usersService.isOperator(operatorChatId, 'max'))) {
+        if (!admin) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
             await ctx.reply('Недостаточно прав');
             return;
         }
 
-        if (await this.usersService.isAlreadyTalking(clientChatId, 'max')) {
+        const ticket = await this.ticketService.getActiveTicket(clientChatId, 'max');
+        const operatorTarget = await this.usersService.getTalkingTo(operatorChatId, 'max');
+        const clientTarget = await this.usersService.getTalkingTo(clientChatId, 'max');
+        const isSafeReattach = operatorTarget === clientChatId && clientTarget === operatorChatId;
+        if (!ticket || ((operatorTarget || clientTarget) && !isSafeReattach)) {
+            await this.adminAccess.recordInvalid(
+                admin,
+                'max',
+                {
+                    action: 'max.ticket.connect',
+                    targetType: 'customer_chat',
+                    targetId: clientChatId,
+                },
+                ticket ? 'conflicting_chat_context' : 'invalid_or_closed_ticket',
+            );
             await ctx.reply('К чату с этим клиентом уже подключен оператор');
             return;
         }
@@ -663,12 +678,16 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         await this.ctxService.set(clientChatId, { mode: 'OPERATOR' }, 'max');
         await this.ctxService.set(operatorChatId, { mode: 'OPERATOR' }, 'max');
         await this.usersService.setTalkingTo(operatorChatId, clientChatId, 'max');
+        await this.adminAccess.recordSuccess(admin, 'max', {
+            action: 'max.ticket.connect',
+            targetType: 'ticket',
+            targetId: ticket.id,
+        });
 
-        await this.messengerService.sendMessage(
-            clientChatId,
-            'К чату с вами присоединился оператор, он будет видеть все ваши сообщения.',
-            { inlineKeyboard: disconnectFromKeyboard(operatorChatId), platform: 'max' },
-        );
+        await this.messengerService.sendMessage(clientChatId, 'К чату с вами присоединился оператор, он будет видеть все ваши сообщения.', {
+            inlineKeyboard: disconnectFromKeyboard(operatorChatId),
+            platform: 'max',
+        });
         await ctx.reply('Вы подключены к чату с клиентом, все ваши сообщения будут отправлены клиенту.');
     }
 
@@ -676,7 +695,17 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         const initChatId = String(ctx.chatId);
         if (!initChatId || !talkingToChatId) return;
 
-        const isTalking = await this.usersService.isTalking(initChatId, talkingToChatId, 'max');
+        const isTalking =
+            (await this.usersService.isTalking(
+                initChatId,
+                talkingToChatId,
+                'max',
+            )) &&
+            (await this.usersService.isTalking(
+                talkingToChatId,
+                initChatId,
+                'max',
+            ));
         if (!isTalking) {
             await ctx.reply('Диалог уже завершен или недоступен');
             return;
@@ -684,12 +713,30 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
         let operatorChatId: string;
         let clientChatId: string;
-        if (await this.usersService.isOperator(initChatId, 'max')) {
+        const initiatingStaff = await this.adminAccess.findStaff('max', initChatId);
+        const initiatingAdmin = initiatingStaff
+            ? await this.adminAccess.authorize('max', initChatId, 'tickets.close', {
+                  action: 'max.ticket.close',
+                  targetType: 'customer_chat',
+                  targetId: talkingToChatId,
+              })
+            : null;
+        if (initiatingStaff && !initiatingAdmin) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+            await ctx.reply('Недостаточно прав');
+            return;
+        }
+        if (initiatingAdmin) {
             operatorChatId = initChatId;
             clientChatId = talkingToChatId;
         } else {
             operatorChatId = talkingToChatId;
             clientChatId = initChatId;
+        }
+        const admin = initiatingAdmin ?? (await this.adminAccess.findAuthorizedStaff('max', operatorChatId, 'tickets.close'));
+        if (!admin) {
+            await ctx.reply('Недостаточно прав');
+            return;
         }
 
         const closedTicket = await this.ticketService.getActiveTicket(clientChatId, 'max');
@@ -699,6 +746,11 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         }
 
         await this.ticketService.closeTicket(closedTicket.id, operatorChatId);
+        await this.adminAccess.recordSuccess(admin, 'max', {
+            action: 'max.ticket.close',
+            targetType: 'ticket',
+            targetId: closedTicket.id,
+        });
         await this.ctxService.set(clientChatId, { mode: 'IDLE' }, 'max');
         await this.ctxService.set(operatorChatId, { mode: 'IDLE' }, 'max');
         await this.usersService.stopDialog(operatorChatId, clientChatId, 'max');
@@ -709,19 +761,36 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
 
     private async forwardOperatorText(ctx: any, text: string) {
         const chatId = String(ctx.chatId);
-        const talkingToId = await this.usersService.getTalkingTo(chatId, 'max');
-        if (!talkingToId) {
+        const conversation = await this.resolveActiveConversation(chatId);
+        if (!conversation) {
             await ctx.reply('К вам сейчас не подключен оператор');
             await this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
             await this.sendMainMenu(ctx);
             return;
         }
 
-        await this.messengerService.sendMessage(
-            talkingToId,
-            text,
-            { inlineKeyboard: disconnectFromKeyboard(chatId), platform: 'max' },
-        );
+        await this.messengerService.sendMessage(conversation.targetChatId, text, { inlineKeyboard: disconnectFromKeyboard(chatId), platform: 'max' });
+    }
+
+    private async resolveActiveConversation(chatId: string) {
+        const targetChatId = await this.usersService.getTalkingTo(chatId, 'max');
+        if (!targetChatId || (await this.usersService.getTalkingTo(targetChatId, 'max')) !== chatId) {
+            return null;
+        }
+        const staff = await this.adminAccess.findAuthorizedStaff('max', chatId, 'tickets.reply');
+        const targetStaff = await this.adminAccess.findAuthorizedStaff('max', targetChatId, 'tickets.reply');
+        if (!staff && !targetStaff) {
+            return null;
+        }
+        const clientChatId = staff ? targetChatId : chatId;
+        const ticket = await this.ticketService.getActiveTicket(clientChatId, 'max');
+        return ticket ? { targetChatId, ticket } : null;
+    }
+
+    private async failClosedOperatorMode(ctx: any, chatId: string) {
+        this.ctxService.set(chatId, { mode: 'IDLE' }, 'max');
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+        await ctx.reply('Активный диалог не найден. Выберите клиента заново.');
     }
 
     private isSimpleServiceRequestCode(value: string): value is SimpleServiceRequestCode {

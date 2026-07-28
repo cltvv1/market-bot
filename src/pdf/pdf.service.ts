@@ -106,7 +106,11 @@ export class PdfGeneratorService {
 
     async generateAtolConsentPdf(consent: AtolConsentPdfData): Promise<string> {
         const printer = new PdfPrinter(this.fonts);
-        const dir = path.join(process.cwd(), this.configService.get<string>('CONSENT_DIR') ?? 'storage/consents');
+        const dir = path.resolve(
+            process.cwd(),
+            this.configService.get<string>('CONSENT_DIR') ??
+                'storage/consents',
+        );
         await fs.promises.mkdir(dir, { recursive: true });
 
         const today = new Date();

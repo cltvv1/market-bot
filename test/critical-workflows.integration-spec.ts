@@ -1,4 +1,7 @@
 import type { DataSource } from 'typeorm';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import testDataSource from '../src/database/test-data-source';
 import { AdminNotificationsService } from '../src/admin/admin-notifications.service';
 import { CustomerActivityService } from '../src/customer-activity/customer-activity.service';
@@ -21,6 +24,7 @@ import { TicketsService } from '../src/tickets/tickets.service';
 import { UserChannelEntity } from '../src/users/entities/user-channel.entity';
 import { UserEntity } from '../src/users/entities/user.entity';
 import { UsersService } from '../src/users/users.service';
+import { StoredFileEntity } from '../src/files/entities/stored-file.entity';
 
 const testIdentity = {
     platform: 'web' as const,
@@ -34,6 +38,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     let registrationsService: RegistrationsService;
     let ticketsService: TicketsService;
     let serviceRequestsService: ServiceRequestsService;
+    let consentTempPath: string;
 
     const messenger: jest.Mocked<MessengerService> = {
         sendMessage: jest.fn().mockResolvedValue(undefined),
@@ -48,9 +53,25 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         generateRegistrationPdf: jest
             .fn()
             .mockResolvedValue('virtual/registration.pdf'),
-        generateAtolConsentPdf: jest
-            .fn()
-            .mockResolvedValue('virtual/atol-consent.pdf'),
+        generateAtolConsentPdf: jest.fn(),
+    };
+    const saveStoredFile = jest.fn(
+        (_input: {
+            purpose: string;
+            buffer: Buffer;
+            metadata?: Record<string, unknown>;
+        }): Promise<{ id: number }> =>
+            Promise.reject(new Error(`not configured: ${_input.purpose}`)),
+    );
+    const files = {
+        saveBuffer: saveStoredFile,
+        logicalDelete: jest.fn().mockResolvedValue(undefined),
+    };
+    const temporaryFiles = {
+        remove: jest.fn().mockImplementation(async (filePath: string) => {
+            await fs.promises.rm(filePath, { force: true });
+            return true;
+        }),
     };
 
     beforeAll(async () => {
@@ -78,6 +99,29 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         );
 
         jest.clearAllMocks();
+        consentTempPath = path.join(
+            os.tmpdir(),
+            `atol-consent-${Date.now()}.pdf`,
+        );
+        pdf.generateAtolConsentPdf.mockImplementation(async () => {
+            await fs.promises.writeFile(
+                consentTempPath,
+                Buffer.from('%PDF- test'),
+            );
+            return consentTempPath;
+        });
+        saveStoredFile.mockImplementation((input) =>
+            dataSource.getRepository(StoredFileEntity).save({
+                provider: 'local',
+                objectKey: `atol-consent/test/${Date.now()}`,
+                originalName: 'atol-consent.pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: String(input.buffer.length),
+                sha256: 'a'.repeat(64),
+                status: 'active',
+                metadata: input.metadata ?? null,
+            }),
+        );
 
         usersService = new UsersService(
             dataSource.getRepository(UserEntity),
@@ -115,7 +159,9 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             activityService,
             notifications as unknown as AdminNotificationsService,
             pdf as unknown as PdfGeneratorService,
+            temporaryFiles as never,
             messenger,
+            files as never,
         );
     });
 
@@ -260,6 +306,11 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             started.request.id,
         );
         expect(confirmed.request.status).toBe('invoice_required');
+        await serviceRequestsService.confirmPrice(
+            testIdentity,
+            started.request.id,
+        );
+        expect(notifications.notify).toHaveBeenCalledTimes(1);
 
         const invoiced = await serviceRequestsService.attachInvoice(
             started.request.id,
@@ -303,7 +354,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         expect(messenger.sendMessage.mock.calls).toHaveLength(0);
     });
 
-    it('captures the ATOL consent answers and generated PDF reference', async () => {
+    it('stores the ATOL consent PDF and cleans up its temporary file', async () => {
         const started =
             await serviceRequestsService.startAtolConsent(testIdentity);
         for (const answer of [
@@ -329,9 +380,83 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             inn: '2460000000',
             representativeName: 'Иванова Ивана Ивановича',
             representativeBasis: 'Устава',
-            generatedPdfPath: 'virtual/atol-consent.pdf',
+            generatedPdfPath: null,
+        });
+        expect(typeof persisted?.generatedConsentFileId).toBe('number');
+        expect(files.saveBuffer).toHaveBeenCalledWith(
+            expect.objectContaining({
+                purpose: 'atol-consent',
+                metadata: { serviceRequestId: started.request.id },
+            }),
+        );
+        expect(Buffer.isBuffer(saveStoredFile.mock.calls[0][0].buffer)).toBe(
+            true,
+        );
+        expect(temporaryFiles.remove).toHaveBeenCalledWith(consentTempPath);
+        await expect(fs.promises.stat(consentTempPath)).rejects.toMatchObject({
+            code: 'ENOENT',
         });
         expect(pdf.generateAtolConsentPdf).toHaveBeenCalledTimes(1);
         expect(messenger.sendMessage.mock.calls).toHaveLength(0);
+    });
+
+    it('cleans up an ATOL temporary file when storage fails', async () => {
+        files.saveBuffer.mockRejectedValueOnce(
+            new Error('storage unavailable'),
+        );
+        await serviceRequestsService.startAtolConsent(testIdentity);
+
+        for (const answer of [
+            'City',
+            'Client',
+            '2460000000',
+            'Person',
+            'Basis',
+        ]) {
+            if (answer === 'Basis') {
+                await expect(
+                    serviceRequestsService.answerAtolConsent(
+                        testIdentity,
+                        answer,
+                    ),
+                ).rejects.toThrow('storage unavailable');
+            } else {
+                await serviceRequestsService.answerAtolConsent(
+                    testIdentity,
+                    answer,
+                );
+            }
+        }
+
+        expect(temporaryFiles.remove).toHaveBeenCalledWith(consentTempPath);
+        await expect(fs.promises.stat(consentTempPath)).rejects.toMatchObject({
+            code: 'ENOENT',
+        });
+    });
+
+    it('logically deletes the generated consent file when a draft is cancelled', async () => {
+        await serviceRequestsService.startAtolConsent(testIdentity);
+        for (const answer of [
+            'City',
+            'Client',
+            '2460000000',
+            'Person',
+            'Basis',
+        ]) {
+            await serviceRequestsService.answerAtolConsent(
+                testIdentity,
+                answer,
+            );
+        }
+
+        const generated =
+            await serviceRequestsService.getLatestAtolConsentDraft(
+                testIdentity,
+            );
+        await serviceRequestsService.cancelAtolConsentDraft(testIdentity);
+
+        expect(files.logicalDelete).toHaveBeenCalledWith(
+            generated?.generatedConsentFileId,
+        );
     });
 });

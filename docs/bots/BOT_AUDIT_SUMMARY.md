@@ -2,6 +2,13 @@
 
 Audit baseline: `d27b2ca6928b3903b6ed306bf3d8f83089fb6a7b`.
 
+## B1 status
+
+Callback authorization, OFD routing, MAX attachments and ATOL cleanup are fixed
+in B1. Operator-chat restart behavior is fail-safe but remains non-durable.
+General deduplication, outbox/retry and handler decomposition remain confirmed
+and deferred. See `B1_FIX_REPORT.md`.
+
 ## A. Ready today
 
 **Telegram:** start/menu, KKT registration with photo/PDF, two simple service
@@ -52,13 +59,13 @@ These are absent capabilities, not regressions.
 
 | Severity | Finding |
 |---|---|
-| High | Telegram legacy admin callbacks expose/mutate registrations and tickets without role checks. |
+| High | Telegram legacy admin callback authorization: fixed in B1. |
 | High | Repeated/parallel events can duplicate workflows or advance answers twice. |
-| High | `talkingTo` persists while forwarding mode does not, making live chat inconsistent after restart. |
-| Medium | Telegram exposes an OFD activation button with no handler. |
-| Medium | MAX operator attachment forwarding sends text instead of equivalent media. |
-| Medium | Remote registration/consent media is buffered before size validation. |
-| Medium | ATOL cancellation can leave managed stored files behind. |
+| High | Durable operator mode remains deferred; wrong-target forwarding is partially mitigated in B1. |
+| Medium | OFD dead callback: fixed in B1 through the existing operator-ticket flow. |
+| Medium | MAX operator image/document forwarding: fixed in B1. |
+| Medium | MAX remote media is bounded in B1; Telegram equivalent is deferred. |
+| Medium | ATOL generated/cancelled file cleanup: fixed in B1. |
 | Medium | Outgoing delivery has no durable result, retry or visible failure state. |
 
 ## E. Risk register
@@ -91,8 +98,8 @@ Telegram-only, 0 MAX-only, 0 unknown and 1 not implemented. See
 
 PostgreSQL integration tests characterize registration, ticket, simple-request,
 FN and ATOL happy paths. File policy/storage and CI isolation have direct tests.
-Neither platform update class has a direct suite; restart, duplicates,
-callbacks, concurrency, delivery failure and most media errors are untested.
+Focused Telegram/MAX handler suites now cover corrected branches. Broad
+restart, concurrency, delivery and duplicate behavior remains untested.
 
 ## H. Production readiness
 

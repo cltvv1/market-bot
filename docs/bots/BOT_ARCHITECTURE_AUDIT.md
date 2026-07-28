@@ -2,6 +2,14 @@
 
 Audit baseline: `main` at `d27b2ca6928b3903b6ed306bf3d8f83089fb6a7b`.
 
+## B1 architecture note
+
+B1 keeps the current handler structure. It adds a narrow
+`MessengerAdminAccessService` that maps messenger bindings to existing RBAC, a
+MAX media normalizer/materializer and a root-confined ATOL temporary-file
+cleanup service. No global messenger framework, durable state engine, outbox,
+queue or migration was added.
+
 This document describes the implementation as it exists. It is not a target
 design and no production behavior was changed during the audit.
 

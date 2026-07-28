@@ -7,7 +7,7 @@ import { TicketsService } from 'src/tickets/tickets.service';
 import { creditsButtons } from './keyboards/credits.keyboard';
 import { serviceButtons } from './keyboards/service.keyboard';
 import { startRegButtons } from './keyboards/start-reg.keyboard';
-import { menuButtons } from "src/telegram/keyboards/menu.keyboard";
+import { menuButtons } from 'src/telegram/keyboards/menu.keyboard';
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
 import { actualRegsButtons } from './keyboards/actual-regs.keyboard';
 import { UserContextService } from 'src/userContext/user-context.service';
@@ -16,16 +16,17 @@ import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { actualTicketsButtons } from './keyboards/actual-tickets.keyboard';
 import { RegistrationsService } from '../registrations/registrations.service';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
-import { disconnectFromButton } from "src/telegram/keyboards/disconnect.keyboard";
-import { mainMenuButton } from "src/telegram/keyboards/return-to-main-menu.keyboard";
-import { RegisterTextHandler } from "src/telegram/handlers/register/register-text.handler";
+import { disconnectFromButton } from 'src/telegram/keyboards/disconnect.keyboard';
+import { mainMenuButton } from 'src/telegram/keyboards/return-to-main-menu.keyboard';
+import { RegisterTextHandler } from 'src/telegram/handlers/register/register-text.handler';
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
 import { ClientWorkflowService } from 'src/client/client-workflow.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
 import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
 import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
-
+import { FilesService } from 'src/files/files.service';
+import { MessengerAdminAccessService } from 'src/admin/messenger-admin-access.service';
 
 @Update()
 export class TelegramUpdate {
@@ -37,11 +38,13 @@ export class TelegramUpdate {
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly serviceRequestsService: ServiceRequestsService,
         private readonly adminNotificationsService: AdminNotificationsService,
+        private readonly filesService: FilesService,
+        private readonly adminAccess: MessengerAdminAccessService,
         private readonly registerHandler: RegisterTextHandler,
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
-    ) { }
+    ) {}
 
     private toClientIdentity(ctx: Context) {
         return {
@@ -52,11 +55,7 @@ export class TelegramUpdate {
         };
     }
 
-    private async handleTextByMode(
-        ctx: Context,
-        mode: string,
-        text: string,
-    ) {
+    private async handleTextByMode(ctx: Context, mode: string, text: string) {
         switch (mode) {
             case 'IDLE':
                 return this.idleHandler.handle(ctx);
@@ -78,11 +77,7 @@ export class TelegramUpdate {
         }
     }
 
-    private async handleMedia(
-        ctx: Context,
-        mode: string,
-        chatId: string,
-    ) {
+    private async handleMedia(ctx: Context, mode: string, chatId: string) {
         const media = await this.extractTelegramMedia(ctx);
         if (!media) return;
 
@@ -99,7 +94,10 @@ export class TelegramUpdate {
                 fileName: media.fileName || `${media.messageType}.jpg`,
             });
             if (result.status === 'completed') {
-                await ctx.reply(TG_TEXTS.REG_FILLED, { parse_mode: 'HTML', ...mainMenuButton() });
+                await ctx.reply(TG_TEXTS.REG_FILLED, {
+                    parse_mode: 'HTML',
+                    ...mainMenuButton(),
+                });
                 await this.ctxService.set(chatId, { mode: 'IDLE' });
                 return;
             }
@@ -134,18 +132,17 @@ export class TelegramUpdate {
 
         if (mode !== 'OPERATOR') return;
 
-        const talkingToId = await this.usersService.getTalkingTo(chatId);
-        if (!talkingToId) return;
-
-        await ctx.copyMessage(
-            talkingToId,
-            disconnectFromButton(chatId),
-        );
-
-        const activeTicket = await this.ticketService.getActiveTicket(talkingToId);
-        if (activeTicket) {
-            await this.ticketService.addMediaMessage(activeTicket.id, 'operator', media, chatId, 'bot');
+        const conversation = await this.resolveTelegramConversation(chatId);
+        if (!conversation) {
+            this.ctxService.set(chatId, { mode: 'IDLE' });
+            await ctx.reply('Активный диалог не найден. Выберите клиента заново.', mainMenuButton());
+            return;
         }
+        const talkingToId = conversation.targetChatId;
+
+        await ctx.copyMessage(talkingToId, disconnectFromButton(chatId));
+
+        await this.ticketService.addMediaMessage(conversation.ticket.id, 'operator', media, chatId, 'bot');
     }
 
     private async extractTelegramMedia(ctx: Context): Promise<TicketMediaInput | null> {
@@ -237,13 +234,10 @@ export class TelegramUpdate {
         if (!chatId) return;
 
         await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
-        await ctx.reply(
-            'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
-            menuButtons(),
-        );
+        await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons());
 
         if (ctx.message?.message_id) {
-            await ctx.deleteMessage(ctx.message.message_id).catch(() => { });
+            await ctx.deleteMessage(ctx.message.message_id).catch(() => {});
         }
     }
 
@@ -252,36 +246,31 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let reg = await this.regService.getNotFilledReg(chatId)
+        let reg = await this.regService.getNotFilledReg(chatId);
 
-        await this.ctxService.set(chatId, { mode: 'REGISTER' })
+        await this.ctxService.set(chatId, { mode: 'REGISTER' });
 
         if (!reg) {
             const fields = await this.regService.getAllFields();
-            await ctx.reply(
-                wantToRegisterMsg(fields),
-                startRegButtons()
-            );
+            await ctx.reply(wantToRegisterMsg(fields), startRegButtons());
             return;
         }
 
         const fieldText = await this.regService.getFieldTextByStep(reg.currentStep);
-        await ctx.reply(
-            `Найдена незаполненная заявка.\nПродолжим.\n\n${fieldText}:`,
-            removeKeyboard()
-        );
+        await ctx.reply(`Найдена незаполненная заявка.\nПродолжим.\n\n${fieldText}:`, removeKeyboard());
     }
 
     @Action('actualRegs')
     async handleActualRegs(@Ctx() ctx: Context) {
+        if (!(await this.authorizeTelegram(ctx, 'registrations.read', 'telegram.registrations.list', 'registration'))) return;
         const actualRegs = await this.regService.getActualRegs();
 
         if (!actualRegs) {
-            await ctx.editMessageText('Актуальных заявок нет', mainMenuButton())
-            return
+            await ctx.editMessageText('Актуальных заявок нет', mainMenuButton());
+            return;
         }
 
-        await ctx.editMessageText('Актуальные заявки:', actualRegsButtons(actualRegs))
+        await ctx.editMessageText('Актуальные заявки:', actualRegsButtons(actualRegs));
     }
 
     @Action(/openReg:\d+/)
@@ -295,26 +284,42 @@ export class TelegramUpdate {
         const data = query.data;
 
         const [, regId] = data.split(':');
-
-        const reg = await this.regService.getRegistrationById(regId)
+        const admin = await this.authorizeTelegram(ctx, 'registrations.read', 'telegram.registration.open', 'registration', regId);
+        if (!admin) return;
+        const reg = await this.regService.getRegistrationById(regId);
 
         if (!reg) {
-            return
+            await this.adminAccess.recordInvalid(
+                admin,
+                'telegram',
+                {
+                    action: 'telegram.registration.open',
+                    targetType: 'registration',
+                    targetId: regId,
+                },
+                'invalid_or_stale_target',
+            );
+            await ctx.reply('Заявка недоступна или уже обработана');
+            return;
         }
-        await ctx.deleteMessage(ctx.message?.message_id)
+        await this.adminAccess.recordSuccess(admin, 'telegram', {
+            action: 'telegram.registration.open',
+            targetType: 'registration',
+            targetId: regId,
+        });
+        await ctx.deleteMessage(ctx.message?.message_id);
 
-        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId)
+        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId);
         await ctx.reply(formatRegistrationRequest(reg, regAuthor), mainMenuButton());
-
 
         if (reg.pdfPath) {
             await ctx.replyWithDocument({
                 source: fs.createReadStream(reg.pdfPath),
-                filename: `registration_${reg.id}.pdf`
+                filename: `registration_${reg.id}.pdf`,
             });
-            return
+            return;
         }
-        await ctx.reply('Pdf-файл не найден')
+        await ctx.reply('Pdf-файл не найден');
     }
 
     @Action(/regDone:\d+/)
@@ -328,27 +333,44 @@ export class TelegramUpdate {
         const data = query.data;
 
         const [, regId] = data.split(':');
-
-        const reg = await this.regService.getRegistrationById(regId)
+        const admin = await this.authorizeTelegram(ctx, 'registrations.update', 'telegram.registration.complete', 'registration', regId);
+        if (!admin) return;
+        const reg = await this.regService.getRegistrationById(regId);
 
         if (!reg) {
-            await ctx.reply('Эта заявка уже обработана!')
-            return
+            await this.adminAccess.recordInvalid(
+                admin,
+                'telegram',
+                {
+                    action: 'telegram.registration.complete',
+                    targetType: 'registration',
+                    targetId: regId,
+                },
+                'invalid_or_stale_target',
+            );
+            await ctx.reply('Эта заявка уже обработана!');
+            return;
         }
-        await this.regService.doReg(reg)
-        await ctx.deleteMessage(ctx.message?.message_id)
-        await this.regService.notifyAdminsAboutRegDone(reg)
+        await this.regService.doReg(reg);
+        await this.adminAccess.recordSuccess(admin, 'telegram', {
+            action: 'telegram.registration.complete',
+            targetType: 'registration',
+            targetId: regId,
+        });
+        await ctx.deleteMessage(ctx.message?.message_id);
+        await this.regService.notifyAdminsAboutRegDone(reg);
     }
     @Action('actualTickets')
     async handleActualTickets(@Ctx() ctx: Context) {
+        if (!(await this.authorizeTelegram(ctx, 'tickets.read', 'telegram.tickets.list', 'ticket'))) return;
         const actualTickets = await this.ticketService.getActualTickets();
 
         if (!actualTickets) {
-            await ctx.editMessageText('Актуальных вопросов нет', mainMenuButton())
-            return
+            await ctx.editMessageText('Актуальных вопросов нет', mainMenuButton());
+            return;
         }
 
-        await ctx.editMessageText('Актуальные вопросы:', actualTicketsButtons(actualTickets))
+        await ctx.editMessageText('Актуальные вопросы:', actualTicketsButtons(actualTickets));
     }
 
     @Action(/openTicket:\d+/)
@@ -362,10 +384,29 @@ export class TelegramUpdate {
         const data = query.data;
 
         const [, ticketId] = data.split(':');
-
-        const ticket = await this.ticketService.getTicketById(Number(ticketId))
-
+        const admin = await this.authorizeTelegram(ctx, 'tickets.read', 'telegram.ticket.open', 'ticket', ticketId);
+        if (!admin) return;
+        const ticket = await this.ticketService.getTicketById(Number(ticketId));
+        if (!ticket) {
+            await this.adminAccess.recordInvalid(
+                admin,
+                'telegram',
+                {
+                    action: 'telegram.ticket.open',
+                    targetType: 'ticket',
+                    targetId: ticketId,
+                },
+                'invalid_or_stale_target',
+            );
+            await ctx.reply('Вопрос недоступен');
+            return;
+        }
         await ctx.reply(formatTicket(ticket), mainMenuButton());
+        await this.adminAccess.recordSuccess(admin, 'telegram', {
+            action: 'telegram.ticket.open',
+            targetType: 'ticket',
+            targetId: ticketId,
+        });
     }
 
     @Action('createTicket')
@@ -376,13 +417,19 @@ export class TelegramUpdate {
         const result = await this.clientWorkflow.openTicket(this.toClientIdentity(ctx));
 
         if (result.status === 'already_open') {
-            ctx.editMessageText('У вас уже есть вопрос в работе, ожидайте, когда оператор подключится к чату с вами.', mainMenuButton())
-            return
+            ctx.editMessageText('У вас уже есть вопрос в работе, ожидайте, когда оператор подключится к чату с вами.', mainMenuButton());
+            return;
         }
 
-        await this.ctxService.set(chatId, { mode: 'TICKET' })
+        await this.ctxService.set(chatId, { mode: 'TICKET' });
 
-        await ctx.editMessageText('Введите текст вопроса:')
+        await ctx.editMessageText('Введите текст вопроса:');
+    }
+
+    @Action('wantToOfd')
+    async onWantToOfd(@Ctx() ctx: Context) {
+        await ctx.answerCbQuery();
+        await this.hadleCreateTicket(ctx);
     }
 
     @Action('credits')
@@ -401,7 +448,10 @@ export class TelegramUpdate {
         if (!chatId) return;
 
         const result = await this.serviceRequestsService.start(this.toClientIdentity(ctx), 'fn_replacement');
-        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id });
+        await this.ctxService.set(chatId, {
+            mode: 'SERVICE_REQUEST',
+            serviceRequestId: result.request.id,
+        });
         await ctx.reply('Начинаем заявку на замену фискального накопителя.');
         await this.replyServiceRequestStep(ctx, result);
     }
@@ -414,9 +464,7 @@ export class TelegramUpdate {
         const result = await this.clientWorkflow.startAtolConsent(this.toClientIdentity(ctx));
         await this.ctxService.set(chatId, { mode: 'ATOL_CONSENT' });
 
-        await ctx.reply(result.status === 'started'
-            ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.'
-            : 'Нашел незаполненное согласие. Продолжим с места остановки.');
+        await ctx.reply(result.status === 'started' ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.' : 'Нашел незаполненное согласие. Продолжим с места остановки.');
 
         if (result.nextField) {
             await ctx.reply(`${result.nextField}:`);
@@ -446,7 +494,10 @@ export class TelegramUpdate {
         const [, requestId, value] = query.data.split(':');
         await ctx.answerCbQuery();
         const result = await this.serviceRequestsService.answer(this.toClientIdentity(ctx), Number(requestId), value);
-        await this.ctxService.set(String(ctx.chat?.id), { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id });
+        await this.ctxService.set(String(ctx.chat?.id), {
+            mode: 'SERVICE_REQUEST',
+            serviceRequestId: result.request.id,
+        });
         await this.replyServiceRequestStep(ctx, result);
     }
 
@@ -458,7 +509,10 @@ export class TelegramUpdate {
         const [, requestId] = query.data.split(':');
         await ctx.answerCbQuery();
         const result = await this.serviceRequestsService.confirmPrice(this.toClientIdentity(ctx), Number(requestId));
-        await this.ctxService.set(String(ctx.chat?.id), { mode: 'IDLE', serviceRequestId: null });
+        await this.ctxService.set(String(ctx.chat?.id), {
+            mode: 'IDLE',
+            serviceRequestId: null,
+        });
         await ctx.reply(`Заявка #${result.request.id} отправлена оператору. Оператор подготовит счет и пришлет его вам.`, mainMenuButton());
     }
 
@@ -469,11 +523,11 @@ export class TelegramUpdate {
 
         await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
         try {
-            await ctx.deleteMessage(ctx.message?.message_id)
+            await ctx.deleteMessage(ctx.message?.message_id);
         } catch {
-            return
+            return;
         } finally {
-            await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
+            await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons());
         }
     }
 
@@ -484,28 +538,52 @@ export class TelegramUpdate {
         if (!query || !('data' in query)) {
             return;
         }
-        if (!ctx.from) return
+        if (!ctx.from) return;
 
         const [, clientChatId] = query.data.split(':');
         const operatorChatId = String(ctx.from.id);
+        const admin = await this.adminAccess.authorize('telegram', operatorChatId, 'tickets.reply', {
+            action: 'telegram.ticket.connect',
+            targetType: 'customer_chat',
+            targetId: clientChatId,
+        });
 
-        if (!(await this.usersService.isOperator(operatorChatId))) {
+        if (!admin) {
             await ctx.reply('Недостаточно прав');
             return;
         }
 
-        if (await this.usersService.isAlreadyTalking(clientChatId)) {
-            await ctx.deleteMessage(ctx.message?.message_id)
-            await ctx.reply('К чату с этим клиентом уже подключен оператор')
-            return
+        const ticket = await this.ticketService.getActiveTicket(clientChatId);
+        const operatorTarget = await this.usersService.getTalkingTo(operatorChatId);
+        const clientTarget = await this.usersService.getTalkingTo(clientChatId);
+        const isSafeReattach = operatorTarget === clientChatId && clientTarget === operatorChatId;
+        if (!ticket || ((operatorTarget || clientTarget) && !isSafeReattach)) {
+            await this.adminAccess.recordInvalid(
+                admin,
+                'telegram',
+                {
+                    action: 'telegram.ticket.connect',
+                    targetType: 'customer_chat',
+                    targetId: clientChatId,
+                },
+                ticket ? 'conflicting_chat_context' : 'invalid_or_closed_ticket',
+            );
+            await ctx.deleteMessage(ctx.message?.message_id);
+            await ctx.reply('К чату с этим клиентом уже подключен оператор');
+            return;
         }
 
-        await this.ctxService.set(clientChatId, { mode: 'OPERATOR' })
-        await this.ctxService.set(operatorChatId, { mode: 'OPERATOR' })
+        await this.ctxService.set(clientChatId, { mode: 'OPERATOR' });
+        await this.ctxService.set(operatorChatId, { mode: 'OPERATOR' });
 
         await this.usersService.setTalkingTo(operatorChatId, clientChatId);
+        await this.adminAccess.recordSuccess(admin, 'telegram', {
+            action: 'telegram.ticket.connect',
+            targetType: 'ticket',
+            targetId: ticket.id,
+        });
 
-        await ctx.telegram.sendMessage(clientChatId, 'К чату с вами присоединился оператор,  он будет видеть все ваши сообщения. Вы так же можете отправить медиафайлы (Изображения/Видео).')
+        await ctx.telegram.sendMessage(clientChatId, 'К чату с вами присоединился оператор,  он будет видеть все ваши сообщения. Вы так же можете отправить медиафайлы (Изображения/Видео).');
         await ctx.reply('Вы подключены к чату с клиентом, все ваши сообщения будут отправлены клиенту. Вы так же можете отправить медиафайлы (Изображения/Видео).');
     }
 
@@ -516,48 +594,70 @@ export class TelegramUpdate {
         if (!query || !('data' in query)) {
             return;
         }
-        if (!ctx.from) return
+        if (!ctx.from) return;
 
         const data = query.data;
 
         const [, talkingToChatId] = data.split(':');
         const initChatId = String(ctx.from.id);
 
-        const isTalking = await this.usersService.isTalking(initChatId, talkingToChatId);
+        const isTalking =
+            (await this.usersService.isTalking(initChatId, talkingToChatId)) &&
+            (await this.usersService.isTalking(talkingToChatId, initChatId));
         if (!isTalking) {
-            await ctx.deleteMessage(ctx.message?.message_id)
+            await ctx.deleteMessage(ctx.message?.message_id);
             await ctx.reply('Диалог уже завершён или недоступен');
             return;
         }
 
-        let operatorChatId
-        let clientChatId
-        if (await this.usersService.isOperator(initChatId)) {
-            operatorChatId = initChatId
-            clientChatId = talkingToChatId
+        let operatorChatId: string;
+        let clientChatId: string;
+        const initiatingStaff = await this.adminAccess.findStaff('telegram', initChatId);
+        const initiatingAdmin = initiatingStaff
+            ? await this.adminAccess.authorize('telegram', initChatId, 'tickets.close', {
+                  action: 'telegram.ticket.close',
+                  targetType: 'customer_chat',
+                  targetId: talkingToChatId,
+              })
+            : null;
+        if (initiatingStaff && !initiatingAdmin) {
+            await ctx.reply('Недостаточно прав');
+            return;
         }
-        else {
-            operatorChatId = talkingToChatId
-            clientChatId = initChatId
+        if (initiatingAdmin) {
+            operatorChatId = initChatId;
+            clientChatId = talkingToChatId;
+        } else {
+            operatorChatId = talkingToChatId;
+            clientChatId = initChatId;
+        }
+        const admin = initiatingAdmin ?? (await this.adminAccess.findAuthorizedStaff('telegram', operatorChatId, 'tickets.close'));
+        if (!admin) {
+            await ctx.reply('Недостаточно прав');
+            return;
         }
 
-        let closedTicket = await this.ticketService.getActiveTicket(clientChatId)
+        let closedTicket = await this.ticketService.getActiveTicket(clientChatId);
 
         if (!closedTicket) {
-            await ctx.deleteMessage(ctx.message?.message_id)
-            await ctx.reply('Этот вопрос больше недоступен, скорее всего, он уже был закрыт ранее')
-            return
+            await ctx.deleteMessage(ctx.message?.message_id);
+            await ctx.reply('Этот вопрос больше недоступен, скорее всего, он уже был закрыт ранее');
+            return;
         }
-        await this.ticketService.closeTicket(closedTicket.id, operatorChatId)
+        await this.ticketService.closeTicket(closedTicket.id, operatorChatId);
+        await this.adminAccess.recordSuccess(admin, 'telegram', {
+            action: 'telegram.ticket.close',
+            targetType: 'ticket',
+            targetId: closedTicket.id,
+        });
 
-
-        await this.ctxService.set(clientChatId, { mode: 'IDLE' })
-        await this.ctxService.set(operatorChatId, { mode: 'IDLE' })
+        await this.ctxService.set(clientChatId, { mode: 'IDLE' });
+        await this.ctxService.set(operatorChatId, { mode: 'IDLE' });
 
         await this.usersService.stopDialog(operatorChatId, clientChatId);
 
-        await ctx.telegram.sendMessage(clientChatId, 'Оператор отключился от чата с вами.')
-        await ctx.telegram.sendMessage(operatorChatId, 'Вы отключились от чата с клиентом.')
+        await ctx.telegram.sendMessage(clientChatId, 'Оператор отключился от чата с вами.');
+        await ctx.telegram.sendMessage(operatorChatId, 'Вы отключились от чата с клиентом.');
     }
 
     @Action(/^serviceRequestSimple:.+/)
@@ -579,12 +679,21 @@ export class TelegramUpdate {
             await ctx.answerCbQuery('Неизвестный тип заявки');
             return;
         }
-        const result = await this.clientWorkflow.startSimpleServiceRequest({ ...this.toClientIdentity(ctx), serviceTypeCode: rawType });
+        const result = await this.clientWorkflow.startSimpleServiceRequest({
+            ...this.toClientIdentity(ctx),
+            serviceTypeCode: rawType,
+        });
         const request = result.data as { id?: number } | undefined;
-        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: request?.id })
+        await this.ctxService.set(chatId, {
+            mode: 'SERVICE_REQUEST',
+            serviceRequestId: request?.id,
+        });
 
         if (!result.nextField) {
-            await this.ctxService.set(chatId, { mode: 'IDLE', serviceRequestId: null })
+            await this.ctxService.set(chatId, {
+                mode: 'IDLE',
+                serviceRequestId: null,
+            });
             await ctx.reply('Заявка создана, ожидайте ответа оператора', mainMenuButton());
             return;
         }
@@ -623,7 +732,13 @@ export class TelegramUpdate {
             return;
         }
 
-        if (result.filePath && fs.existsSync(result.filePath)) {
+        if (result.fileId) {
+            const opened = await this.filesService.open(result.fileId);
+            await ctx.replyWithDocument({
+                source: opened.stream,
+                filename: opened.file.originalName || 'atol_consent.pdf',
+            });
+        } else if (result.filePath && fs.existsSync(result.filePath)) {
             await ctx.replyWithDocument({
                 source: fs.createReadStream(result.filePath),
                 filename: 'atol_consent.pdf',
@@ -632,9 +747,7 @@ export class TelegramUpdate {
 
         await ctx.reply(
             'Теперь распечатайте эту форму и подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.',
-            Markup.inlineKeyboard([
-                [Markup.button.callback('Отменить подачу согласия', 'cancelAtolConsent')],
-            ]),
+            Markup.inlineKeyboard([[Markup.button.callback('Отменить подачу согласия', 'cancelAtolConsent')]]),
         );
     }
 
@@ -655,9 +768,7 @@ export class TelegramUpdate {
                 await ctx.reply(
                     `${result.nextStep.label}:`,
                     Markup.inlineKeyboard(
-                        result.nextStep.options.map((option) =>
-                            Markup.button.callback(option.label, `serviceRequestAnswer:${result.request.id}:${option.value}`),
-                        ),
+                        result.nextStep.options.map((option) => Markup.button.callback(option.label, `serviceRequestAnswer:${result.request.id}:${option.value}`)),
                         { columns: 1 },
                     ),
                 );
@@ -669,27 +780,20 @@ export class TelegramUpdate {
         }
 
         if (!result.isReadyForConfirmation) {
-            await this.ctxService.set(String(ctx.chat?.id), { mode: 'IDLE', serviceRequestId: null });
+            await this.ctxService.set(String(ctx.chat?.id), {
+                mode: 'IDLE',
+                serviceRequestId: null,
+            });
             await ctx.reply('Сервисная заявка создана. Оператор свяжется с вами в ближайшее время.', mainMenuButton());
             return;
         }
 
-        const priceText = result.request.calculatedPrice
-            ? `${result.request.calculatedPrice} руб.`
-            : 'стоимость уточнит оператор';
-        await ctx.reply(
-            `Стоимость замены ФН: ${priceText}\n\nЕсли все верно, подтвердите заказ счета.`,
-            Markup.inlineKeyboard([
-                Markup.button.callback('Согласен, заказать счет', `serviceRequestConfirm:${result.request.id}`),
-            ]),
-        );
+        const priceText = result.request.calculatedPrice ? `${result.request.calculatedPrice} руб.` : 'стоимость уточнит оператор';
+        await ctx.reply(`Стоимость замены ФН: ${priceText}\n\nЕсли все верно, подтвердите заказ счета.`, Markup.inlineKeyboard([Markup.button.callback('Согласен, заказать счет', `serviceRequestConfirm:${result.request.id}`)]));
     }
 
     @On('message')
-    async handleMessage(
-        @Ctx() ctx: Context,
-        @Message('text') msgText?: string,
-    ) {
+    async handleMessage(@Ctx() ctx: Context, @Message('text') msgText?: string) {
         const chatId = String(ctx.chat?.id);
         if (!chatId || !ctx.message) return;
 
@@ -732,6 +836,36 @@ export class TelegramUpdate {
         }
 
         await ctx.reply(`Готово. Telegram-уведомления подключены для ${admin.displayName}.`);
+    }
+
+    private async authorizeTelegram(ctx: Context, permission: Parameters<MessengerAdminAccessService['authorize']>[2], action: string, targetType: string, targetId?: string | number) {
+        const chatId = String(ctx.from?.id ?? ctx.chat?.id ?? '');
+        const admin = chatId
+            ? await this.adminAccess.authorize('telegram', chatId, permission, {
+                  action,
+                  targetType,
+                  targetId,
+              })
+            : null;
+        if (!admin) {
+            await ctx.reply('Недостаточно прав');
+        }
+        return admin;
+    }
+
+    private async resolveTelegramConversation(chatId: string) {
+        const targetChatId = await this.usersService.getTalkingTo(chatId);
+        if (!targetChatId || (await this.usersService.getTalkingTo(targetChatId)) !== chatId) {
+            return null;
+        }
+        const staff = await this.adminAccess.findAuthorizedStaff('telegram', chatId, 'tickets.reply');
+        const targetStaff = await this.adminAccess.findAuthorizedStaff('telegram', targetChatId, 'tickets.reply');
+        if (!staff && !targetStaff) {
+            return null;
+        }
+        const clientChatId = staff ? targetChatId : chatId;
+        const ticket = await this.ticketService.getActiveTicket(clientChatId);
+        return ticket ? { targetChatId, ticket } : null;
     }
 
     private isSimpleServiceRequestCode(value: string): value is SimpleServiceRequestCode {

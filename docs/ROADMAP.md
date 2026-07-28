@@ -1,5 +1,12 @@
 # Roadmap VITMA MARKET
 
+## Bot stabilization update
+
+B1 fixes confirmed existing-scenario defects without migrations or new
+business features. The recommended next bot package is B2: durable conversation
+state, incoming event keys, stale callback rules and per-conversation
+serialization. B3 outbox/retry and B5 handler decomposition remain later work.
+
 ## Phase zero storage status
 
 - E0-08: implemented with explicit file FKs, policies and legacy backfill.

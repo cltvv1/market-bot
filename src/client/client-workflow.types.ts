@@ -14,6 +14,7 @@ export interface ClientFlowResult<T = unknown> {
     nextField?: string;
     data?: T;
     filePath?: string;
+    fileId?: number;
 }
 
 export interface StartSimpleServiceRequestInput extends ClientIdentity {

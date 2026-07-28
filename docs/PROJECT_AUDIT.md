@@ -1,5 +1,12 @@
 # Технический и продуктовый аудит VITMA MARKET
 
+## Bot B1 update
+
+The Telegram callback authorization, OFD dead routing, MAX attachment and ATOL
+cleanup findings are addressed in B1. Operator chat now fails closed after
+context loss but remains non-durable. Details and regression evidence:
+[`bots/B1_FIX_REPORT.md`](bots/B1_FIX_REPORT.md).
+
 ## 2026-07-27 update
 
 E0-08 FileStorage foundation, E0-10 minimal Audit Log and E0-12 offline backup/verify/restore are implemented. Legacy path columns remain as compatibility fallback. See `docs/files`, `docs/audit` and `docs/backup`.

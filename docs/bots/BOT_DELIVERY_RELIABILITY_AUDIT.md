@@ -1,5 +1,11 @@
 # Bot Delivery, Media and Operational Reliability Audit
 
+## B1 status
+
+MAX media defects are **fixed in B1** for customer paths and operator
+image/document forwarding. ATOL request-local cleanup is fixed. Telegram
+provider URL handling, durable delivery, retry and outbox remain deferred.
+
 ## Outgoing delivery
 
 Interactive responses are sent directly from platform contexts. Cross-chat and
@@ -34,7 +40,8 @@ staff and cannot be repaired automatically.
 ### Registration and signed consent
 
 1. A platform handler obtains a remote URL.
-2. `fetch()` downloads the entire response into a `Buffer`.
+2. MAX checks declared length and streamed bytes before accepting the buffer;
+   Telegram still uses its legacy download path.
 3. `FilesService.saveBuffer()` checks purpose, size and MIME signature.
 4. `LocalFileStorageProvider` writes a random object key and records SHA-256.
 5. The domain row references `StoredFile`.
@@ -44,9 +51,9 @@ consume resources before the configured maximum is enforced.
 
 ### Ticket media
 
-Telegram stores platform file IDs and `getFileLink()` as `externalUrl`; MAX
-stores attachment IDs/URLs. A `StoredFile` is created only when the caller
-supplies a buffer. Bot ticket paths generally persist remote references.
+Telegram still stores platform file IDs and `getFileLink()` as `externalUrl`.
+MAX now materializes supported ticket attachments into `StoredFile` and removes
+the provider URL before persistence.
 
 Consequences:
 
@@ -54,7 +61,8 @@ Consequences:
 - retention and backup differ from registration/consent files;
 - Telegram file links may contain the bot token and are persisted verbatim;
 - customer uploader attribution is absent for generic ticket stored files;
-- MAX operator media is delivered as text rather than content.
+- MAX operator images/documents are binary; unsupported operator audio/video is
+  rejected before persistence or send.
 
 ### Confirmed FileStorage controls
 
@@ -73,7 +81,7 @@ Consequences:
 - legacy path columns coexist with `StoredFile`;
 - no antivirus/quarantine stage;
 - no retention cleanup for messenger attachments;
-- ATOL cancellation does not consistently delete managed files.
+- global retention cleanup remains absent; ATOL request-local cleanup is fixed.
 
 ## Configuration and operations
 
@@ -91,7 +99,7 @@ Consequences:
 
 | Risk | Severity | Confidence |
 |---|---|---|
-| Legacy Telegram admin callbacks lack role checks | high | code-confirmed |
+| Legacy Telegram admin callbacks lack role checks | fixed in B1 | regression-tested |
 | Telegram file URL may persist bot token in DB | high | storage path confirmed; URL shape is provider/library dependent |
 | Full customer content has no explicit retention policy | medium | code-confirmed |
 | Remote URLs are fetched without host/redirect/timeout policy | medium | code-confirmed |
