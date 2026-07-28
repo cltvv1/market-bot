@@ -594,6 +594,43 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         }
 
         if (mode === 'IDLE') {
+            const waitingPayment =
+                await this.serviceRequestsService.getLatestWaitingPaymentForClient(
+                    this.toClientIdentity(ctx),
+                );
+            if (waitingPayment) {
+                if (
+                    media.messageType !== 'image' &&
+                    media.messageType !== 'document'
+                ) {
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    await ctx.reply(
+                        'Отправьте платежное поручение как PDF-файл или изображение.',
+                    );
+                    return;
+                }
+                const storedMedia = await materializeMaxMedia(
+                    media,
+                    this.filesService.getPolicy('payment-proof').maxBytes,
+                );
+                await this.clientWorkflow.submitServiceRequestPaymentProof(
+                    this.toClientIdentity(ctx),
+                    {
+                        buffer: storedMedia.buffer!,
+                        fileName:
+                            storedMedia.fileName ||
+                            `payment_${waitingPayment.id}.${media.messageType === 'image' ? 'jpg' : 'pdf'}`,
+                        mimeType: storedMedia.mimeType,
+                    },
+                );
+                // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                await ctx.reply(
+                    'Платежное поручение получено. Оператор проверит документ и подтвердит оплату.',
+                );
+                await this.sendMainMenu(ctx);
+                return;
+            }
+
             const activeTicket = await this.ticketService.getActiveTicket(chatId, 'max');
             if (activeTicket?.text) {
                 await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), await this.materializeTicketMedia(media));

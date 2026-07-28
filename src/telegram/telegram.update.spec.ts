@@ -7,10 +7,22 @@ describe('TelegramUpdate admin callbacks', () => {
         doReg: jest.fn().mockResolvedValue(undefined),
         notifyAdminsAboutRegDone: jest.fn().mockResolvedValue(undefined),
     };
-    const contexts = { set: jest.fn().mockResolvedValue(undefined) };
+    const contexts = {
+        get: jest.fn().mockResolvedValue({ mode: 'IDLE' }),
+        set: jest.fn().mockResolvedValue(undefined),
+    };
     const tickets = { getActiveTicket: jest.fn() };
     const users = {};
-    const clientWorkflow = { openTicket: jest.fn() };
+    const clientWorkflow = {
+        openTicket: jest.fn(),
+        submitServiceRequestPaymentProof: jest.fn(),
+    };
+    const serviceRequests = {
+        getLatestWaitingPaymentForClient: jest.fn(),
+    };
+    const files = {
+        getPolicy: jest.fn().mockReturnValue({ maxBytes: 20 * 1024 * 1024 }),
+    };
     const access = {
         authorize: jest.fn(),
         recordSuccess: jest.fn().mockResolvedValue(undefined),
@@ -22,9 +34,9 @@ describe('TelegramUpdate admin callbacks', () => {
         tickets as never,
         users as never,
         clientWorkflow as never,
+        serviceRequests as never,
         {} as never,
-        {} as never,
-        {} as never,
+        files as never,
         access as never,
         {} as never,
         {} as never,
@@ -42,7 +54,12 @@ describe('TelegramUpdate admin callbacks', () => {
         editMessageText: jest.fn().mockResolvedValue(undefined),
     };
 
-    beforeEach(() => jest.clearAllMocks());
+    beforeEach(() => {
+        jest.clearAllMocks();
+        serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue(
+            null,
+        );
+    });
 
     it('allows an authorized operator callback and records success', async () => {
         access.authorize.mockResolvedValue({ id: 1 });
@@ -108,5 +125,49 @@ describe('TelegramUpdate admin callbacks', () => {
             .flat()
             .map((button) => button.callback_data);
         expect(callbacks).toContain('wantToOfd');
+    });
+
+    it('attaches a customer document to the latest request awaiting payment', async () => {
+        serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue({
+            id: 10,
+        });
+        jest.spyOn(global, 'fetch').mockResolvedValue(
+            new Response(Buffer.from('%PDF-1.7 payment')),
+        );
+        const mediaCtx = {
+            from: { id: 100, first_name: 'Client' },
+            chat: { id: 100 },
+            message: {
+                document: {
+                    file_id: 'payment-document',
+                    file_unique_id: 'payment-document-unique',
+                    file_name: 'payment.pdf',
+                    mime_type: 'application/pdf',
+                    file_size: 1024,
+                },
+            },
+            telegram: {
+                getFileLink: jest
+                    .fn()
+                    .mockResolvedValue(new URL('https://media.test/payment')),
+            },
+            reply: jest.fn().mockResolvedValue(undefined),
+        };
+
+        await update.handleMessage(mediaCtx as never);
+
+        expect(
+            clientWorkflow.submitServiceRequestPaymentProof,
+        ).toHaveBeenCalledWith(
+            expect.objectContaining({ platform: 'telegram', chatId: '100' }),
+            expect.objectContaining({
+                buffer: Buffer.from('%PDF-1.7 payment'),
+                fileName: 'payment.pdf',
+                mimeType: 'application/pdf',
+            }),
+        );
+        expect(tickets.getActiveTicket).not.toHaveBeenCalled();
+
+        jest.restoreAllMocks();
     });
 });

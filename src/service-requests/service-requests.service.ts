@@ -365,6 +365,88 @@ export class ServiceRequestsService {
         return serviceTypeCodes?.length ? (items.find((item) => serviceTypeCodes.includes(item.serviceTypeCode)) ?? null) : (items[0] ?? null);
     }
 
+    async getLatestWaitingPaymentForClient(
+        identity: ServiceRequestIdentity,
+    ) {
+        const user = await this.usersService.getOrCreateOrUpdate(
+            identity.chatId,
+            identity.name,
+            identity.username,
+            identity.platform,
+        );
+        return this.serviceRequestsRepo.findOne({
+            where: [
+                { userId: user.id, status: 'waiting_payment' },
+                {
+                    chatId: identity.chatId,
+                    platform: identity.platform,
+                    status: 'waiting_payment',
+                },
+            ],
+            order: { updatedAt: 'DESC', id: 'DESC' },
+        });
+    }
+
+    async attachPaymentProof(
+        identity: ServiceRequestIdentity,
+        file: {
+            buffer: Buffer;
+            fileName?: string;
+            mimeType?: string;
+        },
+    ) {
+        const request =
+            await this.getLatestWaitingPaymentForClient(identity);
+        if (!request) {
+            return null;
+        }
+
+        const storedFile = await this.filesService.saveBuffer({
+            purpose: 'payment-proof',
+            buffer: file.buffer,
+            originalName: file.fileName || `payment_${request.id}`,
+            mimeType: file.mimeType,
+            createdByCustomerId: request.userId ?? undefined,
+            metadata: { serviceRequestId: request.id },
+        });
+        const previousFileId = request.paymentProofFileId;
+
+        let saved: ServiceRequestEntity;
+        try {
+            request.paymentProofFileId = storedFile.id;
+            saved = await this.serviceRequestsRepo.save(request);
+        } catch (error) {
+            await this.filesService.logicalDelete(storedFile.id);
+            throw error;
+        }
+
+        await this.addEvent(
+            saved,
+            'payment_proof_attached',
+            'client',
+            'Клиент прикрепил платежное поручение',
+            { storedFileId: storedFile.id },
+        );
+        await this.activityService.add({
+            userId: saved.userId,
+            organizationId: saved.organizationId,
+            platform: saved.platform,
+            chatId: saved.chatId,
+            type: 'service_request_payment_proof_attached',
+            title: saved.serviceTypeTitle,
+            description: `Получено платежное поручение по заявке #${saved.id}`,
+            serviceRequestId: saved.id,
+        });
+        await this.adminNotificationsService.notify(
+            'serviceRequests',
+            `Клиент отправил платежное поручение по заявке #${saved.id}. Проверьте файл в админке.`,
+        );
+        if (previousFileId && previousFileId !== storedFile.id) {
+            await this.filesService.logicalDelete(previousFileId);
+        }
+        return this.present(saved);
+    }
+
     async answerLatestDraft(identity: ServiceRequestIdentity, value: string, serviceTypeCodes?: string[]) {
         const request = await this.getLatestDraftForClient(identity, serviceTypeCodes);
         if (!request) {
@@ -480,6 +562,16 @@ export class ServiceRequestsService {
 
     async markPaymentReceived(id: number, operatorId = 'admin-panel') {
         const request = await this.requireRequest(id);
+        if (request.status !== 'waiting_payment') {
+            throw new BadRequestException(
+                'Service request is not waiting for payment',
+            );
+        }
+        if (!request.paymentProofFileId) {
+            throw new BadRequestException(
+                'Payment proof must be attached before confirmation',
+            );
+        }
         request.status = 'paid';
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
@@ -715,7 +807,7 @@ export class ServiceRequestsService {
             return;
         }
 
-        const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.`;
+        const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.\n\nПосле оплаты отправьте сюда PDF-файл или фотографию платежного поручения. Оператор проверит документ и подтвердит оплату.`;
         if (request.invoiceStoredFileId && this.filesService) {
             const { file, stream } = await this.filesService.open(request.invoiceStoredFileId);
             await this.messengerService.sendMessage(request.chatId, message, {

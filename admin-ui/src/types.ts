@@ -92,7 +92,7 @@ export interface ServiceRequest extends BaseItem {
   assignedEngineerId?: number;
   operatorComment?: string;
   calculatedPrice?: number;
-  invoiceFileId?: string;
+  invoiceFileId?: string; paymentProofFileId?: number;
   answers?: Record<string, unknown>;
 }
 

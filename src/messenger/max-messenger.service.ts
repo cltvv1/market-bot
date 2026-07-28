@@ -62,7 +62,7 @@ export class MaxMessengerService implements MessengerService {
 
         try {
             await pipeline(
-                file.source as NodeJS.ReadableStream,
+                file.source,
                 fs.createWriteStream(temporaryPath),
             );
             const attachment = await this.bot.api.uploadFile({
@@ -71,7 +71,7 @@ export class MaxMessengerService implements MessengerService {
 
             return await this.bot.api.sendMessageToChat(
                 this.toMaxChatId(chatId),
-                options?.caption || file.filename,
+                options?.caption || '',
                 {
                     ...this.toMaxExtra(options),
                     attachments: [attachment.toJson()],
@@ -114,9 +114,14 @@ export class MaxMessengerService implements MessengerService {
     }
 
     private safeFileName(value: string): string {
-        const baseName = path
+        // prettier-ignore
+        const baseName = [...path
             .basename(value.replaceAll('\0', ''))
-            .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+            .replace(/[<>:"/\\|?*]/g, '_')]
+            .map((character) =>
+                character.charCodeAt(0) < 32 ? '_' : character,
+            )
+            .join('')
             .replace(/[. ]+$/g, '')
             .trim();
 

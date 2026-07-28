@@ -24,6 +24,13 @@ export const FILE_POLICIES: Record<FilePurpose, FilePolicy> = {
     'atol-consent': policy(15 * MB, ['application/pdf'], ['.pdf'], false, false, true),
     'generated-pdf': policy(15 * MB, ['application/pdf'], ['.pdf'], false, false, true),
     'signed-document': policy(20 * MB, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], ['.pdf', '.jpg', '.jpeg', '.png', '.webp'], false, false),
+    'payment-proof': policy(
+        20 * MB,
+        ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+        ['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
+        false,
+        false,
+    ),
 };
 
 function policy(

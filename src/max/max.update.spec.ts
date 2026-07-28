@@ -31,7 +31,13 @@ describe('MaxUpdate media handling', () => {
     const contexts = { set: jest.fn().mockResolvedValue(undefined) };
     const clientWorkflow = {
         submitTicketMedia: jest.fn().mockResolvedValue({ status: 'completed' }),
+        submitServiceRequestPaymentProof: jest
+            .fn()
+            .mockResolvedValue({ status: 'completed' }),
         openTicket: jest.fn().mockResolvedValue({ status: 'started' }),
+    };
+    const serviceRequests = {
+        getLatestWaitingPaymentForClient: jest.fn(),
     };
     const files = {
         getPolicy: jest.fn().mockReturnValue({ maxBytes: 1024 }),
@@ -48,7 +54,7 @@ describe('MaxUpdate media handling', () => {
         contexts as never,
         users as never,
         clientWorkflow as never,
-        {} as never,
+        serviceRequests as never,
         {} as never,
         files as never,
         access as never,
@@ -63,6 +69,9 @@ describe('MaxUpdate media handling', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         tickets.getActiveTicket.mockResolvedValue({ id: 8 });
+        serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue(
+            null,
+        );
         jest.spyOn(global, 'fetch').mockResolvedValue(
             new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0x00])),
         );
@@ -84,6 +93,30 @@ describe('MaxUpdate media handling', () => {
                 externalUrl: undefined,
             }),
         );
+    });
+
+    it('attaches customer media to the latest request awaiting payment', async () => {
+        serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue({
+            id: 10,
+        });
+
+        await update.handleMaxMedia(ctx, 'IDLE', {
+            messageType: 'image',
+            fileId: 'payment-photo',
+            externalUrl: 'https://media.test/payment',
+        });
+
+        // prettier-ignore
+        expect(
+            clientWorkflow.submitServiceRequestPaymentProof,
+        ).toHaveBeenCalledWith(
+            expect.objectContaining({ platform: 'max', chatId: '55' }),
+            expect.objectContaining({
+                buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+                fileName: 'image.jpg',
+            }),
+        );
+        expect(tickets.getActiveTicket).not.toHaveBeenCalled();
     });
 
     it('routes the MAX OFD callback to the existing operator ticket workflow', async () => {

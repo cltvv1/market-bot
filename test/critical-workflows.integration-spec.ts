@@ -271,9 +271,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
                 .getRepository(ServiceRequestEventEntity)
                 .countBy({ serviceRequestId: first.request.id }),
         ).toBe(1);
-        expect(await serviceRequestsService.listForAdmin('active')).toEqual(
-            [],
-        );
+        expect(await serviceRequestsService.listForAdmin('active')).toEqual([]);
         expect(await serviceRequestsService.listForAdmin('all')).toEqual([]);
 
         await serviceRequestsService.answer(
@@ -359,6 +357,24 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         );
         expect(invoiced.request.status).toBe('waiting_payment');
 
+        await expect(
+            serviceRequestsService.markPaymentReceived(
+                started.request.id,
+                'operator-1',
+            ),
+        ).rejects.toThrow('Payment proof must be attached');
+
+        // prettier-ignore
+        const paymentProof =
+            await serviceRequestsService.attachPaymentProof(testIdentity, {
+                buffer: Buffer.from('%PDF-1.7 payment'),
+                fileName: 'payment.pdf',
+                mimeType: 'application/pdf',
+            });
+        expect(paymentProof?.request.id).toBe(started.request.id);
+        expect(paymentProof?.request.status).toBe('waiting_payment');
+        expect(typeof paymentProof?.request.paymentProofFileId).toBe('number');
+
         const paid = await serviceRequestsService.markPaymentReceived(
             started.request.id,
             'operator-1',
@@ -385,6 +401,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
                 'answered',
                 'price_confirmed',
                 'invoice_attached',
+                'payment_proof_attached',
                 'payment_received',
                 'visit_scheduled',
                 'completed',

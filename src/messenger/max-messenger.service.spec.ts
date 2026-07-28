@@ -10,8 +10,9 @@ describe('MaxMessengerService', () => {
             get: jest.fn().mockReturnValue('test-token'),
         } as unknown as ConfigService);
         let uploadedPath = '';
-        const uploadFile = jest.fn().mockImplementation(
-            async ({ source }: { source: string }) => {
+        const uploadFile = jest
+            .fn()
+            .mockImplementation(async ({ source }: { source: string }) => {
                 uploadedPath = source;
                 expect(path.basename(source)).toBe('счет.pdf');
                 expect(await fs.promises.readFile(source)).toEqual(
@@ -23,8 +24,7 @@ describe('MaxMessengerService', () => {
                         payload: { token: 'file-token' },
                     }),
                 };
-            },
-        );
+            });
         const sendMessageToChat = jest.fn().mockResolvedValue({ ok: true });
         (service as unknown as { bot: unknown }).bot = {
             api: { uploadFile, sendMessageToChat },
@@ -40,18 +40,50 @@ describe('MaxMessengerService', () => {
         );
 
         expect(uploadFile).toHaveBeenCalledTimes(1);
+        expect(sendMessageToChat).toHaveBeenCalledWith(123, 'Счет готов', {
+            attachments: [
+                {
+                    type: 'file',
+                    payload: { token: 'file-token' },
+                },
+            ],
+        });
+        await expect(fs.promises.access(uploadedPath)).rejects.toThrow();
+    });
+
+    it('does not duplicate the filename as message text without a caption', async () => {
+        const service = new MaxMessengerService({
+            get: jest.fn().mockReturnValue('test-token'),
+        } as unknown as ConfigService);
+        const sendMessageToChat = jest.fn().mockResolvedValue({ ok: true });
+        (service as unknown as { bot: unknown }).bot = {
+            api: {
+                uploadFile: jest.fn().mockResolvedValue({
+                    toJson: () => ({
+                        type: 'file',
+                        payload: { token: 'file-token' },
+                    }),
+                }),
+                sendMessageToChat,
+            },
+        };
+
+        await service.sendDocument(123, {
+            source: Readable.from(Buffer.from('%PDF-1.3 test')),
+            filename: 'счет.pdf',
+        });
+
         expect(sendMessageToChat).toHaveBeenCalledWith(
             123,
-            'Счет готов',
-            {
+            '',
+            expect.objectContaining({
                 attachments: [
                     {
                         type: 'file',
                         payload: { token: 'file-token' },
                     },
                 ],
-            },
+            }),
         );
-        await expect(fs.promises.access(uploadedPath)).rejects.toThrow();
     });
 });

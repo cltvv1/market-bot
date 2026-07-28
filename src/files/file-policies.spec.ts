@@ -24,4 +24,14 @@ describe('file policies', () => {
     it('accepts a server-generated PDF', () => {
         expect(assertFilePolicy('generated-pdf', pdf, 'application/pdf', true).mime).toBe('application/pdf');
     });
+
+    // prettier-ignore
+    it('accepts PDF and image payment proofs', () => {
+        expect(
+            assertFilePolicy('payment-proof', pdf, 'application/pdf').mime,
+        ).toBe('application/pdf');
+        expect(
+            assertFilePolicy('payment-proof', jpeg, 'image/jpeg').mime,
+        ).toBe('image/jpeg');
+    });
 });

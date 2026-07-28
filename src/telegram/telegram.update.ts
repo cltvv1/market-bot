@@ -122,6 +122,47 @@ export class TelegramUpdate {
         }
 
         if (mode === 'IDLE') {
+            const waitingPayment =
+                await this.serviceRequestsService.getLatestWaitingPaymentForClient(
+                    this.toClientIdentity(ctx),
+                );
+            if (waitingPayment) {
+                if (
+                    media.messageType !== 'image' &&
+                    media.messageType !== 'document'
+                ) {
+                    await ctx.reply(
+                        'Отправьте платежное поручение как PDF-файл или изображение.',
+                        mainMenuButton(),
+                    );
+                    return;
+                }
+                const maxBytes =
+                    this.filesService.getPolicy('payment-proof').maxBytes;
+                if (media.fileSize && media.fileSize > maxBytes) {
+                    await ctx.reply(
+                        'Файл слишком большой. Максимальный размер платежного поручения — 20 МБ.',
+                        mainMenuButton(),
+                    );
+                    return;
+                }
+                await this.clientWorkflow.submitServiceRequestPaymentProof(
+                    this.toClientIdentity(ctx),
+                    {
+                        buffer: await this.downloadMediaBuffer(media),
+                        fileName:
+                            media.fileName ||
+                            `payment_${waitingPayment.id}.${media.messageType === 'image' ? 'jpg' : 'pdf'}`,
+                        mimeType: media.mimeType,
+                    },
+                );
+                await ctx.reply(
+                    'Платежное поручение получено. Оператор проверит документ и подтвердит оплату.',
+                    mainMenuButton(),
+                );
+                return;
+            }
+
             const activeTicket = await this.ticketService.getActiveTicket(chatId);
             if (activeTicket?.text) {
                 await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
