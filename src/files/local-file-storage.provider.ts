@@ -18,7 +18,12 @@ export class LocalFileStorageProvider implements FileStoragePort {
     }
 
     resolveObjectKey(objectKey: string) {
-        if (!objectKey || path.isAbsolute(objectKey) || objectKey.includes('\0')) {
+        if (
+            !objectKey ||
+            path.posix.isAbsolute(objectKey) ||
+            path.win32.isAbsolute(objectKey) ||
+            objectKey.includes('\0')
+        ) {
             throw new Error('Invalid storage object key');
         }
         const normalized = objectKey.replaceAll('\\', '/');

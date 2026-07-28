@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "engines": {
     "node": ">=22.20.0 <23",
-    "npm": ">=11 <12"
+    "npm": ">=10 <12"
   },
   "scripts": {
     "build": "npm run build:admin && npm run build:site && npm run build:server",

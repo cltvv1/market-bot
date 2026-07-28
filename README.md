@@ -40,7 +40,7 @@ Stop the application before backup creation. Current limits are 12 MB for images
 ## Требования
 
 - Node.js 22+
-- npm 11+
+- npm 10 or 11
 - Docker Desktop
 - заполненный `.env` в корне проекта на основе `.env.example`
 
