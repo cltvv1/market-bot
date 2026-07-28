@@ -681,10 +681,13 @@ ratchet, route ownership metadata tests, explicit UI serving modes, offline
 health/browser smoke, and a manual full backup restore drill. No database schema
 or business workflow changed in this package.
 
-Hosted verification completed successfully in
-[GitHub Actions run 30332957415](https://github.com/cltvv1/market-bot/actions/runs/30332957415)
-for commit `5178035fa2ef79371c9b22339b997c011bbedb7e`. All required jobs passed:
-`Quality`, `Production builds`, and `PostgreSQL, tests, and offline smoke`.
+Stage 0 was merged through
+[pull request #1](https://github.com/cltvv1/market-bot/pull/1) using an ordinary
+merge commit, `3bf9d3be679bbe5e6ed8da76682676839adb2b98`. Hosted verification completed
+successfully on `main` in
+[GitHub Actions run 30334738735](https://github.com/cltvv1/market-bot/actions/runs/30334738735).
+All required jobs passed: `Quality`, `Production builds`, and
+`PostgreSQL, tests, and offline smoke`.
 
 Hosted Linux verification found and resolved three portability issues:
 
@@ -698,9 +701,12 @@ The standard Jest integration run no longer emits its previous open-handle
 warning. Remaining non-blocking observations are the reviewed lint baseline,
 40 npm dependency advisories, and a 677.57 kB client Vite chunk on Linux.
 
-The coordinated database/file backup drill passed locally with restored row
-counts and SHA-256 checksums. A hosted manual drill cannot be claimed yet:
-`backup-drill.yml` must first be available on the repository default branch,
-then an operator can start its `workflow_dispatch` run. Therefore Stage 0 is
-code-complete and verified by required hosted CI, with this single operational
-verification still pending.
+The coordinated database/file backup drill passed locally and in hosted
+`workflow_dispatch`
+[run 30334884014](https://github.com/cltvv1/market-bot/actions/runs/30334884014).
+The hosted run used only a synthetic test database and temporary file storage;
+backup creation, manifest and SHA-256 verification, restore into separate
+resources, row-count inspection, offline startup, and cleanup all passed.
+Production resources and real Telegram/MAX adapters were not used.
+
+Stage 0: completed and verified in hosted CI and hosted backup restore drill.
