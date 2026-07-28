@@ -1,5 +1,11 @@
 # Roadmap VITMA MARKET
 
+## Phase zero storage status
+
+- E0-08: implemented with explicit file FKs, policies and legacy backfill.
+- E0-10: minimal audit implemented; broader transaction-scoped coverage remains hardening work.
+- E0-12: offline create/verify/restore implemented and drilled.
+
 ## 1. Принципы roadmap
 
 Roadmap построен вертикальными сценариями. Каждый этап должен оставлять систему в рабочем состоянии и давать проверяемый пользовательский результат.

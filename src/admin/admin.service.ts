@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { Readable } from 'node:stream';
 import { randomBytes } from 'crypto';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -25,6 +26,7 @@ import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { TicketMessageType } from 'src/tickets/entities/ticket-message.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
 import type { AdminPrincipal } from './admin-auth.types';
+import { FilesService } from 'src/files/files.service';
 
 export type AdminStatusFilter = 'all' | 'new' | 'in_work' | 'processed';
 
@@ -60,6 +62,7 @@ export class AdminService {
         private readonly serviceRequestsService: ServiceRequestsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
+        private readonly filesService: FilesService,
     ) { }
 
     async getNotificationBindings(adminId: number) {
@@ -253,8 +256,8 @@ export class AdminService {
         );
     }
 
-    attachServiceRequestInvoice(id: number, invoiceFileId: string, invoiceFileName?: string, operatorId = 'admin-panel') {
-        return this.serviceRequestsService.attachInvoice(id, invoiceFileId, invoiceFileName, operatorId);
+    attachServiceRequestInvoice(id: number, invoiceFileId: string, invoiceFileName?: string, operatorId = 'admin-panel', invoiceStoredFileId?: number) {
+        return this.serviceRequestsService.attachInvoice(id, invoiceFileId, invoiceFileName, operatorId, invoiceStoredFileId);
     }
 
     markServiceRequestPaymentReceived(id: number, operatorId = 'admin-panel') {
@@ -519,7 +522,11 @@ export class AdminService {
         id: number,
         input: { status?: RegistrationRequestStatus; priority?: RegistrationRequestPriority },
     ) {
-        const patch: Partial<RegistrationRequestEntity> = {};
+        const patch: {
+            status?: RegistrationRequestStatus;
+            isProcessed?: boolean;
+            priority?: RegistrationRequestPriority;
+        } = {};
         if (input.status) {
             patch.status = input.status;
             patch.isProcessed = input.status === 'processed';
@@ -563,7 +570,8 @@ export class AdminService {
         id: number,
         media: {
             messageType: Exclude<TicketMessageType, 'text'>;
-            localPath: string;
+            localPath?: string;
+            buffer?: Buffer;
             fileName: string;
             mimeType?: string;
             fileSize?: number;
@@ -575,10 +583,21 @@ export class AdminService {
         if (!ticket) {
             return null;
         }
+        if (!media.buffer && !media.localPath) {
+            throw new BadRequestException('Ticket media content is required');
+        }
+        const storedFile = media.buffer
+            ? await this.filesService.saveBuffer({
+                purpose: media.messageType === 'image' ? 'ticket-image' : media.messageType === 'video' || media.messageType === 'video_note' ? 'ticket-video' : media.messageType === 'audio' || media.messageType === 'voice' ? 'ticket-audio' : 'ticket-document',
+                buffer: media.buffer,
+                originalName: media.fileName,
+                mimeType: media.mimeType,
+            })
+            : null;
 
         if (ticket.platform !== 'web') {
             const file = {
-                source: fs.createReadStream(media.localPath),
+                source: media.buffer ? Readable.from(media.buffer) : fs.createReadStream(media.localPath!),
                 filename: media.fileName,
             };
             const options = {
@@ -603,7 +622,8 @@ export class AdminService {
             fileName: media.fileName,
             mimeType: media.mimeType ?? null,
             fileSize: media.fileSize,
-            localPath: media.localPath,
+            localPath: media.localPath ?? null,
+            storedFileId: storedFile?.id ?? null,
         }));
 
         return this.getTicket(id);

@@ -1,6 +1,5 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import {
     BadRequestException,
     Body,
@@ -34,6 +33,7 @@ import {
     TicketMessageDto,
 } from './dto/client-api.dto';
 import { RateLimit } from 'src/security/rate-limit';
+import { FilesService } from 'src/files/files.service';
 
 interface UploadedMemoryFile {
     buffer: Buffer;
@@ -50,6 +50,7 @@ export class ClientApiController {
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly registrationsService: RegistrationsService,
         private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly filesService: FilesService,
     ) {}
 
     @Post('users')
@@ -203,11 +204,6 @@ export class ClientApiController {
         @Body() body: TicketMediaDto,
     ) {
         if (!file) throw new BadRequestException('Ticket file is required');
-        const mediaDir = path.join(process.cwd(), 'storage', 'ticket-media');
-        fs.mkdirSync(mediaDir, { recursive: true });
-        const safeName = `${randomUUID()}-${file.originalname || 'file'}`;
-        const filePath = path.join(mediaDir, safeName);
-        fs.writeFileSync(filePath, file.buffer);
         return this.clientWorkflow.submitTicketMedia(
             this.identity(session, body),
             {
@@ -215,8 +211,8 @@ export class ClientApiController {
                     file.mimetype,
                     file.originalname,
                 ),
-                localPath: filePath,
-                fileName: file.originalname || safeName,
+                buffer: file.buffer,
+                fileName: file.originalname || 'file',
                 mimeType: file.mimetype,
                 fileSize: file.size,
                 text: body.text,
@@ -253,6 +249,15 @@ export class ClientApiController {
             this.identity(session),
             Number(params.id),
         );
+        if (message.storedFileId) {
+            const { file, stream } = await this.filesService.open(message.storedFileId);
+            response.setHeader('Content-Type', file.mimeType);
+            response.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`);
+            response.setHeader('Cache-Control', 'private, no-store');
+            response.setHeader('X-Content-Type-Options', 'nosniff');
+            stream.pipe(response);
+            return;
+        }
         if (!message.localPath || !fs.existsSync(message.localPath)) {
             throw new BadRequestException('Ticket file was not found');
         }

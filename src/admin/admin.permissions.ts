@@ -23,6 +23,7 @@ export const ADMIN_PERMISSIONS = [
     'organizations.update',
     'assets.read',
     'assets.update',
+    'audit.read',
 ] as const;
 
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];

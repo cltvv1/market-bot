@@ -21,6 +21,8 @@ import { ServiceRequestsModule } from './service-requests/service-requests.modul
 import { WebSessionModule } from './web-session/web-session.module';
 import { HealthModule } from './health/health.module';
 import { RateLimitGuard } from './security/rate-limit';
+import { FilesModule } from './files/files.module';
+import { AuditModule } from './audit/audit.module';
 
 @Module({
   imports: [
@@ -72,7 +74,9 @@ import { RateLimitGuard } from './security/rate-limit';
     ServiceRequestsModule,
     HealthModule,
     UsersModule,
-    TicketsModule
+    TicketsModule,
+    FilesModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

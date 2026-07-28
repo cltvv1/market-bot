@@ -1,11 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, JoinColumn, ManyToOne, Index } from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
+import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
 import { RegistrationType } from '../registration.types';
 
 export type RegistrationRequestStatus = 'new' | 'in_work' | 'processed';
 export type RegistrationRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 @Entity('registration_requests')
+@Index('IDX_registration_photo_file', ['equipmentPhotoFileId'])
+@Index('IDX_registration_pdf_file', ['pdfFileId'])
 export class RegistrationRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -93,6 +96,13 @@ export class RegistrationRequestEntity {
     equipmentPhotoName: string | null;
 
     @Column({ type: 'integer', nullable: true })
+    equipmentPhotoFileId: number | null;
+
+    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'equipmentPhotoFileId', foreignKeyConstraintName: 'FK_registration_photo_file' })
+    equipmentPhotoFile: StoredFileEntity | null;
+
+    @Column({ type: 'integer', nullable: true })
     equipmentKitId: number | null;
 
     @Column({ default: false })
@@ -115,6 +125,13 @@ export class RegistrationRequestEntity {
 
     @Column({ nullable: true })
     pdfPath: string;
+
+    @Column({ type: 'integer', nullable: true })
+    pdfFileId: number | null;
+
+    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'pdfFileId', foreignKeyConstraintName: 'FK_registration_pdf_file' })
+    pdfFile: StoredFileEntity | null;
 
     @CreateDateColumn()
     createdAt: Date;

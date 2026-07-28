@@ -1,5 +1,9 @@
 # Технический и продуктовый аудит VITMA MARKET
 
+## 2026-07-27 update
+
+E0-08 FileStorage foundation, E0-10 minimal Audit Log and E0-12 offline backup/verify/restore are implemented. Legacy path columns remain as compatibility fallback. See `docs/files`, `docs/audit` and `docs/backup`.
+
 Дата аудита: 2026-07-26
 Ветка: `codex/max-migration`
 Коммит: `1213418` (`Migrate admin panel to React`)

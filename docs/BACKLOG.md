@@ -1,5 +1,13 @@
 # Backlog VITMA MARKET
 
+## Storage follow-ups
+
+- Copy remote Telegram/MAX-only media into controlled storage through a bounded worker.
+- Complete transaction-scoped audit coverage for all business mutations.
+- Add Range responses for locally stored audio/video.
+- Agree retention, encryption and a second external backup copy.
+- S3, antivirus, outbox, scheduler and automatic deletion remain out of scope.
+
 ## Обозначения
 
 - **P0** - блокирует безопасный запуск или следующий этап.

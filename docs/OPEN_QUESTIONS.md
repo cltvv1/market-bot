@@ -1,5 +1,13 @@
 # Открытые вопросы
 
+## Storage and backup
+
+- Production retention period and local copy count.
+- Destination and encryption for the second external copy.
+- Retention policy for remote messenger media.
+- Final upload limits after measuring real traffic.
+- Whether antivirus scanning is mandatory before production document uploads.
+
 В документ включены только решения, которых нет в исходном коде и предоставленном бизнес-контексте. Они не блокируют сам аудит, но часть из них нужна до соответствующего этапа реализации.
 
 ## 1. Перед этапом 0

@@ -9,6 +9,8 @@ import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { UserPlatform } from 'src/users/entities/user.entity';
 import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
+import { FilesService } from 'src/files/files.service';
+import type { FilePurpose } from 'src/files/file-storage.types';
 
 export interface TicketMediaInput {
     messageType: Exclude<TicketMessageType, 'text'>;
@@ -20,6 +22,7 @@ export interface TicketMediaInput {
     fileSize?: number;
     externalUrl?: string;
     localPath?: string;
+    buffer?: Buffer;
 }
 
 @Injectable()
@@ -34,6 +37,7 @@ export class TicketsService {
         @Inject(MESSENGER_SERVICE)
         private messengerService: MessengerService,
         private readonly adminNotificationsService: AdminNotificationsService,
+        private readonly filesService?: FilesService,
     ) { }
 
     async createTicket(
@@ -149,6 +153,14 @@ export class TicketsService {
         authorId: string | null,
         source: TicketMessageSource = 'bot',
     ) {
+        const storedFile = media.buffer && this.filesService
+            ? await this.filesService.saveBuffer({
+                purpose: this.filePurpose(media.messageType),
+                buffer: media.buffer,
+                originalName: media.fileName,
+                mimeType: media.mimeType,
+            })
+            : null;
         const message = this.messagesRepo.create({
             ticketId,
             sender,
@@ -163,6 +175,7 @@ export class TicketsService {
             fileSize: media.fileSize,
             externalUrl: media.externalUrl ?? null,
             localPath: media.localPath ?? null,
+            storedFileId: storedFile?.id ?? null,
         });
 
         return this.messagesRepo.save(message);
@@ -195,6 +208,13 @@ export class TicketsService {
         };
 
         return media.fileName ? `${labels[media.messageType]}: ${media.fileName}` : labels[media.messageType];
+    }
+
+    private filePurpose(messageType: TicketMessageType): FilePurpose {
+        if (messageType === 'image') return 'ticket-image';
+        if (messageType === 'audio' || messageType === 'voice') return 'ticket-audio';
+        if (messageType === 'video' || messageType === 'video_note') return 'ticket-video';
+        return 'ticket-document';
     }
 }
 

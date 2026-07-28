@@ -1,5 +1,9 @@
 # Целевая архитектура VITMA MARKET
 
+## Storage and audit foundation
+
+Domain modules use `FilesService`/`FileStoragePort`; there is no public universal file-by-ID endpoint. Local storage is the phase-zero provider. Audit is append-only and superadmin-readable. PostgreSQL and storage use a coordinated offline backup set.
+
 ## Реализованная foundation на 2026-07-26
 
 Следующие части этой целевой архитектуры уже реализованы:

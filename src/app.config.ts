@@ -6,6 +6,7 @@ export const validationSchema = Joi.object({
     BOT_POLLING_ENABLED: Joi.boolean().default(true),
     PDF_DIR: Joi.string().default('storage/registrations'),
     CONSENT_DIR: Joi.string().default('storage/consents'),
+    FILE_STORAGE_ROOT: Joi.string().default('storage'),
     DB_HOST: Joi.string().trim().min(1).required(),
     DB_PORT: Joi.number().port().required(),
     DB_NAME: Joi.string().trim().min(1).required(),
@@ -30,4 +31,6 @@ export const validationSchema = Joi.object({
     SWAGGER_ENABLED: Joi.boolean().optional(),
     HTTP_JSON_LIMIT: Joi.string().pattern(/^\d+(kb|mb)$/i).default('256kb'),
     HTTP_URLENCODED_LIMIT: Joi.string().pattern(/^\d+(kb|mb)$/i).default('64kb'),
+    BACKUP_DIR: Joi.string().default('backups'),
+    BACKUP_OFFLINE: Joi.boolean().default(false),
 }).unknown(true);

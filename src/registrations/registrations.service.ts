@@ -1,6 +1,5 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { randomUUID } from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -11,6 +10,7 @@ import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { UsersService } from 'src/users/users.service';
 import { formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
 import { RegistrationField } from './registration.types';
+import { FilesService } from 'src/files/files.service';
 import { UserPlatform } from 'src/users/entities/user.entity';
 import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 @Injectable()
@@ -25,6 +25,7 @@ export class RegistrationsService {
         private readonly pdfService: PdfGeneratorService,
         private usersService: UsersService,
         private readonly adminNotificationsService: AdminNotificationsService,
+        private readonly filesService?: FilesService,
     ) { }
 
     async getAllRegs() {
@@ -85,14 +86,21 @@ export class RegistrationsService {
         const field = await this.getFieldNameByStep(reg.currentStep);
         if (field !== 'equipmentPhoto') return reg;
 
-        const mediaDir = path.join(process.cwd(), 'storage', 'registration-media');
-        fs.mkdirSync(mediaDir, { recursive: true });
-        const safeName = `${randomUUID()}-${input.fileName || 'equipment-photo.jpg'}`;
-        const filePath = path.join(mediaDir, safeName);
-        fs.writeFileSync(filePath, input.buffer);
+        if (!this.filesService) {
+            throw new Error('File storage is unavailable');
+        }
+        const storedFile = await this.filesService.saveBuffer({
+            purpose: 'registration-photo',
+            buffer: input.buffer,
+            originalName: input.fileName,
+            mimeType: this.imageMime(input.fileName),
+            createdByCustomerId: reg.userId ?? undefined,
+            metadata: { registrationId: reg.id },
+        });
 
-        reg.equipmentPhotoPath = filePath;
-        reg.equipmentPhotoName = input.fileName || safeName;
+        reg.equipmentPhotoPath = null;
+        reg.equipmentPhotoName = storedFile.originalName;
+        reg.equipmentPhotoFileId = storedFile.id;
         reg.currentStep++;
         await this.registrationRepo.save(reg);
         return reg;
@@ -151,8 +159,19 @@ export class RegistrationsService {
     async finishReg(reg: RegistrationRequestEntity) {
         const fields = await this.fieldsRepo.find();
         const pdfPath = await this.pdfService.generateRegistrationPdf(reg, fields);
+        const storedPdf = this.filesService && fs.existsSync(pdfPath)
+            ? await this.filesService.saveBuffer({
+                purpose: 'generated-pdf',
+                buffer: await fs.promises.readFile(pdfPath),
+                originalName: `registration_${reg.id}.pdf`,
+                mimeType: 'application/pdf',
+                serverGenerated: true,
+                metadata: { registrationId: reg.id },
+            })
+            : null;
 
         reg.pdfPath = pdfPath;
+        reg.pdfFileId = storedPdf?.id ?? null;
         reg.isFilled = true;
         await this.registrationRepo.save(reg);
 
@@ -202,5 +221,12 @@ export class RegistrationsService {
             'ofd',
             'equipmentPhoto',
         ].includes(value);
+    }
+
+    private imageMime(fileName?: string) {
+        const extension = path.extname(fileName || '').toLowerCase();
+        if (extension === '.png') return 'image/png';
+        if (extension === '.webp') return 'image/webp';
+        return 'image/jpeg';
     }
 }

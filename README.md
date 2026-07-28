@@ -1,5 +1,21 @@
 # VITMA MARKET
 
+## E0-08, E0-10 and E0-12
+
+Business uploads now use `FileStoragePort`; audit events are available to superadmins; PostgreSQL and `storage/` are backed up as one offline set.
+
+```powershell
+npm run migration:run
+npm run files:backfill -- --dry-run
+npm run files:backfill
+npm run backup:create
+npm run backup:verify -- --backup C:\path\to\backup-set
+npm run backup:restore -- --backup C:\path\to\backup-set --target-db vitma_restore --target-storage C:\temp\vitma-storage
+npm run backup:drill
+```
+
+Stop the application before backup creation. Current limits are 12 MB for images, 20 MB for documents, 30 MB for audio, 80 MB for video, 15 MB for invoices/generated PDFs and 20 MB for signed documents. Details: `docs/files/FILE_STORAGE_GUIDE.md`, `docs/audit/AUDIT_LOG_GUIDE.md`, `docs/backup/BACKUP_FORMAT.md`.
+
 Единый проект клиентского сайта, операторской админки и ботов VITMA MARKET.
 
 ## Состав проекта

@@ -7,6 +7,7 @@ import { OrganizationsModule } from 'src/organizations/organizations.module';
 import { CustomerActivityModule } from 'src/customer-activity/customer-activity.module';
 import { ClientApiController } from './client-api.controller';
 import { ClientWorkflowService } from './client-workflow.service';
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { ClientWorkflowService } from './client-workflow.service';
         TicketsModule,
         OrganizationsModule,
         CustomerActivityModule,
+        FilesModule,
     ],
     controllers: [ClientApiController],
     providers: [ClientWorkflowService],

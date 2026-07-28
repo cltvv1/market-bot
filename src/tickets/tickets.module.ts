@@ -7,9 +7,10 @@ import { TicketsService } from './tickets.service';
 import { UsersModule } from 'src/users/users.module';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([TicketEntity, TicketMessageEntity]), UsersModule, MessengerModule, AdminNotificationsModule],
+    imports: [TypeOrmModule.forFeature([TicketEntity, TicketMessageEntity]), UsersModule, MessengerModule, AdminNotificationsModule, FilesModule],
     providers: [TicketsService],
     exports: [TicketsService],
 })

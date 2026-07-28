@@ -17,6 +17,7 @@ import {
 } from './admin-auth.decorators';
 import type { AdminPermission } from './admin.permissions';
 import type { AdminPrincipal } from './admin-auth.types';
+import { AuditService } from 'src/audit/audit.service';
 
 @Injectable()
 export class AdminSessionGuard implements CanActivate {
@@ -96,9 +97,12 @@ export class AdminSessionGuard implements CanActivate {
 
 @Injectable()
 export class AdminPermissionGuard implements CanActivate {
-    constructor(private readonly reflector: Reflector) {}
+    constructor(
+        private readonly reflector: Reflector,
+        private readonly auditService: AuditService,
+    ) {}
 
-    canActivate(context: ExecutionContext) {
+    async canActivate(context: ExecutionContext) {
         const required =
             this.reflector.getAllAndOverride<AdminPermission[]>(
                 ADMIN_PERMISSIONS_KEY,
@@ -119,6 +123,16 @@ export class AdminPermissionGuard implements CanActivate {
             !required.every((permission) => granted.has(permission)) ||
             (any.length && !any.some((permission) => granted.has(permission)))
         ) {
+            await this.auditService.record({
+                actorType: 'staff',
+                actorStaffId: request.admin?.id,
+                actorSessionId: request.admin?.sessionId,
+                action: 'permission.denied',
+                targetType: context.getClass().name,
+                targetId: context.getHandler().name,
+                result: 'denied',
+                metadata: { required, any },
+            });
             throw new ForbiddenException('Insufficient permissions');
         }
         return true;

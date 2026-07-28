@@ -11,6 +11,7 @@ const tabs: Array<{ id: Tab; label: string; permissions: string[] }> = [
   { id: 'organizations', label: 'Организации', permissions: ['organizations.read'] },
   { id: 'equipment-kits', label: 'Комплекты', permissions: ['assets.read'] },
   { id: 'staff', label: 'Сотрудники', permissions: ['staff.roles.manage'] },
+  { id: 'audit', label: 'Audit Log', permissions: ['audit.read'] },
 ];
 
 const priorities: Array<{ value: Priority | ''; label: string }> = [
@@ -102,7 +103,7 @@ export function App() {
           {visibleTabs.map((item) => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setSelection(null); setStatus('new'); }}>{item.label}</button>)}
         </nav>
 
-        {tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'staff' && (
+        {tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'staff' && tab !== 'audit' && (
           <section className="filters">
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="new">Новые</option><option value="in_work">В работе</option>
@@ -123,6 +124,7 @@ export function App() {
         {tab === 'organizations' && <Organizations refreshKey={refreshKey} />}
         {tab === 'equipment-kits' && <EquipmentKits refreshKey={refreshKey} onChanged={refresh} />}
         {tab === 'staff' && <StaffManagement refreshKey={refreshKey} onChanged={refresh} />}
+        {tab === 'audit' && <AuditLog refreshKey={refreshKey} />}
         {!visibleTabs.length && <Empty text="Для назначенных ролей пока нет рабочих разделов" />}
       </main>
     </div>
@@ -239,6 +241,43 @@ function CustomerCardView({ card, onClose, onNavigate }: { card: CustomerCard; o
 }
 
 function Organizations({ refreshKey }: { refreshKey: number }) { const data = useList<any>('/admin/api/organizations', refreshKey); return <section className="simple-grid">{data.loading ? <Empty text="Загрузка..." /> : data.items.map((org) => <article className="simple-card" key={org.id}><h3>{org.name || `Организация #${org.id}`}</h3><Info label="ИНН / КПП" value={[org.inn, org.kpp].filter(Boolean).join(' / ')} /><Info label="ОГРН" value={org.ogrn} /><Info label="СНО" value={org.taxSystem} /><Info label="Представители" value={org.members?.length} /></article>)}</section>; }
+
+function AuditLog({ refreshKey }: { refreshKey: number }) {
+  const [result, setResult] = useState('');
+  const [action, setAction] = useState('');
+  const [data, setData] = useState<{ items: any[]; total: number }>({ items: [], total: 0 });
+  useEffect(() => {
+    const query = new URLSearchParams({ limit: '100' });
+    if (result) query.set('result', result);
+    if (action.trim()) query.set('action', action.trim());
+    api<{ items: any[]; total: number }>(`/admin/api/audit-events?${query}`)
+      .then(setData)
+      .catch(() => setData({ items: [], total: 0 }));
+  }, [refreshKey, result, action]);
+  return <section>
+    <div className="filters">
+      <select value={result} onChange={(event) => setResult(event.target.value)}>
+        <option value="">Все результаты</option>
+        <option value="success">Успешно</option>
+        <option value="denied">Отказано</option>
+        <option value="failure">Ошибка</option>
+      </select>
+      <input value={action} onChange={(event) => setAction(event.target.value)} placeholder="Точное название действия" />
+    </div>
+    <div className="simple-grid">
+      {data.items.map((event) => <article className="simple-card" key={event.id}>
+        <h3>{event.action}</h3>
+        <Info label="Время" value={fmtDate(event.createdAt)} />
+        <Info label="Инициатор" value={`${event.actorType}${event.actorStaffId ? ` #${event.actorStaffId}` : ''}`} />
+        <Info label="Объект" value={`${event.targetType}${event.targetId ? ` #${event.targetId}` : ''}`} />
+        <Info label="Результат" value={event.result} />
+        {event.reason && <Info label="Причина" value={event.reason} />}
+        {event.metadata && <pre>{JSON.stringify(event.metadata, null, 2)}</pre>}
+      </article>)}
+    </div>
+    {!data.items.length && <Empty text="События аудита не найдены" />}
+  </section>;
+}
 
 function EquipmentKits({ refreshKey, onChanged }: { refreshKey: number; onChanged: () => void }) {
   const data = useList<EquipmentKit>('/admin/api/equipment-kits', refreshKey); const [form, setForm] = useState<Record<string, string>>({});

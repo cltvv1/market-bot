@@ -32,6 +32,53 @@ export class AdminListQueryDto {
     priority?: 'low' | 'normal' | 'high' | 'urgent';
 }
 
+export class AuditListQueryDto {
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    page?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    limit?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    actorStaffId?: number;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    action?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    targetType?: string;
+
+    @IsOptional()
+    @IsString()
+    @MaxLength(100)
+    targetId?: string;
+
+    @IsOptional()
+    @IsIn(['success', 'denied', 'failure'])
+    result?: 'success' | 'denied' | 'failure';
+
+    @IsOptional()
+    @IsDateString()
+    from?: string;
+
+    @IsOptional()
+    @IsDateString()
+    to?: string;
+}
+
 export class ServiceRequestListQueryDto {
     @IsOptional()
     @IsIn([

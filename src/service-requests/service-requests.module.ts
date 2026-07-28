@@ -11,6 +11,7 @@ import { ServiceRequestEventEntity } from './entities/service-request-event.enti
 import { ServiceTypeEntity } from './entities/service-type.entity';
 import { ServiceRequestsController } from './service-requests.controller';
 import { ServiceRequestsService } from './service-requests.service';
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { ServiceRequestsService } from './service-requests.service';
         MessengerModule,
         AdminNotificationsModule,
         PdfModule,
+        FilesModule,
     ],
     controllers: [ServiceRequestsController],
     providers: [ServiceRequestsService],

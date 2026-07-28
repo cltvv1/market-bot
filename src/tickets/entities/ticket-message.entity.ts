@@ -1,11 +1,13 @@
-import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { TicketEntity } from './ticket.entity';
+import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
 
 export type TicketMessageSender = 'user' | 'operator';
 export type TicketMessageSource = 'bot' | 'admin-panel';
 export type TicketMessageType = 'text' | 'image' | 'video' | 'audio' | 'voice' | 'video_note' | 'document';
 
 @Entity('ticket_messages')
+@Index('IDX_ticket_message_file', ['storedFileId'])
 export class TicketMessageEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -51,6 +53,13 @@ export class TicketMessageEntity {
 
     @Column({ type: 'text', nullable: true })
     localPath: string | null;
+
+    @Column({ type: 'integer', nullable: true })
+    storedFileId: number | null;
+
+    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'storedFileId', foreignKeyConstraintName: 'FK_ticket_message_file' })
+    storedFile: StoredFileEntity | null;
 
     @CreateDateColumn()
     createdAt: Date;

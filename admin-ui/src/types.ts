@@ -1,4 +1,4 @@
-export type Tab = 'registrations' | 'service' | 'tickets' | 'organizations' | 'equipment-kits' | 'staff';
+export type Tab = 'registrations' | 'service' | 'tickets' | 'organizations' | 'equipment-kits' | 'staff' | 'audit';
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 export type AdminRole = 'operator' | 'engineer' | 'sales_manager' | 'superadmin';
 

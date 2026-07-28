@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
+import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
 
 export type ServiceRequestStatus =
     | 'draft'
@@ -26,6 +27,7 @@ export type ServiceRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 @Entity('service_requests')
 @Index('IDX_service_requests_assigned_engineer', ['assignedEngineerId'])
+@Index('IDX_service_invoice_file', ['invoiceStoredFileId'])
 export class ServiceRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -68,6 +70,27 @@ export class ServiceRequestEntity {
 
     @Column({ type: 'varchar', nullable: true })
     invoiceFileName: string | null;
+
+    @Column({ type: 'integer', nullable: true })
+    invoiceStoredFileId: number | null;
+
+    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'invoiceStoredFileId', foreignKeyConstraintName: 'FK_service_invoice_file' })
+    invoiceStoredFile: StoredFileEntity | null;
+
+    @Column({ type: 'integer', nullable: true })
+    generatedConsentFileId: number | null;
+
+    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'generatedConsentFileId', foreignKeyConstraintName: 'FK_service_generated_consent_file' })
+    generatedConsentFile: StoredFileEntity | null;
+
+    @Column({ type: 'integer', nullable: true })
+    signedConsentFileId: number | null;
+
+    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'signedConsentFileId', foreignKeyConstraintName: 'FK_service_signed_consent_file' })
+    signedConsentFile: StoredFileEntity | null;
 
     @Column({ type: 'varchar', nullable: true })
     visitAddress: string | null;

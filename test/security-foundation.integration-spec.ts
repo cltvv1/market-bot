@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { configureApplication } from '../src/app.bootstrap';
 import { AdminAuthService } from '../src/admin/admin-auth.service';
 import { AdminSessionEntity } from '../src/admin/entities/admin-session.entity';
+import { AuditEventEntity } from '../src/audit/entities/audit-event.entity';
 import { CustomerWebSessionEntity } from '../src/web-session/entities/customer-web-session.entity';
 
 const PASSWORD = 'Strong!Password2026';
@@ -187,6 +188,109 @@ describe('security foundation API contracts', () => {
         await createStaff('sales-one', ['sales_manager']);
         const sales = await login('sales-one');
         await sales.agent.get('/admin/api/service-requests').expect(403);
+    });
+
+    it('records redacted audit events and restricts the global audit log', async () => {
+        await createStaff('root-user', ['superadmin']);
+        await createStaff('operator-one', ['operator']);
+
+        await request(app.getHttpServer())
+            .post('/admin/api/login')
+            .set('X-Forwarded-For', nextIp())
+            .send({
+                login: 'operator-one',
+                password: 'Definitely!Wrong2026',
+            })
+            .expect(401);
+
+        const operator = await login('operator-one');
+        await operator.agent.get('/admin/api/audit-events').expect(403);
+
+        const root = await login('root-user');
+        await root.agent
+            .post('/admin/api/staff')
+            .set('Origin', ORIGIN)
+            .send({
+                login: 'created-through-api',
+                displayName: 'Created through API',
+                password: 'Another!Password2026',
+                roles: ['operator'],
+            })
+            .expect(201);
+
+        const response = await root.agent
+            .get('/admin/api/audit-events?limit=100')
+            .expect(200);
+        const actions = response.body.items.map(
+            (event: AuditEventEntity) => event.action,
+        );
+        expect(actions).toEqual(
+            expect.arrayContaining([
+                'admin.login',
+                'permission.denied',
+                'staff.create',
+            ]),
+        );
+
+        const serialized = JSON.stringify(response.body);
+        expect(serialized).not.toContain('Definitely!Wrong2026');
+        expect(serialized).not.toContain('Another!Password2026');
+        expect(
+            response.body.items.find(
+                (event: AuditEventEntity) =>
+                    event.action === 'admin.login' &&
+                    event.result === 'failure',
+            )?.reason,
+        ).toBe('invalid_credentials');
+    });
+
+    it('allows only the ticket owner or permitted staff to download a stored file', async () => {
+        const operator = await createStaff('operator-one', ['operator']);
+        await createStaff('engineer-one', ['engineer']);
+        const browserA = await createBrowserSession();
+        const browserB = await createBrowserSession();
+        const opened = await browserA.agent
+            .post('/api/client/tickets/open')
+            .send({})
+            .expect(201);
+        const ticketId = opened.body.data.id;
+
+        await browserA.agent
+            .post('/api/client/tickets/media')
+            .attach(
+                'file',
+                Buffer.from([
+                    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46,
+                    0x49, 0x46,
+                ]),
+                { filename: 'photo.jpg', contentType: 'image/jpeg' },
+            )
+            .expect(201);
+        const messages = await browserA.agent
+            .get(`/api/client/tickets/${ticketId}/messages`)
+            .expect(200);
+        const fileMessage = messages.body.find(
+            (message: { storedFileId?: number }) => message.storedFileId,
+        );
+        expect(fileMessage.storedFileId).toEqual(expect.any(Number));
+
+        await browserA.agent
+            .get(`/api/client/ticket-messages/${fileMessage.id}/file`)
+            .expect(200)
+            .expect('Content-Type', 'image/jpeg');
+        await browserB.agent
+            .get(`/api/client/ticket-messages/${fileMessage.id}/file`)
+            .expect(400);
+
+        const engineer = await login('engineer-one');
+        await engineer.agent
+            .get(`/admin/api/ticket-messages/${fileMessage.id}/file`)
+            .expect(403);
+        const operatorSession = await login(operator.login);
+        await operatorSession.agent
+            .get(`/admin/api/ticket-messages/${fileMessage.id}/file`)
+            .expect(200)
+            .expect('Content-Type', 'image/jpeg');
     });
 
     it('shows engineers only their assigned service requests', async () => {

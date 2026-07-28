@@ -25,6 +25,8 @@ import {
     AdminPermissionGuard,
     AdminSessionGuard,
 } from './admin-auth.guard';
+import { FilesModule } from 'src/files/files.module';
+import { AuditModule } from 'src/audit/audit.module';
 
 @Module({
     imports: [
@@ -48,6 +50,8 @@ import {
         MessengerModule,
         ServiceRequestsModule,
         AdminNotificationsModule,
+        FilesModule,
+        AuditModule,
     ],
     controllers: [AdminController],
     providers: [

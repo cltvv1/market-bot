@@ -14,6 +14,7 @@ import { ServiceRequestEventEntity } from './entities/service-request-event.enti
 import { ServiceTypeEntity } from './entities/service-type.entity';
 import { defaultServiceTypes, serviceRequestFlows } from './service-request.flows';
 import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
+import { FilesService } from 'src/files/files.service';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
 
 export interface ServiceRequestIdentity {
@@ -46,6 +47,7 @@ export class ServiceRequestsService {
         private readonly pdfService: PdfGeneratorService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
+        private readonly filesService?: FilesService,
     ) { }
 
     async ensureDefaultTypes() {
@@ -220,6 +222,18 @@ export class ServiceRequestsService {
                 representativeName: String(saved.answers.representativeName || ''),
                 representativeBasis: String(saved.answers.representativeBasis || ''),
             });
+            const generatedFile = this.filesService && fs.existsSync(pdfPath)
+                ? await this.filesService.saveBuffer({
+                purpose: 'atol-consent',
+                buffer: await fs.promises.readFile(pdfPath),
+                originalName: `atol_consent_${saved.id}.pdf`,
+                mimeType: 'application/pdf',
+                serverGenerated: true,
+                createdByCustomerId: saved.userId ?? undefined,
+                metadata: { serviceRequestId: saved.id },
+            })
+                : null;
+            saved.generatedConsentFileId = generatedFile?.id ?? null;
             saved.answers = { ...saved.answers, generatedPdfPath: pdfPath };
             saved = await this.serviceRequestsRepo.save(saved);
             await this.addEvent(saved, 'generated', 'system', 'Сформирован PDF согласия на доступ АТОЛ', { generatedPdfPath: pdfPath });
@@ -234,19 +248,25 @@ export class ServiceRequestsService {
             return null;
         }
 
-        const dir = path.join(process.cwd(), 'storage', 'consents', String(request.id));
-        await fs.promises.mkdir(dir, { recursive: true });
-
         const originalName = file.fileName || 'signed-consent.jpg';
-        const safeName = originalName.replace(/[^a-zA-Z0-9_.-]+/g, '_');
-        const filePath = path.join(dir, `signed_${Date.now()}_${safeName}`);
-        await fs.promises.writeFile(filePath, file.buffer);
+        if (!this.filesService) {
+            throw new Error('File storage is unavailable');
+        }
+        const storedFile = await this.filesService.saveBuffer({
+            purpose: 'signed-document',
+            buffer: file.buffer,
+            originalName,
+            mimeType: this.detectSignedDocumentMime(originalName),
+            createdByCustomerId: request.userId ?? undefined,
+            metadata: { serviceRequestId: request.id },
+        });
 
         request.answers = {
             ...(request.answers || {}),
-            signedConsentPath: filePath,
+            signedConsentPath: null,
             signedConsentName: originalName,
         };
+        request.signedConsentFileId = storedFile.id;
         request.status = 'review_required';
         const saved = await this.serviceRequestsRepo.save(request);
 
@@ -374,10 +394,11 @@ export class ServiceRequestsService {
         return this.present(saved);
     }
 
-    async attachInvoice(id: number, invoiceFileId: string, invoiceFileName?: string, operatorId = 'admin-panel') {
+    async attachInvoice(id: number, invoiceFileId: string, invoiceFileName?: string, operatorId = 'admin-panel', invoiceStoredFileId?: number) {
         const request = await this.requireRequest(id);
         request.invoiceFileId = invoiceFileId;
         request.invoiceFileName = invoiceFileName ?? invoiceFileId;
+        request.invoiceStoredFileId = invoiceStoredFileId ?? null;
         request.status = 'waiting_payment';
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
@@ -614,6 +635,27 @@ export class ServiceRequestsService {
         }
 
         const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.`;
+        if (request.invoiceStoredFileId && this.filesService) {
+            const { file, stream } = await this.filesService.open(
+                request.invoiceStoredFileId,
+            );
+            await this.messengerService.sendMessage(request.chatId, message, {
+                platform: request.platform,
+            });
+            await this.messengerService.sendDocument(
+                request.chatId,
+                {
+                    source: stream,
+                    filename:
+                        request.invoiceFileName ||
+                        file.originalName ||
+                        `invoice_${request.id}.pdf`,
+                },
+                { platform: request.platform },
+            );
+            return;
+        }
+
         if (request.invoiceFileId && fs.existsSync(request.invoiceFileId)) {
             await this.messengerService.sendMessage(request.chatId, message, { platform: request.platform });
             await this.messengerService.sendDocument(
@@ -673,5 +715,13 @@ export class ServiceRequestsService {
         });
 
         return this.getRequestDetails(saved.id);
+    }
+
+    private detectSignedDocumentMime(fileName: string) {
+        const extension = path.extname(fileName).toLowerCase();
+        if (extension === '.pdf') return 'application/pdf';
+        if (extension === '.png') return 'image/png';
+        if (extension === '.webp') return 'image/webp';
+        return 'image/jpeg';
     }
 }
