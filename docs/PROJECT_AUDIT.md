@@ -710,3 +710,8 @@ resources, row-count inspection, offline startup, and cleanup all passed.
 Production resources and real Telegram/MAX adapters were not used.
 
 Stage 0: completed and verified in hosted CI and hosted backup restore drill.
+
+## Bot audit index
+
+The current Telegram/MAX implementation audit starts at
+[`docs/bots/BOT_AUDIT_SUMMARY.md`](bots/BOT_AUDIT_SUMMARY.md).
