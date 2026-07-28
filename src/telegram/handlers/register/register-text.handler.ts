@@ -7,30 +7,36 @@ import { TextHandler } from "../interfaces/text-handler.interface";
 import { UserContextService } from "src/userContext/user-context.service";
 import { RegistrationsService } from "src/registrations/registrations.service";
 import { mainMenuButton } from "src/telegram/keyboards/return-to-main-menu.keyboard";
+import { ClientWorkflowService } from "src/client/client-workflow.service";
 
 @Injectable()
 export class RegisterTextHandler implements TextHandler {
     constructor(
         private readonly regService: RegistrationsService,
         private readonly ctxService: UserContextService,
+        private readonly clientWorkflow: ClientWorkflowService,
     ) { }
 
     async handle(ctx: Context, msgText: string) {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let reg = await this.regService.getNotFilledReg(chatId)
         let nextFieldText;
         switch (msgText) {
             case TG_TEXTS.START_REG_TEXT:
-                if (reg) {
-                    await ctx.reply('Найдена незаполненная заявка', removeKeyboard())
-                } else {
-                    reg = await this.regService.createRegistration(chatId)
-                    await ctx.reply('Заявка создана', removeKeyboard())
-                }
+                const startResult = await this.clientWorkflow.startRegistration({
+                    chatId,
+                    platform: 'telegram',
+                    name: ctx.from?.first_name,
+                    username: ctx.from?.username,
+                });
 
-                nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
+                await ctx.reply(startResult.status === 'started'
+                    ? 'Заявка создана'
+                    : 'Найдена незаполненная заявка',
+                    removeKeyboard()
+                )
+                nextFieldText = startResult.nextField
                 if (!nextFieldText) {
                     ctx.reply('Анкета заполнена, в ближайшее время оператор с вами свяжется')
                     return
@@ -48,23 +54,25 @@ export class RegisterTextHandler implements TextHandler {
 
                 break;
             default:
-                reg = await this.regService.saveFieldValue(chatId, msgText)
-                if (!reg) {
+                const answerResult = await this.clientWorkflow.submitRegistrationAnswer({
+                    chatId,
+                    platform: 'telegram',
+                    name: ctx.from?.first_name,
+                    username: ctx.from?.username,
+                }, msgText);
+                if (answerResult.status === 'not_found') {
                     await ctx.reply('Вы не подтвердили согласие с обработкой персональных данных, заявка на регистрацию не была создана. \n\nДля продолжения нажмите на одну из кнопок внизу экрана.')
                     return
                 }
 
-                nextFieldText = await this.regService.getFieldTextByStep(reg.currentStep)
+                nextFieldText = answerResult.nextField
 
                 if (!nextFieldText) {
-                    const filePath = await this.regService.finishReg(reg);
-
                     await ctx.reply(
                         TG_TEXTS.REG_FILLED, {
                         parse_mode: 'HTML', ...mainMenuButton()
                     });
 
-                    await this.regService.notifyAdminsAboutNewReg(reg, filePath)
                     await this.ctxService.set(chatId, { mode: 'IDLE' })
                     return
                 }

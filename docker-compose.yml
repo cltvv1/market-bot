@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16
     container_name: vitma_postgres
     restart: always
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: pass
-      POSTGRES_DB: db
+      POSTGRES_USER: ${DB_USER:-user}
+      POSTGRES_PASSWORD: ${DB_PASS:-pass}
+      POSTGRES_DB: ${DB_NAME:-db}
     ports:
-      - '5432:5432'
+      - '${DB_PORT:-5432}:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:

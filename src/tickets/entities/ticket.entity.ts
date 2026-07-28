@@ -1,4 +1,5 @@
 import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import type { UserPlatform } from 'src/users/entities/user.entity';
 
 @Entity('tickets')
 export class TicketEntity {
@@ -7,6 +8,15 @@ export class TicketEntity {
 
     @Column()
     userChatId: string;
+
+    @Column({ type: 'varchar', default: 'telegram' })
+    platform: UserPlatform;
+
+    @Column({ nullable: true })
+    userId: number;
+
+    @Column({ nullable: true })
+    organizationId: number;
 
     @Column({ nullable: true })
     username: string;

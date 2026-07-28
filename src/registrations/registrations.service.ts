@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,9 +9,10 @@ import { RegistrationFieldEntity } from './entities/registration-field.entity';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { UsersService } from 'src/users/users.service';
 import { formatRegistrationDone, formatRegistrationRequest } from 'src/common/utils';
-import { regDoneButton } from 'src/telegram/keyboards/reg-done.keyboard';
-import { TelegramSenderService } from 'src/telegramSender/telegram-sender.service';
 import { RegistrationField } from './registration.types';
+import { FilesService } from 'src/files/files.service';
+import { UserPlatform } from 'src/users/entities/user.entity';
+import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 @Injectable()
 export class RegistrationsService {
     constructor(
@@ -22,15 +24,16 @@ export class RegistrationsService {
 
         private readonly pdfService: PdfGeneratorService,
         private usersService: UsersService,
-        private telegramSenderService: TelegramSenderService
+        private readonly adminNotificationsService: AdminNotificationsService,
+        private readonly filesService?: FilesService,
     ) { }
 
     async getAllRegs() {
         return this.registrationRepo.find({ order: { id: 'ASC' } })
     }
 
-    async getNotFilledReg(chatId: string) {
-        let reg = await this.registrationRepo.findOne({ where: { chatId, isFilled: false } });
+    async getNotFilledReg(chatId: string, platform: UserPlatform = 'telegram') {
+        let reg = await this.registrationRepo.findOne({ where: { chatId, platform, isFilled: false } });
 
         return reg;
     }
@@ -41,9 +44,12 @@ export class RegistrationsService {
         return reg;
     }
 
-    async createRegistration(chatId: string) {
+    async createRegistration(chatId: string, platform: UserPlatform = 'telegram', userId?: number, organizationId?: number) {
         const reg = this.registrationRepo.create({
             chatId,
+            platform,
+            userId,
+            organizationId,
             currentStep: 2,
             isFilled: false,
         });
@@ -58,12 +64,13 @@ export class RegistrationsService {
         });
     }
 
-    async saveFieldValue(chatId: string, value: string) {
-        const reg = await this.getNotFilledReg(chatId);
+    async saveFieldValue(chatId: string, value: string, platform: UserPlatform = 'telegram') {
+        const reg = await this.getNotFilledReg(chatId, platform);
         if (!reg) return null;
 
         const field = await this.getFieldNameByStep(reg.currentStep);
         if (!field) return reg;
+        if (field === 'equipmentPhoto') return reg;
 
         reg[field] = value;
         reg.currentStep++;
@@ -72,9 +79,57 @@ export class RegistrationsService {
         return reg;
     }
 
+    async saveEquipmentPhoto(chatId: string, input: { buffer: Buffer; fileName?: string }, platform: UserPlatform = 'telegram') {
+        const reg = await this.getNotFilledReg(chatId, platform);
+        if (!reg) return null;
+
+        const field = await this.getFieldNameByStep(reg.currentStep);
+        if (field !== 'equipmentPhoto') return reg;
+
+        if (!this.filesService) {
+            throw new Error('File storage is unavailable');
+        }
+        const storedFile = await this.filesService.saveBuffer({
+            purpose: 'registration-photo',
+            buffer: input.buffer,
+            originalName: input.fileName,
+            mimeType: this.imageMime(input.fileName),
+            createdByCustomerId: reg.userId ?? undefined,
+            metadata: { registrationId: reg.id },
+        });
+
+        reg.equipmentPhotoPath = null;
+        reg.equipmentPhotoName = storedFile.originalName;
+        reg.equipmentPhotoFileId = storedFile.id;
+        reg.currentStep++;
+        await this.registrationRepo.save(reg);
+        return reg;
+    }
+
+    async fillRegistration(chatId: string, values: Partial<Record<RegistrationField, string>>, platform: UserPlatform = 'telegram') {
+        const reg = await this.getNotFilledReg(chatId, platform);
+        if (!reg) return null;
+
+        for (const [field, value] of Object.entries(values)) {
+            if (!this.isRegistrationField(field)) continue;
+            if (field === 'equipmentPhoto') continue;
+            const trimmed = value?.trim();
+            if (trimmed) {
+                reg[field] = trimmed;
+            }
+        }
+
+        const fields = await this.getAllFields();
+        reg.currentStep = Math.max(...fields.map((field) => field.step), 1) + 1;
+
+        await this.registrationRepo.save(reg);
+        return reg;
+    }
+
     async isCompleted(reg: RegistrationRequestEntity) {
         const fields = await this.getAllFields();
-        return reg.currentStep > fields.length;
+        const lastStep = Math.max(...fields.map((field) => field.step), 1);
+        return reg.currentStep > lastStep;
     }
 
     async getFieldTextByStep(step: number) {
@@ -102,72 +157,41 @@ export class RegistrationsService {
     }
 
     async finishReg(reg: RegistrationRequestEntity) {
-        reg.isFilled = true;
-        await this.registrationRepo.save(reg);
-
         const fields = await this.fieldsRepo.find();
         const pdfPath = await this.pdfService.generateRegistrationPdf(reg, fields);
+        const storedPdf = this.filesService && fs.existsSync(pdfPath)
+            ? await this.filesService.saveBuffer({
+                purpose: 'generated-pdf',
+                buffer: await fs.promises.readFile(pdfPath),
+                originalName: `registration_${reg.id}.pdf`,
+                mimeType: 'application/pdf',
+                serverGenerated: true,
+                metadata: { registrationId: reg.id },
+            })
+            : null;
 
         reg.pdfPath = pdfPath;
+        reg.pdfFileId = storedPdf?.id ?? null;
+        reg.isFilled = true;
         await this.registrationRepo.save(reg);
 
         return pdfPath
     }
 
     async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, filePath: string) {
-        const admins = await this.usersService.getAdmins();
-        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId)
-        if (!admins.length) return;
-
+        const regAuthor = await this.usersService.getOrCreateOrUpdate(reg.chatId, undefined, undefined, reg.platform)
         const message = formatRegistrationRequest(reg, regAuthor);
 
-        await Promise.all(
-            admins.map(async (admin) => {
-                try {
-                    await this.telegramSenderService.sendMessage(
-                        admin.chatId,
-                        message,
-                        regDoneButton(reg.id),
-                    );
-
-                    await this.telegramSenderService.sendDocument(
-                        admin.chatId,
-                        {
-                            source: fs.createReadStream(filePath),
-                            filename: `${reg.orgName}.pdf`,
-                        },
-                    );
-                } catch (e) {
-                    console.error(
-                        `Failed to notify admin ${admin.chatId}:`,
-                        e,
-                    );
-                }
-            })
-        );
+        await this.adminNotificationsService.notify('registrations', message);
+        await this.adminNotificationsService.notifyDocument('registrations', {
+            sourceFactory: () => fs.createReadStream(filePath),
+            filename: `${reg.orgName}.pdf`,
+        });
     }
 
     async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
-        const admins = await this.usersService.getAdmins();
-        if (!admins.length) return;
-
         const message = formatRegistrationDone(reg);
-
-        await Promise.all(
-            admins.map(async (admin) => {
-                try {
-                    await this.telegramSenderService.sendMessage(
-                        admin.chatId,
-                        message,
-                    );
-                } catch (e) {
-                    console.error(
-                        `Failed to notify admin ${admin.chatId}`,
-                        e,
-                    );
-                }
-            }),
-        );
+        await this.adminNotificationsService.notify('registrations', message);
     }
 
     async doReg(reg: RegistrationRequestEntity) {
@@ -195,6 +219,14 @@ export class RegistrationsService {
             'kktModel',
             'bankReqs',
             'ofd',
+            'equipmentPhoto',
         ].includes(value);
+    }
+
+    private imageMime(fileName?: string) {
+        const extension = path.extname(fileName || '').toLowerCase();
+        if (extension === '.png') return 'image/png';
+        if (extension === '.webp') return 'image/webp';
+        return 'image/jpeg';
     }
 }

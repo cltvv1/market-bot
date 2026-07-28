@@ -1,18 +1,16 @@
 import * as fs from 'fs';
-import { Context } from 'telegraf';
+import { Context, Markup } from 'telegraf';
 import { removeKeyboard } from 'telegraf/markup';
 import { TG_TEXTS } from 'src/texts/telegram.texts';
 import { UsersService } from 'src/users/users.service';
-import { adminButtons } from './keyboards/admin.keyboard';
 import { TicketsService } from 'src/tickets/tickets.service';
 import { creditsButtons } from './keyboards/credits.keyboard';
 import { serviceButtons } from './keyboards/service.keyboard';
-import { bidDoneButton } from './keyboards/bid-done.keyboards';
 import { startRegButtons } from './keyboards/start-reg.keyboard';
 import { menuButtons } from "src/telegram/keyboards/menu.keyboard";
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
 import { actualRegsButtons } from './keyboards/actual-regs.keyboard';
-import { UserContextService } from 'src/UserContext/user-context.service';
+import { UserContextService } from 'src/userContext/user-context.service';
 import { Start, On, Ctx, Message, Update, Action } from 'nestjs-telegraf';
 import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { actualTicketsButtons } from './keyboards/actual-tickets.keyboard';
@@ -22,9 +20,11 @@ import { disconnectFromButton } from "src/telegram/keyboards/disconnect.keyboard
 import { mainMenuButton } from "src/telegram/keyboards/return-to-main-menu.keyboard";
 import { RegisterTextHandler } from "src/telegram/handlers/register/register-text.handler";
 import { formatRegistrationRequest, formatTicket, wantToRegisterMsg } from 'src/common/utils';
-import { BidTextHandler } from './handlers/bid/bid-text.handler';
-import { BidService } from 'src/bids/bids.service';
-import { BidType } from 'src/bids/bid.types';
+import { ClientWorkflowService } from 'src/client/client-workflow.service';
+import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import type { TicketMediaInput } from 'src/tickets/tickets.service';
+import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
+import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 
 
 @Update()
@@ -34,13 +34,23 @@ export class TelegramUpdate {
         private readonly ctxService: UserContextService,
         private readonly ticketService: TicketsService,
         private readonly usersService: UsersService,
-        private readonly bidService: BidService,
+        private readonly clientWorkflow: ClientWorkflowService,
+        private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly adminNotificationsService: AdminNotificationsService,
         private readonly registerHandler: RegisterTextHandler,
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
-        private readonly bidHandler: BidTextHandler,
     ) { }
+
+    private toClientIdentity(ctx: Context) {
+        return {
+            chatId: String(ctx.chat?.id),
+            platform: 'telegram' as const,
+            name: ctx.from?.first_name,
+            username: ctx.from?.username,
+        };
+    }
 
     private async handleTextByMode(
         ctx: Context,
@@ -57,8 +67,11 @@ export class TelegramUpdate {
             case 'TICKET':
                 return this.ticketHandler.handle(ctx, text);
 
-            case 'BID':
-                return this.bidHandler.handle(ctx, text);
+            case 'SERVICE_REQUEST':
+                return this.handleServiceRequestText(ctx, text);
+
+            case 'ATOL_CONSENT':
+                return this.handleAtolConsentText(ctx, text);
 
             case 'OPERATOR':
                 return this.operatorHandler.handle(ctx);
@@ -70,6 +83,55 @@ export class TelegramUpdate {
         mode: string,
         chatId: string,
     ) {
+        const media = await this.extractTelegramMedia(ctx);
+        if (!media) return;
+
+        if (mode === 'TICKET') {
+            await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
+            await ctx.reply('Вложение принято, оператор ответит в ближайшее время.', mainMenuButton());
+            return;
+        }
+
+        if (mode === 'REGISTER') {
+            const result = await this.clientWorkflow.submitRegistrationPhoto(this.toClientIdentity(ctx), {
+                buffer: await this.downloadMediaBuffer(media),
+                fileName: media.fileName || `${media.messageType}.jpg`,
+            });
+            if (result.status === 'completed') {
+                await ctx.reply(TG_TEXTS.REG_FILLED, { parse_mode: 'HTML', ...mainMenuButton() });
+                await this.ctxService.set(chatId, { mode: 'IDLE' });
+                return;
+            }
+            await ctx.reply(result.nextField ? `${result.nextField}:` : 'Фото принято.');
+            return;
+        }
+
+        if (mode === 'ATOL_CONSENT') {
+            const result = await this.clientWorkflow.submitAtolConsentSignedFile(this.toClientIdentity(ctx), {
+                buffer: await this.downloadMediaBuffer(media),
+                fileName: media.fileName || `${media.messageType}.jpg`,
+            });
+            if (result.status === 'not_found') {
+                await ctx.reply('Сначала сформируйте согласие через меню сервиса.', mainMenuButton());
+                await this.ctxService.set(chatId, { mode: 'IDLE' });
+                return;
+            }
+
+            await ctx.reply('Спасибо, подписанное согласие получено. Оператор проверит документ и продолжит работу.', mainMenuButton());
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
+            return;
+        }
+
+        if (mode === 'IDLE') {
+            const activeTicket = await this.ticketService.getActiveTicket(chatId);
+            if (activeTicket?.text) {
+                await this.clientWorkflow.submitTicketMedia(this.toClientIdentity(ctx), media);
+                await ctx.reply('Вложение добавлено к вашему открытому вопросу.');
+                return;
+            }
+        }
+
         if (mode !== 'OPERATOR') return;
 
         const talkingToId = await this.usersService.getTalkingTo(chatId);
@@ -79,6 +141,94 @@ export class TelegramUpdate {
             talkingToId,
             disconnectFromButton(chatId),
         );
+
+        const activeTicket = await this.ticketService.getActiveTicket(talkingToId);
+        if (activeTicket) {
+            await this.ticketService.addMediaMessage(activeTicket.id, 'operator', media, chatId, 'bot');
+        }
+    }
+
+    private async extractTelegramMedia(ctx: Context): Promise<TicketMediaInput | null> {
+        const message = ctx.message as any;
+        if (!message) return null;
+
+        const withUrl = async (media: TicketMediaInput) => {
+            if (!media.fileId) return media;
+            try {
+                media.externalUrl = String(await ctx.telegram.getFileLink(media.fileId));
+            } catch {
+                // Telegram file links are helpful for the web admin, but the bot can still work without them.
+            }
+            return media;
+        };
+
+        if (message.photo?.length) {
+            const photo = message.photo[message.photo.length - 1];
+            return withUrl({
+                messageType: 'image',
+                text: message.caption,
+                fileId: photo.file_id,
+                fileUniqueId: photo.file_unique_id,
+                fileSize: photo.file_size,
+            });
+        }
+
+        if (message.video) {
+            return withUrl({
+                messageType: 'video',
+                text: message.caption,
+                fileId: message.video.file_id,
+                fileUniqueId: message.video.file_unique_id,
+                fileName: message.video.file_name,
+                mimeType: message.video.mime_type,
+                fileSize: message.video.file_size,
+            });
+        }
+
+        if (message.voice) {
+            return withUrl({
+                messageType: 'voice',
+                fileId: message.voice.file_id,
+                fileUniqueId: message.voice.file_unique_id,
+                mimeType: message.voice.mime_type,
+                fileSize: message.voice.file_size,
+            });
+        }
+
+        if (message.audio) {
+            return withUrl({
+                messageType: 'audio',
+                text: message.caption,
+                fileId: message.audio.file_id,
+                fileUniqueId: message.audio.file_unique_id,
+                fileName: message.audio.file_name,
+                mimeType: message.audio.mime_type,
+                fileSize: message.audio.file_size,
+            });
+        }
+
+        if (message.video_note) {
+            return withUrl({
+                messageType: 'video_note',
+                fileId: message.video_note.file_id,
+                fileUniqueId: message.video_note.file_unique_id,
+                fileSize: message.video_note.file_size,
+            });
+        }
+
+        if (message.document) {
+            return withUrl({
+                messageType: 'document',
+                text: message.caption,
+                fileId: message.document.file_id,
+                fileUniqueId: message.document.file_unique_id,
+                fileName: message.document.file_name,
+                mimeType: message.document.mime_type,
+                fileSize: message.document.file_size,
+            });
+        }
+
+        return null;
     }
 
     @Start()
@@ -86,23 +236,11 @@ export class TelegramUpdate {
         const chatId = ctx.chat?.id;
         if (!chatId) return;
 
-        const user = await this.usersService.getOrCreateOrUpdate(
-            String(chatId),
-            ctx.from?.first_name,
-            ctx.from?.username,
+        await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
+        await ctx.reply(
+            'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
+            menuButtons(),
         );
-
-        if (user.isAdmin) {
-            await ctx.reply(
-                'Админское меню:',
-                adminButtons(),
-            );
-        } else {
-            await ctx.reply(
-                'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
-                menuButtons(),
-            );
-        }
 
         if (ctx.message?.message_id) {
             await ctx.deleteMessage(ctx.message.message_id).catch(() => { });
@@ -201,30 +339,6 @@ export class TelegramUpdate {
         await ctx.deleteMessage(ctx.message?.message_id)
         await this.regService.notifyAdminsAboutRegDone(reg)
     }
-
-    @Action(/bidDone:\d+/)
-    async onBidDone(@Ctx() ctx: Context) {
-        const query = ctx.callbackQuery;
-
-        if (!query || !('data' in query)) {
-            return;
-        }
-
-        const data = query.data;
-
-        const [, bidId] = data.split(':');
-
-        const bid = await this.bidService.getBidById(bidId)
-
-        if (!bid) {
-            await ctx.reply('Эта заявка уже обработана!')
-            return
-        }
-        await this.bidService.doBid(bid)
-        await ctx.deleteMessage(ctx.message?.message_id)
-        await this.bidService.notifyAdminsAboutBidDone(bid)
-    }
-
     @Action('actualTickets')
     async handleActualTickets(@Ctx() ctx: Context) {
         const actualTickets = await this.ticketService.getActualTickets();
@@ -259,21 +373,9 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let ticket = await this.ticketService.getActiveTicket(chatId)
+        const result = await this.clientWorkflow.openTicket(this.toClientIdentity(ctx));
 
-        if (!ticket) {
-            await this.ticketService.createTicket(chatId,
-                ctx.from?.username,
-                ctx.from?.first_name
-            )
-
-            await this.ctxService.set(chatId, { mode: 'TICKET' })
-
-            await ctx.editMessageText('Введите текст вопроса:')
-            return
-        }
-
-        if (ticket.text) {
+        if (result.status === 'already_open') {
             ctx.editMessageText('У вас уже есть вопрос в работе, ожидайте, когда оператор подключится к чату с вами.', mainMenuButton())
             return
         }
@@ -293,29 +395,84 @@ export class TelegramUpdate {
         await ctx.editMessageText(TG_TEXTS.SERVICE_TEXT, serviceButtons());
     }
 
+    @Action('fnReplacement')
+    async onFnReplacement(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const result = await this.serviceRequestsService.start(this.toClientIdentity(ctx), 'fn_replacement');
+        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id });
+        await ctx.reply('Начинаем заявку на замену фискального накопителя.');
+        await this.replyServiceRequestStep(ctx, result);
+    }
+
+    @Action('atolConsent')
+    async onAtolConsent(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const result = await this.clientWorkflow.startAtolConsent(this.toClientIdentity(ctx));
+        await this.ctxService.set(chatId, { mode: 'ATOL_CONSENT' });
+
+        await ctx.reply(result.status === 'started'
+            ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.'
+            : 'Нашел незаполненное согласие. Продолжим с места остановки.');
+
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
+            return;
+        }
+
+        await ctx.reply('Согласие уже сформировано. Отправьте фото или скан подписанного документа.');
+    }
+
+    @Action('cancelAtolConsent')
+    async onCancelAtolConsent(@Ctx() ctx: Context) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        await ctx.answerCbQuery('Подача согласия отменена');
+        await this.clientWorkflow.cancelAtolConsent(this.toClientIdentity(ctx));
+        await this.ctxService.set(chatId, { mode: 'IDLE' });
+        await ctx.reply('Подача согласия на доступ АТОЛ отменена. Черновик удален.');
+        await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons());
+    }
+
+    @Action(/^serviceRequestAnswer:\d+:.+/)
+    async onServiceRequestButtonAnswer(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+        if (!query || !('data' in query)) return;
+
+        const [, requestId, value] = query.data.split(':');
+        await ctx.answerCbQuery();
+        const result = await this.serviceRequestsService.answer(this.toClientIdentity(ctx), Number(requestId), value);
+        await this.ctxService.set(String(ctx.chat?.id), { mode: 'SERVICE_REQUEST', serviceRequestId: result.request.id });
+        await this.replyServiceRequestStep(ctx, result);
+    }
+
+    @Action(/^serviceRequestConfirm:\d+/)
+    async onServiceRequestConfirm(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+        if (!query || !('data' in query)) return;
+
+        const [, requestId] = query.data.split(':');
+        await ctx.answerCbQuery();
+        const result = await this.serviceRequestsService.confirmPrice(this.toClientIdentity(ctx), Number(requestId));
+        await this.ctxService.set(String(ctx.chat?.id), { mode: 'IDLE', serviceRequestId: null });
+        await ctx.reply(`Заявка #${result.request.id} отправлена оператору. Оператор подготовит счет и пришлет его вам.`, mainMenuButton());
+    }
+
     @Action('mainMenu')
     async returnToMainMenu(ctx: Context) {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        const user = await this.usersService.getOrCreateOrUpdate(
-            chatId,
-            ctx.from?.first_name,
-            ctx.from?.username
-        );
+        await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
         try {
             await ctx.deleteMessage(ctx.message?.message_id)
         } catch {
             return
         } finally {
-            if (user.isAdmin) {
-                await ctx.reply(
-                    'Админское меню:',
-                    adminButtons()
-                );
-                return
-            }
-
             await ctx.reply('Я чат-бот компании ВитмаМаркет, чем могу вам помочь?', menuButtons())
         }
     }
@@ -403,42 +560,129 @@ export class TelegramUpdate {
         await ctx.telegram.sendMessage(operatorChatId, 'Вы отключились от чата с клиентом.')
     }
 
-    @Action(/^bid:.+/)
-    async onBid(@Ctx() ctx: Context) {
+    @Action(/^serviceRequestSimple:.+/)
+    async onSimpleServiceRequest(@Ctx() ctx: Context) {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let bid = await this.bidService.getNotFilledBid(chatId);
+        const query = ctx.callbackQuery;
 
-        await this.ctxService.set(chatId, { mode: 'BID' })
-
-        if (!bid) {
-            const query = ctx.callbackQuery;
-
-            if (!query || !('data' in query)) {
-                return;
-            }
-
-            const data = query.data;
-
-            const [, rawType] = data.split(':');
-
-            if (!(rawType in BidType)) {
-                await ctx.answerCbQuery('Неизвестный тип заявки');
-                return;
-            }
-            const type = BidType[rawType as keyof typeof BidType];
-            bid = await this.bidService.createBid(chatId, type);
-        }
-
-        const fieldText = await this.bidService.getFieldTextByStep(bid.currentStep);
-
-        if (!fieldText) {
-            await this.bidService.finishBid(bid);
+        if (!query || !('data' in query)) {
             return;
         }
 
-        await ctx.reply(`${fieldText}:`);
+        const data = query.data;
+
+        const [, rawType] = data.split(':');
+
+        if (!this.isSimpleServiceRequestCode(rawType)) {
+            await ctx.answerCbQuery('Неизвестный тип заявки');
+            return;
+        }
+        const result = await this.clientWorkflow.startSimpleServiceRequest({ ...this.toClientIdentity(ctx), serviceTypeCode: rawType });
+        const request = result.data as { id?: number } | undefined;
+        await this.ctxService.set(chatId, { mode: 'SERVICE_REQUEST', serviceRequestId: request?.id })
+
+        if (!result.nextField) {
+            await this.ctxService.set(chatId, { mode: 'IDLE', serviceRequestId: null })
+            await ctx.reply('Заявка создана, ожидайте ответа оператора', mainMenuButton());
+            return;
+        }
+
+        await ctx.reply(`${result.nextField}:`);
+    }
+
+    private async handleServiceRequestText(ctx: Context, text: string) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const context = await this.ctxService.get(chatId);
+        if (!context.serviceRequestId) {
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
+            await ctx.reply('Заявка не найдена. Начните новую заявку из меню.', mainMenuButton());
+            return;
+        }
+
+        const result = await this.serviceRequestsService.answer(this.toClientIdentity(ctx), context.serviceRequestId, text);
+        await this.replyServiceRequestStep(ctx, result);
+    }
+
+    private async handleAtolConsentText(ctx: Context, text: string) {
+        const chatId = String(ctx.chat?.id);
+        if (!chatId) return;
+
+        const result = await this.clientWorkflow.submitAtolConsentAnswer(this.toClientIdentity(ctx), text);
+        if (result.status === 'not_found') {
+            await ctx.reply('Согласие не найдено. Начните оформление заново из меню сервиса.', mainMenuButton());
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
+            return;
+        }
+
+        if (result.nextField) {
+            await ctx.reply(`${result.nextField}:`);
+            return;
+        }
+
+        if (result.filePath && fs.existsSync(result.filePath)) {
+            await ctx.replyWithDocument({
+                source: fs.createReadStream(result.filePath),
+                filename: 'atol_consent.pdf',
+            });
+        }
+
+        await ctx.reply(
+            'Теперь распечатайте эту форму и подпишите ее. Для ИП достаточно подписи, для ООО желательно поставить печать при наличии. После этого отправьте сюда фото или скан подписанного согласия.',
+            Markup.inlineKeyboard([
+                [Markup.button.callback('Отменить подачу согласия', 'cancelAtolConsent')],
+            ]),
+        );
+    }
+
+    private async downloadMediaBuffer(media: TicketMediaInput) {
+        if (!media.externalUrl) {
+            throw new Error('Media URL was not resolved');
+        }
+        const response = await fetch(media.externalUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download media: ${response.status}`);
+        }
+        return Buffer.from(await response.arrayBuffer());
+    }
+
+    private async replyServiceRequestStep(ctx: Context, result: ReturnType<ServiceRequestsService['present']>) {
+        if (result.nextStep) {
+            if (result.nextStep.options?.length) {
+                await ctx.reply(
+                    `${result.nextStep.label}:`,
+                    Markup.inlineKeyboard(
+                        result.nextStep.options.map((option) =>
+                            Markup.button.callback(option.label, `serviceRequestAnswer:${result.request.id}:${option.value}`),
+                        ),
+                        { columns: 1 },
+                    ),
+                );
+                return;
+            }
+
+            await ctx.reply(`${result.nextStep.label}:`);
+            return;
+        }
+
+        if (!result.isReadyForConfirmation) {
+            await this.ctxService.set(String(ctx.chat?.id), { mode: 'IDLE', serviceRequestId: null });
+            await ctx.reply('Сервисная заявка создана. Оператор свяжется с вами в ближайшее время.', mainMenuButton());
+            return;
+        }
+
+        const priceText = result.request.calculatedPrice
+            ? `${result.request.calculatedPrice} руб.`
+            : 'стоимость уточнит оператор';
+        await ctx.reply(
+            `Стоимость замены ФН: ${priceText}\n\nЕсли все верно, подтвердите заказ счета.`,
+            Markup.inlineKeyboard([
+                Markup.button.callback('Согласен, заказать счет', `serviceRequestConfirm:${result.request.id}`),
+            ]),
+        );
     }
 
     @On('message')
@@ -452,10 +696,45 @@ export class TelegramUpdate {
         const context = await this.ctxService.get(chatId);
 
         if (msgText) {
+            if (msgText.trim().startsWith('/admin')) {
+                await this.handleAdminBindCommand(ctx, msgText);
+                return;
+            }
+
+            if (context.mode === 'IDLE') {
+                const activeTicket = await this.ticketService.getActiveTicket(chatId);
+                if (activeTicket?.text) {
+                    await this.clientWorkflow.submitTicketMessage(this.toClientIdentity(ctx), msgText);
+                    await ctx.reply('Сообщение добавлено к вашему открытому вопросу.');
+                    return;
+                }
+            }
+
             await this.handleTextByMode(ctx, context.mode, msgText);
             return;
         }
 
         await this.handleMedia(ctx, context.mode, String(chatId));
+    }
+
+    private async handleAdminBindCommand(ctx: Context, text: string) {
+        const chatId = String(ctx.chat?.id);
+        const code = text.trim().split(/\s+/)[1];
+        if (!chatId || !code) {
+            await ctx.reply('Введите команду с кодом из веб-админки: /admin КОД');
+            return;
+        }
+
+        const admin = await this.adminNotificationsService.linkChatByCode(code, 'telegram', chatId);
+        if (!admin) {
+            await ctx.reply('Код не найден или уже истек. Сгенерируйте новый код в веб-админке.');
+            return;
+        }
+
+        await ctx.reply(`Готово. Telegram-уведомления подключены для ${admin.displayName}.`);
+    }
+
+    private isSimpleServiceRequestCode(value: string): value is SimpleServiceRequestCode {
+        return value === 'firmware_update' || value === 'kkt_remote_work';
     }
 }

@@ -7,10 +7,12 @@ import { RegistrationFieldEntity } from './entities/registration-field.entity';
 
 import { PdfModule } from 'src/pdf/pdf.module';
 import { UsersModule } from 'src/users/users.module';
-import { TelegramSenderModule } from 'src/telegramSender/telegram-sender.module';
+import { MessengerModule } from 'src/messenger/messenger.module';
+import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([RegistrationRequestEntity, RegistrationFieldEntity]), PdfModule, UsersModule, TelegramSenderModule],
+    imports: [TypeOrmModule.forFeature([RegistrationRequestEntity, RegistrationFieldEntity]), PdfModule, UsersModule, MessengerModule, AdminNotificationsModule, FilesModule],
     providers: [RegistrationsService],
     exports: [RegistrationsService],
 })

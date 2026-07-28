@@ -1,5 +1,3 @@
-import { bidTypeToText } from "src/bids/bid.types";
-import { BidEntity } from "src/bids/entities/bid.entity";
 import { UserEntity } from "src/users/entities/user.entity";
 
 export const wantToRegisterMsg = (fields) =>
@@ -52,15 +50,5 @@ export const formatRegistrationRequest = (reg, user: UserEntity) =>
     `Банковские реквизиты:\n` +
     `${reg.bankReqs ?? 'не указаны'}\n\n`
 
-export const formatBid = (bid: BidEntity, user: UserEntity) =>
-    `Заявка на ${bidTypeToText(bid.type)} #${bid.id}\n\n` +
-    `• От: ${user.name ?? 'имя не указано'}(@${user.username ?? 'Нет тэга'})\n\n` +
-    `• Создана: ${bid.createdAt.toLocaleDateString()}\n\n` +
-
-    `Данные по заявке:\n` +
-    `• Описание проблемы: ${bid.problemDescription ?? 'не указано'}\n` +
-    `• Контакт для связи: ${bid.contactForCall ?? 'не указано'}\n`
-
 export const formatRegistrationDone = (reg) => `Заявка на регистрацию #${reg.id} от ${reg.orgName ?? 'не указано'} обработана\n\n`
 
-export const formatBidDone = (bid) => `Заявка на ${bidTypeToText(bid.type)} #${bid.id} обработана\n\n`

@@ -2,33 +2,45 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
-import { UserEntity } from './entities/user.entity';
+import { UserEntity, UserPlatform } from './entities/user.entity';
+import { UserChannelEntity } from './entities/user-channel.entity';
 
 @Injectable()
 export class UsersService {
     constructor(
         @InjectRepository(UserEntity)
         private readonly usersRepo: Repository<UserEntity>,
+        @InjectRepository(UserChannelEntity)
+        private readonly channelsRepo: Repository<UserChannelEntity>,
     ) { }
 
-    async getOrCreateOrUpdate(chatId: string, name?: string, username?: string) {
-        let user = await this.usersRepo.findOne({ where: { chatId } });
+    async getOrCreateOrUpdate(
+        chatId: string,
+        name?: string,
+        username?: string,
+        platform: UserPlatform = 'telegram',
+    ) {
+        let user = await this.usersRepo.findOne({ where: { chatId, platform } });
 
         const now = new Date();
 
         if (!user) {
             user = this.usersRepo.create({
                 chatId,
+                platform,
                 name,
                 username,
                 firstSeenAt: now,
-
             });
             await this.usersRepo.save(user);
         }
 
-        // 🔄 обновление данных существующего пользователя
         let needUpdate = false;
+
+        if (user.platform !== platform) {
+            user.platform = platform;
+            needUpdate = true;
+        }
 
         if (name && user.name !== name) {
             user.name = name;
@@ -47,68 +59,136 @@ export class UsersService {
             await this.usersRepo.save(user);
         }
 
+        await this.upsertChannel(user, chatId, platform, name, username, now);
+
         return user;
     }
 
-    async getByChatId(chatId: string) {
-        return this.usersRepo.findOne({ where: { chatId } });
-    }
-
-    async isAdmin(chatId: string) {
-        const user = await this.getByChatId(chatId);
-        return user?.isAdmin === true;
-    }
-
-    async isOperator(chatId: string) {
-        const user = await this.getByChatId(chatId);
-        return user?.isOperator === true;
-    }
-
-    async update(chatId: string, partial: Partial<UserEntity>) {
-        await this.usersRepo.update({ chatId }, partial);
-        return this.getByChatId(chatId);
-    }
-
-    async setTalkingTo(operatorChatId: string, clientChatId: string) {
-        await this.usersRepo.update({ chatId: operatorChatId }, { talkingTo: clientChatId });
-        await this.usersRepo.update({ chatId: clientChatId }, { talkingTo: operatorChatId });
-    }
-
-
-    async getTalkingTo(operatorId: string) {
-        const user = await this.getByChatId(operatorId);
-        return user?.talkingTo || null;
-    }
-
-    async findOperatorByClient(clientId: string) {
-        return this.usersRepo.findOne({
-            where: { talkingTo: clientId },
+    async getChannel(externalId: string, platform: UserPlatform = 'telegram') {
+        return this.channelsRepo.findOne({
+            where: { externalId, platform },
+            relations: { user: true },
         });
     }
 
-    async startDialog(operatorId: string, clientId: string) {
-        await this.setTalkingTo(operatorId, clientId);
+    async getUserIdByChannel(externalId: string, platform: UserPlatform = 'telegram') {
+        const channel = await this.getChannel(externalId, platform);
+        return channel?.userId ?? null;
     }
 
-    async stopDialog(operatorId: string, clientId: string) {
-        await this.usersRepo.update({ chatId: operatorId }, { talkingTo: null });
-        await this.usersRepo.update({ chatId: clientId }, { talkingTo: null });
+    async getByChatId(chatId: string, platform: UserPlatform = 'telegram') {
+        return this.usersRepo.findOne({ where: { chatId, platform } });
     }
 
-    async getOperators() {
-        return this.usersRepo.find({ where: { isOperator: true } });
+    async isAdmin(chatId: string, platform: UserPlatform = 'telegram') {
+        const user = await this.getByChatId(chatId, platform);
+        return user?.isAdmin === true;
     }
 
-    async getAdmins() {
-        return this.usersRepo.find({ where: { isAdmin: true } });
+    async isOperator(chatId: string, platform: UserPlatform = 'telegram') {
+        const user = await this.getByChatId(chatId, platform);
+        return user?.isOperator === true;
     }
 
-    async isAlreadyTalking(chatId: string) {
-        return !!(await this.getByChatId(chatId))?.talkingTo;
+    async update(chatId: string, partial: Partial<UserEntity>, platform: UserPlatform = 'telegram') {
+        await this.usersRepo.update({ chatId, platform }, partial);
+        return this.getByChatId(chatId, platform);
     }
 
-    async isTalking(initChatId: string, talkingToChatId: string) {
-        const user = await this.getByChatId(initChatId);
+    async setTalkingTo(operatorChatId: string, clientChatId: string, platform: UserPlatform = 'telegram') {
+        await this.usersRepo.update({ chatId: operatorChatId, platform }, { talkingTo: clientChatId });
+        await this.usersRepo.update({ chatId: clientChatId, platform }, { talkingTo: operatorChatId });
+    }
+
+    async getTalkingTo(operatorId: string, platform: UserPlatform = 'telegram') {
+        const user = await this.getByChatId(operatorId, platform);
+        return user?.talkingTo || null;
+    }
+
+    async findOperatorByClient(clientId: string, platform: UserPlatform = 'telegram') {
+        return this.usersRepo.findOne({
+            where: { talkingTo: clientId, platform },
+        });
+    }
+
+    async startDialog(operatorId: string, clientId: string, platform: UserPlatform = 'telegram') {
+        await this.setTalkingTo(operatorId, clientId, platform);
+    }
+
+    async stopDialog(operatorId: string, clientId: string, platform: UserPlatform = 'telegram') {
+        await this.usersRepo.update({ chatId: operatorId, platform }, { talkingTo: null });
+        await this.usersRepo.update({ chatId: clientId, platform }, { talkingTo: null });
+    }
+
+    async getOperators(platform?: UserPlatform) {
+        return this.usersRepo.find({
+            where: {
+                isOperator: true,
+                ...(platform ? { platform } : {}),
+            },
+        });
+    }
+
+    async getAdmins(platform?: UserPlatform) {
+        return this.usersRepo.find({
+            where: {
+                isAdmin: true,
+                ...(platform ? { platform } : {}),
+            },
+        });
+    }
+
+    async isAlreadyTalking(chatId: string, platform: UserPlatform = 'telegram') {
+        return !!(await this.getByChatId(chatId, platform))?.talkingTo;
+    }
+
+    async isTalking(initChatId: string, talkingToChatId: string, platform: UserPlatform = 'telegram') {
+        const user = await this.getByChatId(initChatId, platform);
         return user?.talkingTo === talkingToChatId;
+    }
+
+    private async upsertChannel(
+        user: UserEntity,
+        externalId: string,
+        platform: UserPlatform,
+        displayName?: string,
+        username?: string,
+        now = new Date(),
+    ) {
+        let channel = await this.channelsRepo.findOne({ where: { externalId, platform } });
+
+        if (!channel) {
+            channel = this.channelsRepo.create({
+                userId: user.id,
+                externalId,
+                platform,
+                displayName,
+                username,
+                lastSeenAt: now,
+            });
+            return this.channelsRepo.save(channel);
+        }
+
+        let needUpdate = false;
+
+        if (channel.userId !== user.id) {
+            channel.userId = user.id;
+            needUpdate = true;
+        }
+
+        if (displayName && channel.displayName !== displayName) {
+            channel.displayName = displayName;
+            needUpdate = true;
+        }
+
+        if (username && channel.username !== username) {
+            channel.username = username;
+            needUpdate = true;
+        }
+
+        channel.lastSeenAt = now;
+        needUpdate = true;
+
+        return needUpdate ? this.channelsRepo.save(channel) : channel;
     }
 }

@@ -1,0 +1,406 @@
+{
+  "generatedFrom": "reviewed E0-13 legacy baseline",
+  "errors": 2634,
+  "warnings": 21,
+  "files": {
+    "admin-ui/src/App.tsx": {
+      "error:prettier/prettier": 270,
+      "error:@typescript-eslint/no-misused-promises": 28,
+      "error:@typescript-eslint/no-unused-vars": 1,
+      "warning:@typescript-eslint/no-floating-promises": 5,
+      "error:@typescript-eslint/no-base-to-string": 1,
+      "error:@typescript-eslint/no-unsafe-assignment": 11,
+      "error:@typescript-eslint/no-unsafe-member-access": 22,
+      "warning:@typescript-eslint/no-unsafe-argument": 1
+    },
+    "admin-ui/src/api.ts": {
+      "error:prettier/prettier": 39
+    },
+    "admin-ui/src/format.ts": {
+      "error:prettier/prettier": 13,
+      "error:@typescript-eslint/no-base-to-string": 1
+    },
+    "admin-ui/src/main.tsx": {
+      "error:prettier/prettier": 3
+    },
+    "admin-ui/src/types.ts": {
+      "error:prettier/prettier": 93
+    },
+    "admin-ui/vite.config.ts": {
+      "error:prettier/prettier": 22
+    },
+    "src/admin/admin-auth.guard.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/admin/admin-auth.service.ts": {
+      "error:prettier/prettier": 9
+    },
+    "src/admin/admin-notifications.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/admin/admin-notifications.service.ts": {
+      "error:prettier/prettier": 41
+    },
+    "src/admin/admin.controller.ts": {
+      "error:prettier/prettier": 53
+    },
+    "src/admin/admin.module.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/admin/admin.service.ts": {
+      "error:prettier/prettier": 153
+    },
+    "src/admin/entities/admin-session.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/admin/password.ts": {
+      "error:prettier/prettier": 3
+    },
+    "src/app.bootstrap.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/app.config.ts": {
+      "error:prettier/prettier": 5
+    },
+    "src/app.controller.spec.ts": {
+      "error:prettier/prettier": 10,
+      "error:@typescript-eslint/no-unused-vars": 2
+    },
+    "src/app.controller.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/app.module.ts": {
+      "error:prettier/prettier": 63
+    },
+    "src/app.service.ts": {
+      "error:prettier/prettier": 4
+    },
+    "src/assets/assets.controller.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/assets/assets.module.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/assets/assets.service.ts": {
+      "error:prettier/prettier": 23
+    },
+    "src/assets/entities/cash-register.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/assets/entities/equipment-kit.entity.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/assets/entities/fiscal-drive.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/assets/entities/ofd-subscription.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/audit/audit-sanitizer.spec.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/audit/audit-sanitizer.ts": {
+      "error:prettier/prettier": 4
+    },
+    "src/audit/audit.service.ts": {
+      "error:prettier/prettier": 23
+    },
+    "src/audit/entities/audit-event.entity.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/client/client-api.controller.ts": {
+      "error:prettier/prettier": 3
+    },
+    "src/client/client-workflow.service.ts": {
+      "error:prettier/prettier": 62,
+      "error:@typescript-eslint/no-base-to-string": 2
+    },
+    "src/client/client-workflow.types.ts": {
+      "error:prettier/prettier": 13
+    },
+    "src/client/client.module.ts": {
+      "error:prettier/prettier": 16
+    },
+    "src/common/http/api-error.filter.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/common/http/validation.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/common/utils.ts": {
+      "error:prettier/prettier": 11,
+      "error:@typescript-eslint/no-unsafe-call": 6,
+      "error:@typescript-eslint/no-unsafe-member-access": 35
+    },
+    "src/customer-activity/customer-activity.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/customer-activity/customer-activity.service.ts": {
+      "error:prettier/prettier": 14
+    },
+    "src/customer-activity/entities/customer-activity.entity.ts": {
+      "error:prettier/prettier": 5
+    },
+    "src/database/database-seed.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/database/database-seed.service.ts": {
+      "error:prettier/prettier": 8,
+      "error:@typescript-eslint/no-unsafe-assignment": 1,
+      "warning:@typescript-eslint/no-unsafe-argument": 3
+    },
+    "src/database/migrations/1785079000000-SecurityFoundation.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/database/migrations/1785085000000-FileStorageAndAudit.ts": {
+      "error:prettier/prettier": 33
+    },
+    "src/database/seed-data.ts": {
+      "error:prettier/prettier": 5
+    },
+    "src/files/entities/stored-file.entity.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/files/file-policies.spec.ts": {
+      "error:prettier/prettier": 4
+    },
+    "src/files/file-policies.ts": {
+      "error:prettier/prettier": 18
+    },
+    "src/files/file-storage.types.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/files/files.service.ts": {
+      "error:prettier/prettier": 30
+    },
+    "src/files/local-file-storage.provider.spec.ts": {
+      "error:prettier/prettier": 5
+    },
+    "src/files/local-file-storage.provider.ts": {
+      "error:prettier/prettier": 14
+    },
+    "src/health/health.controller.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/main.ts": {
+      "error:prettier/prettier": 3
+    },
+    "src/max/max.module.ts": {
+      "error:prettier/prettier": 9
+    },
+    "src/max/max.update.ts": {
+      "error:prettier/prettier": 121,
+      "error:@typescript-eslint/require-await": 1,
+      "error:@typescript-eslint/await-thenable": 30,
+      "error:@typescript-eslint/no-unsafe-member-access": 83,
+      "error:@typescript-eslint/no-unsafe-call": 48,
+      "error:@typescript-eslint/no-unsafe-assignment": 10
+    },
+    "src/messenger/max-messenger.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/messenger/max-messenger.service.ts": {
+      "error:prettier/prettier": 10,
+      "error:@typescript-eslint/no-unsafe-assignment": 2
+    },
+    "src/messenger/messenger-keyboards.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/messenger/messenger-router.service.ts": {
+      "error:prettier/prettier": 8
+    },
+    "src/messenger/messenger.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/messenger/messenger.types.ts": {
+      "error:prettier/prettier": 3
+    },
+    "src/messenger/telegram-messenger.service.ts": {
+      "error:prettier/prettier": 7
+    },
+    "src/organizations/entities/organization-member.entity.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/organizations/entities/organization.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/organizations/organizations.controller.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/organizations/organizations.module.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/organizations/organizations.service.ts": {
+      "error:prettier/prettier": 11
+    },
+    "src/pdf/pdf.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/pdf/pdf.service.ts": {
+      "error:prettier/prettier": 32,
+      "error:@typescript-eslint/no-unsafe-assignment": 5,
+      "error:@typescript-eslint/no-unsafe-call": 10,
+      "error:@typescript-eslint/no-unsafe-member-access": 9
+    },
+    "src/registrations/entities/registration.entity.ts": {
+      "error:prettier/prettier": 52
+    },
+    "src/registrations/registration.types.ts": {
+      "error:prettier/prettier": 5
+    },
+    "src/registrations/registrations.module.ts": {
+      "error:prettier/prettier": 12
+    },
+    "src/registrations/registrations.service.ts": {
+      "error:prettier/prettier": 122,
+      "error:prefer-const": 2,
+      "error:@typescript-eslint/no-unsafe-assignment": 1
+    },
+    "src/security/rate-limit.ts": {
+      "error:prettier/prettier": 5
+    },
+    "src/security/security.config.ts": {
+      "error:prettier/prettier": 2
+    },
+    "src/service-requests/entities/service-request-event.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/service-requests/entities/service-request.entity.ts": {
+      "error:prettier/prettier": 3
+    },
+    "src/service-requests/entities/service-type.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/service-requests/service-request.flows.ts": {
+      "error:prettier/prettier": 9
+    },
+    "src/service-requests/service-requests.controller.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/service-requests/service-requests.module.ts": {
+      "error:prettier/prettier": 15
+    },
+    "src/service-requests/service-requests.service.ts": {
+      "error:prettier/prettier": 145,
+      "error:@typescript-eslint/no-base-to-string": 6
+    },
+    "src/site/site.controller.ts": {
+      "error:prettier/prettier": 4
+    },
+    "src/site/site.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/site/site.page.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/telegram/handlers/idle/idle-text.handler.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/telegram/handlers/interfaces/text-handler.interface.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/telegram/handlers/operator/operator-text.handler.ts": {
+      "error:prettier/prettier": 12,
+      "error:@typescript-eslint/await-thenable": 1
+    },
+    "src/telegram/handlers/register/register-text.handler.ts": {
+      "error:prettier/prettier": 42,
+      "error:no-case-declarations": 2,
+      "warning:@typescript-eslint/no-floating-promises": 1,
+      "error:@typescript-eslint/await-thenable": 2
+    },
+    "src/telegram/handlers/ticket/ticket-text.handler.ts": {
+      "error:prettier/prettier": 19,
+      "error:@typescript-eslint/await-thenable": 2
+    },
+    "src/telegram/keyboards/actual-regs.keyboard.ts": {
+      "error:prettier/prettier": 6,
+      "error:@typescript-eslint/no-unsafe-assignment": 1,
+      "error:@typescript-eslint/no-unsafe-call": 3,
+      "error:@typescript-eslint/no-unsafe-member-access": 6,
+      "warning:@typescript-eslint/no-unsafe-argument": 1
+    },
+    "src/telegram/keyboards/actual-tickets.keyboard.ts": {
+      "error:prettier/prettier": 6,
+      "error:@typescript-eslint/no-unsafe-assignment": 1,
+      "error:@typescript-eslint/no-unsafe-call": 3,
+      "error:@typescript-eslint/no-unsafe-member-access": 6,
+      "warning:@typescript-eslint/no-unsafe-argument": 1
+    },
+    "src/telegram/keyboards/admin.keyboard.ts": {
+      "error:prettier/prettier": 8
+    },
+    "src/telegram/keyboards/credits.keyboard.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/telegram/keyboards/disconnect.keyboard.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/telegram/keyboards/menu.keyboard.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/telegram/keyboards/return-to-main-menu.keyboard.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/telegram/keyboards/service.keyboard.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/telegram/keyboards/start-reg.keyboard.ts": {
+      "error:prettier/prettier": 6
+    },
+    "src/telegram/telegram.module.ts": {
+      "error:prettier/prettier": 20
+    },
+    "src/telegram/telegram.update.ts": {
+      "error:prettier/prettier": 129,
+      "error:@typescript-eslint/await-thenable": 22,
+      "error:@typescript-eslint/no-unsafe-assignment": 31,
+      "error:@typescript-eslint/no-unsafe-member-access": 37,
+      "error:prefer-const": 2,
+      "warning:@typescript-eslint/no-floating-promises": 1,
+      "warning:@typescript-eslint/no-unsafe-argument": 8
+    },
+    "src/texts/telegram.texts.ts": {
+      "error:prettier/prettier": 4
+    },
+    "src/tickets/entities/ticket-message.entity.ts": {
+      "error:prettier/prettier": 17
+    },
+    "src/tickets/entities/ticket.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/tickets/tickets.module.ts": {
+      "error:prettier/prettier": 14
+    },
+    "src/tickets/tickets.service.ts": {
+      "error:prettier/prettier": 51
+    },
+    "src/userContext/user-context.service.ts": {
+      "error:prettier/prettier": 4
+    },
+    "src/users/entities/user-channel.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/users/entities/user.entity.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/users/users.module.ts": {
+      "error:prettier/prettier": 1
+    },
+    "src/users/users.service.ts": {
+      "error:prettier/prettier": 16
+    },
+    "src/web-session/web-session.controller.ts": {
+      "error:prettier/prettier": 2
+    },
+    "test/app.e2e-spec.ts": {
+      "error:prettier/prettier": 55
+    },
+    "test/security-foundation.integration-spec.ts": {
+      "error:prettier/prettier": 8,
+      "error:@typescript-eslint/no-unsafe-member-access": 20,
+      "error:@typescript-eslint/no-unsafe-assignment": 5,
+      "error:@typescript-eslint/no-unsafe-call": 4
+    }
+  }
+}

@@ -8,8 +8,9 @@ import { RegisterTextHandler } from './handlers/register/register-text.handler';
 import { IdleTextHandler } from './handlers/idle/idle-text.handler';
 import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
-import { BidTextHandler } from './handlers/bid/bid-text.handler';
-import { BidsModule } from 'src/bids/bids.module';
+import { ClientModule } from 'src/client/client.module';
+import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
+import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
 
 
 @Module({
@@ -17,7 +18,9 @@ import { BidsModule } from 'src/bids/bids.module';
         RegistrationsModule,
         TicketsModule,
         UsersModule,
-        BidsModule
+        ClientModule,
+        ServiceRequestsModule,
+        AdminNotificationsModule,
     ],
     providers: [TelegramUpdate,
         UserContextService,
@@ -25,7 +28,6 @@ import { BidsModule } from 'src/bids/bids.module';
         IdleTextHandler,
         TicketTextHandler,
         OperatorTextHandler,
-        BidTextHandler
     ],
 })
 export class TelegramModule { }

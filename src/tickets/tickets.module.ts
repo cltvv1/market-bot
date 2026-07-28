@@ -2,12 +2,15 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { TicketEntity } from './entities/ticket.entity';
+import { TicketMessageEntity } from './entities/ticket-message.entity';
 import { TicketsService } from './tickets.service';
 import { UsersModule } from 'src/users/users.module';
-import { TelegramSenderModule } from 'src/telegramSender/telegram-sender.module';
+import { MessengerModule } from 'src/messenger/messenger.module';
+import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([TicketEntity]), UsersModule, TelegramSenderModule],
+    imports: [TypeOrmModule.forFeature([TicketEntity, TicketMessageEntity]), UsersModule, MessengerModule, AdminNotificationsModule, FilesModule],
     providers: [TicketsService],
     exports: [TicketsService],
 })
