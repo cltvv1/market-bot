@@ -21,15 +21,10 @@ export class ClientWorkflowService {
         private readonly ticketsService: TicketsService,
         private readonly organizationsService: OrganizationsService,
         private readonly activityService: CustomerActivityService,
-    ) { }
+    ) {}
 
     async upsertClient(input: ClientIdentity) {
-        return this.usersService.getOrCreateOrUpdate(
-            input.chatId,
-            input.name,
-            input.username,
-            input.platform,
-        );
+        return this.usersService.getOrCreateOrUpdate(input.chatId, input.name, input.username, input.platform);
     }
 
     async startRegistration(input: ClientIdentity): Promise<ClientFlowResult> {
@@ -39,12 +34,7 @@ export class ClientWorkflowService {
         const status = registration ? 'continued' : 'started';
 
         if (!registration) {
-            registration = await this.registrationsService.createRegistration(
-                input.chatId,
-                input.platform,
-                user.id,
-                organizationId,
-            );
+            registration = await this.registrationsService.createRegistration(input.chatId, input.platform, user.id, organizationId);
         }
 
         const nextField = await this.registrationsService.getFieldTextByStep(registration.currentStep);
@@ -59,9 +49,7 @@ export class ClientWorkflowService {
 
         return {
             status,
-            message: status === 'started'
-                ? 'Registration request created.'
-                : 'Unfinished registration request found.',
+            message: status === 'started' ? 'Registration request created.' : 'Unfinished registration request found.',
             nextField,
             data: registration,
         };
@@ -116,12 +104,7 @@ export class ClientWorkflowService {
 
         let registration = await this.registrationsService.getNotFilledReg(input.chatId, input.platform);
         if (!registration) {
-            registration = await this.registrationsService.createRegistration(
-                input.chatId,
-                input.platform,
-                user.id,
-                organizationId,
-            );
+            registration = await this.registrationsService.createRegistration(input.chatId, input.platform, user.id, organizationId);
         }
 
         const filled = await this.registrationsService.fillRegistration(input.chatId, values, input.platform);
@@ -146,17 +129,13 @@ export class ClientWorkflowService {
         const identity = await this.resolveServiceRequestIdentity(input);
         const request = await this.serviceRequestsService.getLatestDraftForClient(identity, [input.serviceTypeCode]);
         const status = request ? 'continued' : 'started';
-        const result = request
-            ? this.serviceRequestsService.present(request)
-            : await this.serviceRequestsService.start(identity, input.serviceTypeCode);
+        const result = request ? this.serviceRequestsService.present(request) : await this.serviceRequestsService.start(identity, input.serviceTypeCode);
 
         const nextField = result.nextStep?.label;
 
         return {
             status,
-            message: status === 'started'
-                ? `Service request created: ${result.request.serviceTypeTitle}.`
-                : 'Unfinished service request found.',
+            message: status === 'started' ? `Service request created: ${result.request.serviceTypeTitle}.` : 'Unfinished service request found.',
             nextField,
             data: result.request,
         };
@@ -195,11 +174,7 @@ export class ClientWorkflowService {
 
     async submitSimpleServiceRequestAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
         const identity = await this.resolveServiceRequestIdentity(input);
-        const result = await this.serviceRequestsService.answerLatestDraft(
-            identity,
-            value,
-            ['firmware_update', 'kkt_remote_work'],
-        );
+        const result = await this.serviceRequestsService.answerLatestDraft(identity, value, ['firmware_update', 'kkt_remote_work']);
         if (!result) {
             return {
                 status: 'not_found',
@@ -217,20 +192,11 @@ export class ClientWorkflowService {
         };
     }
 
-    private async notifyAdminsAboutRegistration(
-        registration: RegistrationRequestEntity,
-        filePath: string,
-    ) {
+    private async notifyAdminsAboutRegistration(registration: RegistrationRequestEntity, filePath: string) {
         try {
-            await this.registrationsService.notifyAdminsAboutNewReg(
-                registration,
-                filePath,
-            );
+            await this.registrationsService.notifyAdminsAboutNewReg(registration, filePath);
         } catch (error) {
-            this.logger.error(
-                `Registration ${registration.id} was completed, but admin notification failed`,
-                error,
-            );
+            this.logger.error(`Registration ${registration.id} was completed, but admin notification failed`, error);
         }
     }
 
@@ -246,15 +212,7 @@ export class ClientWorkflowService {
             };
         }
 
-        const ticket = activeTicket ?? await this.ticketsService.createTicket(
-            input.chatId,
-            input.username,
-            input.name,
-            undefined,
-            input.platform,
-            user.id,
-            organizationId,
-        );
+        const ticket = activeTicket ?? (await this.ticketsService.createTicket(input.chatId, input.username, input.name, undefined, input.platform, user.id, organizationId));
 
         return {
             status: activeTicket ? 'continued' : 'started',
@@ -268,15 +226,7 @@ export class ClientWorkflowService {
 
         let ticket = await this.ticketsService.getActiveTicket(input.chatId, input.platform);
         if (!ticket) {
-            ticket = await this.ticketsService.createTicket(
-                input.chatId,
-                input.username,
-                input.name,
-                undefined,
-                input.platform,
-                user.id,
-                organizationId,
-            );
+            ticket = await this.ticketsService.createTicket(input.chatId, input.username, input.name, undefined, input.platform, user.id, organizationId);
         }
 
         const savedTicket = await this.ticketsService.saveTicketText(input.chatId, text, input.platform);
@@ -314,15 +264,7 @@ export class ClientWorkflowService {
 
         let ticket = await this.ticketsService.getActiveTicket(input.chatId, input.platform);
         if (!ticket) {
-            ticket = await this.ticketsService.createTicket(
-                input.chatId,
-                input.username,
-                input.name,
-                undefined,
-                input.platform,
-                user.id,
-                organizationId,
-            );
+            ticket = await this.ticketsService.createTicket(input.chatId, input.username, input.name, undefined, input.platform, user.id, organizationId);
         }
 
         const savedTicket = await this.ticketsService.saveTicketMedia(input.chatId, media, input.platform);
@@ -333,10 +275,7 @@ export class ClientWorkflowService {
             };
         }
 
-        await this.ticketsService.notifyOperatorsAboutTicketMessage(
-            savedTicket,
-            `Новое вложение в тикете #${savedTicket.id}: ${media.fileName || media.messageType}`,
-        );
+        await this.ticketsService.notifyOperatorsAboutTicketMessage(savedTicket, `Новое вложение в тикете #${savedTicket.id}: ${media.fileName || media.messageType}`);
 
         await this.activityService.add({
             userId: user.id,
@@ -401,11 +340,7 @@ export class ClientWorkflowService {
 
     private async resolveClientContext(input: ClientIdentity) {
         const user = await this.upsertClient(input);
-        await this.organizationsService.assertUserOrganization(
-            input.chatId,
-            input.platform,
-            input.organizationId,
-        );
+        await this.organizationsService.assertUserOrganization(input.chatId, input.platform, input.organizationId);
 
         return { user, organizationId: input.organizationId };
     }
@@ -416,12 +351,11 @@ export class ClientWorkflowService {
 
         return {
             status: result.request.currentStep > 0 ? 'continued' : 'started',
-            message: result.request.currentStep > 0
-                ? 'Unfinished ATOL consent found.'
-                : 'ATOL consent draft created.',
+            message: result.request.currentStep > 0 ? 'Unfinished ATOL consent found.' : 'ATOL consent draft created.',
             nextField: result.nextStep?.label,
             data: result.request,
             filePath: result.request.answers?.generatedPdfPath ? String(result.request.answers.generatedPdfPath) : undefined,
+            fileId: result.request.generatedConsentFileId ?? undefined,
         };
     }
 
@@ -441,6 +375,7 @@ export class ClientWorkflowService {
             nextField: result.nextStep?.label,
             data: result.request,
             filePath: result.request.answers?.generatedPdfPath ? String(result.request.answers.generatedPdfPath) : undefined,
+            fileId: result.request.generatedConsentFileId ?? undefined,
         };
     }
 

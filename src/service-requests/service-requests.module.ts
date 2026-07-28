@@ -11,11 +11,16 @@ import { ServiceRequestEventEntity } from './entities/service-request-event.enti
 import { ServiceTypeEntity } from './entities/service-type.entity';
 import { ServiceRequestsController } from './service-requests.controller';
 import { ServiceRequestsService } from './service-requests.service';
+import { AtolTemporaryFileService } from './atol-temporary-file.service';
 import { FilesModule } from 'src/files/files.module';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([ServiceTypeEntity, ServiceRequestEntity, ServiceRequestEventEntity]),
+        TypeOrmModule.forFeature([
+            ServiceTypeEntity,
+            ServiceRequestEntity,
+            ServiceRequestEventEntity,
+        ]),
         UsersModule,
         OrganizationsModule,
         CustomerActivityModule,
@@ -25,11 +30,13 @@ import { FilesModule } from 'src/files/files.module';
         FilesModule,
     ],
     controllers: [ServiceRequestsController],
-    providers: [ServiceRequestsService],
+    providers: [ServiceRequestsService, AtolTemporaryFileService],
     exports: [ServiceRequestsService, TypeOrmModule],
 })
 export class ServiceRequestsModule implements OnApplicationBootstrap {
-    constructor(private readonly serviceRequestsService: ServiceRequestsService) { }
+    constructor(
+        private readonly serviceRequestsService: ServiceRequestsService,
+    ) {}
 
     async onApplicationBootstrap() {
         await this.serviceRequestsService.ensureDefaultTypes();

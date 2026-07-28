@@ -11,7 +11,7 @@ import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
 import { ClientModule } from 'src/client/client.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
-
+import { FilesModule } from 'src/files/files.module';
 
 @Module({
     imports: [
@@ -21,8 +21,10 @@ import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
         ClientModule,
         ServiceRequestsModule,
         AdminNotificationsModule,
+        FilesModule,
     ],
-    providers: [TelegramUpdate,
+    providers: [
+        TelegramUpdate,
         UserContextService,
         RegisterTextHandler,
         IdleTextHandler,
@@ -30,4 +32,4 @@ import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
         OperatorTextHandler,
     ],
 })
-export class TelegramModule { }
+export class TelegramModule {}

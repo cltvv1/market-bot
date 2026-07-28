@@ -1,5 +1,7 @@
 # Telegram and MAX Parity Matrix
 
+B1 updated this matrix without claiming durable state or delivery guarantees.
+
 The matrix separates business parity from identical presentation. Different
 button layout is acceptable; loss of data, actions or media is not.
 
@@ -19,26 +21,26 @@ button layout is acceptable; loss of data, actions or media is not.
 | New operator question | yes | yes | parity | shared ticket workflow |
 | Continue question | yes | yes | parity | active-ticket fallback |
 | Customer attachments | broader types | image/video/audio/file | partial | type support differs |
-| Operator connection | yes | yes | parity | equivalent checks |
+| Operator connection | yes | yes | parity | RBAC and stale-target checks |
 | Operator text forwarding | yes | yes | parity | persistent transcript |
-| Operator media forwarding | binary copy | text notice/URL | partial | material MAX gap |
+| Operator media forwarding | binary copy | image/document binary | partial | MAX fixed; audio/video explicitly rejected |
 | Close operator chat | yes | yes | parity | same services |
 | Admin chat binding | yes | yes | parity | one-use code |
 | Admin client delivery | yes | yes | parity | messenger router |
 | Marketplace page | yes | no | Telegram only | absent in MAX |
-| OFD activation | dead button | absent | not implemented | functional on neither platform |
-| Legacy in-bot admin actions | yes | no | Telegram only | web admin is current product direction |
+| OFD activation contact | operator ticket | operator ticket | parity | fixed in B1; dedicated workflow deferred |
+| Legacy in-bot admin actions | secured | no | Telegram only | existing RBAC enforced in B1 |
 
 ## Numerical summary
 
 Total inventoried capabilities: **23**.
 
-- Parity: **16**
-- Partial parity: **4**
+- Parity: **17**
+- Partial parity: **3**
 - Telegram only: **2**
 - MAX only: **0**
 - Unknown: **0**
-- Not implemented: **1**
+- Not implemented: **0**
 
 A parity label does not mean the path is restart-safe, idempotent or durably
 delivered.
