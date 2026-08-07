@@ -50,8 +50,8 @@ export function ServiceStatusPage() {
                     <span className="eyebrow">Контроль заявки</span>
                     <h1>Проверить статус</h1>
                     <p>
-                        Введите номер из подтверждения. Для демонстрации можно
-                        использовать SR-240721-1042.
+                        Введите номер из подтверждения, например SR-42. Статус
+                        доступен только в той же защищённой сессии браузера.
                     </p>
                 </div>
             </header>
@@ -60,7 +60,7 @@ export function ServiceStatusPage() {
                     label="Номер сервисной заявки"
                     value={number}
                     onChange={(e) => setNumber(e.target.value.toUpperCase())}
-                    placeholder="SR-240721-1042"
+                    placeholder="SR-42"
                 />
                 <Button type="submit">
                     <Search />

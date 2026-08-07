@@ -1,12 +1,4 @@
-import {
-    ArrowLeft,
-    ArrowRight,
-    Check,
-    CheckCircle2,
-    FileImage,
-    Upload,
-    X,
-} from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CheckCircle2 } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -14,7 +6,11 @@ import { Button, Input, Select, Textarea } from '../components/ui';
 import { serviceDirections } from '../data/services';
 import { businessSolutions, servicePackages } from '../data/solutions';
 import { serviceRequestService } from '../services/client';
-import type { ServiceRequestFormData, ServiceRequestRecord } from '../types';
+import type {
+    ServiceRequestFormData,
+    ServiceRequestRecord,
+    ServiceTypeOption,
+} from '../types';
 
 const DRAFT_KEY = 'vitma_service_draft';
 const empty: ServiceRequestFormData = {
@@ -31,6 +27,7 @@ const empty: ServiceRequestFormData = {
     serialNumber: '',
     software: '',
     problemType: '',
+    fiscalDriveTerm: '15',
     urgency: 'normal',
     helpFormat: 'remote',
     description: '',
@@ -61,7 +58,31 @@ export function ServiceRequestPage() {
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState('');
+    const [serviceTypes, setServiceTypes] = useState<ServiceTypeOption[]>([]);
     const [result, setResult] = useState<ServiceRequestRecord | null>(null);
+    useEffect(() => {
+        void serviceRequestService
+            .getTypes()
+            .then((items) =>
+                setServiceTypes(
+                    items.filter((item) =>
+                        [
+                            'fn_replacement',
+                            'firmware_update',
+                            'kkt_remote_work',
+                        ].includes(item.code),
+                    ),
+                ),
+            )
+            .catch((error: unknown) =>
+                setSubmitError(
+                    error instanceof Error
+                        ? error.message
+                        : 'Не удалось загрузить список услуг',
+                ),
+            );
+    }, []);
     useEffect(() => {
         const type = params.get('type');
         const product = params.get('product');
@@ -106,11 +127,13 @@ export function ServiceRequestPage() {
     const validate = () => {
         const next: Record<string, string> = {};
         if (step === 0) {
+            if (!form.problemType)
+                next.problemType = 'Выберите вид сервисной заявки';
             if (form.clientType === 'organization' && !form.organization.trim())
                 next.organization = 'Укажите название организации';
             if (
                 form.clientType === 'organization' &&
-                !/^\d{10}|\d{12}$/.test(form.inn)
+                !/^(?:\d{10}|\d{12})$/.test(form.inn)
             )
                 next.inn = 'ИНН содержит 10 или 12 цифр';
             if (form.contactName.trim().length < 2)
@@ -128,7 +151,6 @@ export function ServiceRequestPage() {
                 next.equipmentModel = 'Укажите модель или напишите «не знаю»';
         }
         if (step === 2) {
-            if (!form.problemType) next.problemType = 'Выберите тип проблемы';
             if (form.description.trim().length < 20)
                 next.description = 'Опишите проблему хотя бы в 20 символах';
         }
@@ -144,19 +166,29 @@ export function ServiceRequestPage() {
         event.preventDefault();
         if (!validate()) return;
         setSubmitting(true);
+        setSubmitError('');
         try {
             const created = await serviceRequestService.create(form);
             setResult(created);
             localStorage.removeItem(DRAFT_KEY);
+        } catch (error) {
+            setSubmitError(
+                error instanceof Error
+                    ? error.message
+                    : 'Не удалось отправить заявку',
+            );
         } finally {
             setSubmitting(false);
         }
     };
     const problemTitle = useMemo(
         () =>
+            serviceTypes.find((item) => item.code === form.problemType)
+                ?.title ||
             serviceDirections.find((item) => item.id === form.problemType)
-                ?.title || 'Не выбран',
-        [form.problemType],
+                ?.title ||
+            'Не выбран',
+        [form.problemType, serviceTypes],
     );
     if (result)
         return (
@@ -241,6 +273,35 @@ export function ServiceRequestPage() {
                                     </p>
                                 </div>
                             </div>
+                            <Select
+                                label="Вид сервисной заявки"
+                                required
+                                value={form.problemType}
+                                onChange={(e) => {
+                                    const code = e.target.value;
+                                    set('problemType', code);
+                                    if (code === 'fn_replacement')
+                                        set('clientType', 'organization');
+                                }}
+                                error={errors.problemType}
+                                disabled={!serviceTypes.length}
+                            >
+                                <option value="">
+                                    {serviceTypes.length
+                                        ? 'Выберите услугу'
+                                        : 'Загружаем услуги…'}
+                                </option>
+                                {serviceTypes.map((item) => (
+                                    <option value={item.code} key={item.code}>
+                                        {item.title}
+                                    </option>
+                                ))}
+                            </Select>
+                            {submitError && (
+                                <small className="error-text">
+                                    {submitError}
+                                </small>
+                            )}
                             <div className="segmented">
                                 <button
                                     type="button"
@@ -263,6 +324,9 @@ export function ServiceRequestPage() {
                                             : ''
                                     }
                                     onClick={() => set('clientType', 'person')}
+                                    disabled={
+                                        form.problemType === 'fn_replacement'
+                                    }
                                 >
                                     Физическое лицо
                                 </button>
@@ -405,6 +469,22 @@ export function ServiceRequestPage() {
                                     }
                                     placeholder="1С, Frontol, Эвотор и т. п."
                                 />
+                                {form.problemType === 'fn_replacement' && (
+                                    <Select
+                                        label="Срок фискального накопителя"
+                                        value={form.fiscalDriveTerm}
+                                        onChange={(e) =>
+                                            set(
+                                                'fiscalDriveTerm',
+                                                e.target
+                                                    .value as ServiceRequestFormData['fiscalDriveTerm'],
+                                            )
+                                        }
+                                    >
+                                        <option value="15">15 месяцев</option>
+                                        <option value="36">36 месяцев</option>
+                                    </Select>
+                                )}
                             </div>
                         </>
                     )}
@@ -420,24 +500,6 @@ export function ServiceRequestPage() {
                                 </div>
                             </div>
                             <div className="form-grid">
-                                <Select
-                                    label="Тип проблемы"
-                                    required
-                                    value={form.problemType}
-                                    onChange={(e) =>
-                                        set('problemType', e.target.value)
-                                    }
-                                    error={errors.problemType}
-                                >
-                                    <option value="">
-                                        Выберите направление
-                                    </option>
-                                    {serviceDirections.map((item) => (
-                                        <option value={item.id} key={item.id}>
-                                            {item.title}
-                                        </option>
-                                    ))}
-                                </Select>
                                 <Select
                                     label="Срочность"
                                     value={form.urgency}
@@ -490,51 +552,6 @@ export function ServiceRequestPage() {
                                     placeholder="Что происходит, когда началась проблема, какие действия уже пробовали?"
                                     rows={6}
                                 />
-                                <label className="file-drop field-span">
-                                    <Upload />
-                                    <strong>
-                                        Прикрепить фото или документы
-                                    </strong>
-                                    <span>PNG, JPG, PDF — до 5 файлов</span>
-                                    <input
-                                        type="file"
-                                        multiple
-                                        accept="image/*,.pdf"
-                                        onChange={(e) =>
-                                            set(
-                                                'files',
-                                                Array.from(
-                                                    e.target.files || [],
-                                                ).slice(0, 5),
-                                            )
-                                        }
-                                    />
-                                </label>
-                                {form.files.length > 0 && (
-                                    <div className="file-list field-span">
-                                        {form.files.map((file, index) => (
-                                            <span key={`${file.name}-${index}`}>
-                                                <FileImage />
-                                                {file.name}
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        set(
-                                                            'files',
-                                                            form.files.filter(
-                                                                (_, i) =>
-                                                                    i !== index,
-                                                            ),
-                                                        )
-                                                    }
-                                                    aria-label={`Удалить ${file.name}`}
-                                                >
-                                                    <X />
-                                                </button>
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
                         </>
                     )}
@@ -588,14 +605,12 @@ export function ServiceRequestPage() {
                                     <dt>Описание</dt>
                                     <dd>{form.description}</dd>
                                 </div>
-                                <div>
-                                    <dt>Файлы</dt>
-                                    <dd>
-                                        {form.files.length
-                                            ? `${form.files.length} файл(а)`
-                                            : 'Не приложены'}
-                                    </dd>
-                                </div>
+                                {form.problemType === 'fn_replacement' && (
+                                    <div>
+                                        <dt>Фискальный накопитель</dt>
+                                        <dd>{form.fiscalDriveTerm} месяцев</dd>
+                                    </div>
+                                )}
                             </dl>
                             <label
                                 className={`consent ${errors.consent ? 'consent--error' : ''}`}
@@ -617,6 +632,11 @@ export function ServiceRequestPage() {
                                     {errors.consent}
                                 </small>
                             )}
+                            {submitError && (
+                                <small className="error-text">
+                                    {submitError}
+                                </small>
+                            )}
                         </>
                     )}
                 </section>
@@ -627,9 +647,9 @@ export function ServiceRequestPage() {
                         {step === 0
                             ? 'Оператор использует контакты только для работы по заявке.'
                             : step === 1
-                              ? 'Фото шильдика поможет быстрее определить модификацию и запчасти.'
+                              ? 'Модель и заводской номер помогут быстрее определить кассу.'
                               : step === 2
-                                ? 'Можно приложить фото ошибки, чека или оборудования.'
+                                ? 'Опишите симптомы и желаемый результат.'
                                 : 'Проверьте телефон — по нему свяжется специалист.'}
                     </p>
                     <div className="wizard-progress">

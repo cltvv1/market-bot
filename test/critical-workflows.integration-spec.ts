@@ -310,6 +310,11 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         });
         expect(notifications.notify).toHaveBeenCalledTimes(1);
         expect(messenger.sendMessage.mock.calls).toHaveLength(0);
+        expect(
+            (await serviceRequestsService.listForAdmin('active')).map(
+                (request) => request.id,
+            ),
+        ).toContain(started.request.id);
     });
 
     it('keeps FN price confirmation and invoice/payment/visit transitions', async () => {
