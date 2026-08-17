@@ -27,6 +27,7 @@ import {
 } from './admin-auth.guard';
 import { FilesModule } from 'src/files/files.module';
 import { AuditModule } from 'src/audit/audit.module';
+import { OrganizationContactEntity } from 'src/integrations/entities/organization-contact.entity';
 
 @Module({
     imports: [
@@ -46,6 +47,7 @@ import { AuditModule } from 'src/audit/audit.module';
             AdminUserEntity,
             AdminUserRoleEntity,
             AdminSessionEntity,
+            OrganizationContactEntity,
         ]),
         MessengerModule,
         ServiceRequestsModule,
@@ -60,6 +62,6 @@ import { AuditModule } from 'src/audit/audit.module';
         AdminSessionGuard,
         AdminPermissionGuard,
     ],
-    exports: [AdminAuthService],
+    exports: [AdminAuthService, AdminSessionGuard, AdminPermissionGuard],
 })
 export class AdminModule { }

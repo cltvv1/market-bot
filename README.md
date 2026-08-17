@@ -136,7 +136,13 @@ npm run test:characterization # pure/unit characterization tests
 npm run test:e2e           # e2e-тесты Nest
 npm run test:integration   # clean test DB + migrations + API/characterization
 npm run db:backup          # резервная копия PostgreSQL
+npm run start:bridge:atol  # read-only ATOL Connect bridge
+npm run start:bridge:pofd  # read-only Platforma OFD bridge
+npm run sync:integrations  # запустить обе синхронизации вручную
 ```
+
+Настройка внешних синхронизаций описана в
+[`docs/integrations/INTEGRATION_RUNBOOK.md`](docs/integrations/INTEGRATION_RUNBOOK.md).
 
 Демонстрационные контакты и реквизиты вынесены в `client-ui/src/data/company.ts` и должны быть заменены перед публикацией.
 

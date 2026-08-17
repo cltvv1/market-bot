@@ -75,6 +75,50 @@ export class ServiceRequestsService {
         return this.serviceRequestsRepo.findOne({ where: { id } });
     }
 
+    async createFromOpportunity(input: {
+        opportunityId: number;
+        type: string;
+        organizationId: number;
+        cashRegisterId?: number;
+        title: string;
+        description: string | null;
+        priority: ServiceRequestPriority;
+        operatorId: number;
+    }) {
+        const existing = await this.serviceRequestsRepo
+            .createQueryBuilder('request')
+            .where(`request.answers ->> 'sourceOpportunityId' = :opportunityId`, {
+                opportunityId: String(input.opportunityId),
+            })
+            .getOne();
+        if (existing) return existing;
+
+        await this.ensureDefaultTypes();
+        const serviceTypeCode = input.type === 'fn_expiring'
+            ? 'fn_replacement'
+            : 'kkt_remote_work';
+        const serviceType = await this.serviceTypesRepo.findOneByOrFail({ code: serviceTypeCode });
+        const request = await this.serviceRequestsRepo.save(this.serviceRequestsRepo.create({
+            serviceTypeId: serviceType.id,
+            serviceTypeCode: serviceType.code,
+            serviceTypeTitle: input.title,
+            organizationId: input.organizationId,
+            platform: 'web',
+            chatId: `opportunity:${input.opportunityId}`,
+            status: 'review_required',
+            currentStep: serviceRequestFlows[serviceType.flow].length,
+            answers: {
+                sourceOpportunityId: input.opportunityId,
+                cashRegisterId: input.cashRegisterId ?? null,
+                problemDescription: input.description ?? input.title,
+            },
+            priority: input.priority,
+            responsibleOperatorId: String(input.operatorId),
+        }));
+        await this.addEvent(request, 'created', 'operator', `Создано из внешнего сигнала #${input.opportunityId}`);
+        return request;
+    }
+
     async getRequestDetails(id: number) {
         const request = await this.getRequest(id);
         if (!request) {

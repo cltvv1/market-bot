@@ -1,4 +1,5 @@
-export type Tab = 'registrations' | 'service' | 'tickets' | 'organizations' | 'equipment-kits' | 'staff' | 'audit';
+// prettier-ignore
+export type Tab = 'registrations' | 'service' | 'tickets' | 'opportunities' | 'organizations' | 'equipment-kits' | 'integrations' | 'staff' | 'audit';
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 export type AdminRole = 'operator' | 'engineer' | 'sales_manager' | 'superadmin';
 
@@ -103,11 +104,17 @@ export interface ServiceEvent extends BaseItem {
   payload?: Record<string, unknown>;
 }
 
+// prettier-ignore
 export interface CustomerCard {
-  user?: Record<string, any>;
-  organization?: Record<string, any>;
+  user?: { id: number; platform?: string; chatId?: string; name?: string; username?: string };
+  organization?: { id: number; name?: string; inn?: string; kpp?: string };
   organizations?: Array<Record<string, any>>;
-  assets?: Record<string, any[]>;
+  assets?: {
+    cashRegisters?: Array<{ id: number; model?: string; serialNumber: string; registrationNumber?: string }>;
+    fiscalDrives?: Array<{ id: number; serialNumber: string; validUntil?: string }>;
+    ofdSubscriptions?: Array<{ id: number; provider: string; validUntil?: string; status?: string }>;
+  };
+  contacts?: Array<{ id: number; kind: 'phone' | 'email'; rawValue: string; normalizedValue?: string; source: string }>;
   activities?: Array<Record<string, any>>;
   registrations?: Registration[];
   serviceRequests?: ServiceRequest[];
@@ -122,4 +129,40 @@ export interface EquipmentKit extends BaseItem {
   ofdActivationCode?: string;
   marketplaceOrderId?: string;
   registrationRequestId?: number;
+}
+
+// prettier-ignore
+export type OpportunityStatus = 'new' | 'in_progress' | 'contact_later' | 'converted' | 'resolved' | 'not_relevant';
+// prettier-ignore
+export interface ServiceOpportunity extends BaseItem {
+  type: string; title: string; description?: string; priority: Priority; status: OpportunityStatus;
+  serviceRequestId?: number; firstSeenAt: string; lastSeenAt: string; callbackAt?: string; operatorComment?: string;
+  organization?: { id: number; name?: string; inn: string };
+  cashRegister?: { id: number; model?: string; serialNumber: string; registrationNumber?: string };
+  providers?: Array<'atol_connect' | 'platforma_ofd'>;
+}
+// prettier-ignore
+export interface ExternalObservation extends BaseItem {
+  provider: 'atol_connect' | 'platforma_ofd'; kind: string; title: string; description?: string; occurredAt: string;
+}
+// prettier-ignore
+export interface OpportunityDetail {
+  opportunity: ServiceOpportunity; observations: ExternalObservation[];
+  organization?: { id: number; name?: string; inn?: string };
+  cashRegister?: { id: number; model?: string; serialNumber?: string; registrationNumber?: string };
+}
+// prettier-ignore
+export interface IntegrationRun extends BaseItem {
+  provider: 'atol_connect' | 'platforma_ofd'; kind: string; mode: 'shadow' | 'apply';
+  status: 'running' | 'succeeded' | 'partial' | 'failed'; receivedCount: number; appliedCount: number;
+  skippedCount: number; errorCount: number; startedAt: string; finishedAt?: string; errorSummary?: string;
+}
+// prettier-ignore
+export interface IntegrationBridgeState {
+  ready: boolean; syncing?: boolean; lastSync?: string; lastError?: string; credentialsConfigured?: boolean; error?: string;
+}
+// prettier-ignore
+export interface IntegrationExclusion extends BaseItem {
+  inn: string; provider?: 'atol_connect' | 'platforma_ofd'; observationType?: string; reason?: string;
+  isActive: boolean; updatedAt: string;
 }
