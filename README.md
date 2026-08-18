@@ -88,6 +88,10 @@ npm run admin:create
 - Helmet, раздельные rate limits и ограничения HTTP body включаются централизованно;
 - `/health/live` проверяет процесс, `/health/ready` — PostgreSQL и наличие ожидаемой migration;
 - в production CORS разрешает только `CORS_ORIGINS`, Swagger по умолчанию выключен;
+
+## Доступ к организациям
+
+Ввод ИНН больше не создаёт активного владельца. Клиентский endpoint создаёт `pending`-запрос, а оператор рассматривает его во вкладке «Доступ к организациям». Только approve создаёт `active representative`; до этого кассы, ФН, ОФД и история организации недоступны. Миграция и API описаны в `docs/backend-v1/BKV1_0_ORGANIZATION_ACCESS.md`.
 - включённый в production Swagger требует действующую admin-сессию.
 
 `Secure` для cookie включается автоматически при `NODE_ENV=production`. TLS должен завершаться на приложении или доверенном reverse proxy; `TRUST_PROXY` задаётся только в соответствии с реальной схемой deployment.

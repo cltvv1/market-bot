@@ -19,7 +19,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminService } from './admin.service';
 import { adminPageHtml } from './admin.page';
@@ -55,6 +55,8 @@ import {
     InvoiceReferenceDto,
     LinkEquipmentKitDto,
     OptionalMediaTextDto,
+    OrganizationAccessListQueryDto,
+    OrganizationAccessReviewDto,
     PositiveIdParamDto,
     RegistrationOperatorStateDto,
     ScheduleServiceRequestDto,
@@ -67,6 +69,8 @@ import { RateLimit } from 'src/security/rate-limit';
 import { FilesService } from 'src/files/files.service';
 import { AuditService } from 'src/audit/audit.service';
 import { UiServingService } from 'src/ui/ui-serving.service';
+import { OrganizationAccessService } from 'src/organizations/organization-access.service';
+import { OrganizationAccessAdminResponseDto } from 'src/organizations/dto/organization-api.dto';
 
 interface UploadedMemoryFile {
     buffer: Buffer;
@@ -86,6 +90,7 @@ export class AdminController {
         private readonly filesService: FilesService,
         private readonly auditService: AuditService,
         private readonly uiServing: UiServingService,
+        private readonly organizationAccessService: OrganizationAccessService,
     ) {}
 
     @Get()
@@ -582,6 +587,54 @@ export class AdminController {
     @RequirePermissions('organizations.read')
     getOrganizations() {
         return this.adminService.getOrganizations();
+    }
+
+    @Get('api/organization-access-requests')
+    @RequirePermissions('organizationAccess.read')
+    @ApiOkResponse({ type: OrganizationAccessAdminResponseDto, isArray: true })
+    getOrganizationAccessRequests(
+        @Query() query: OrganizationAccessListQueryDto,
+    ) {
+        return this.organizationAccessService.listForAdmin(
+            query.status ?? 'pending',
+        );
+    }
+
+    @Get('api/organization-access-requests/:id')
+    @RequirePermissions('organizationAccess.read')
+    @ApiOkResponse({ type: OrganizationAccessAdminResponseDto })
+    getOrganizationAccessRequest(@Param() params: PositiveIdParamDto) {
+        return this.organizationAccessService.getForAdmin(Number(params.id));
+    }
+
+    @Post('api/organization-access-requests/:id/approve')
+    @RequirePermissions('organizationAccess.review')
+    @ApiOkResponse({ type: OrganizationAccessAdminResponseDto })
+    approveOrganizationAccessRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: OrganizationAccessReviewDto,
+    ) {
+        return this.organizationAccessService.approve(
+            Number(params.id),
+            admin,
+            body.reviewComment,
+        );
+    }
+
+    @Post('api/organization-access-requests/:id/reject')
+    @RequirePermissions('organizationAccess.review')
+    @ApiOkResponse({ type: OrganizationAccessAdminResponseDto })
+    rejectOrganizationAccessRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: OrganizationAccessReviewDto,
+    ) {
+        return this.organizationAccessService.reject(
+            Number(params.id),
+            admin,
+            body.reviewComment,
+        );
     }
 
     @Get('api/equipment-kits')

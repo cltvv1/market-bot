@@ -2,7 +2,7 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGenerat
 import { UserEntity } from 'src/users/entities/user.entity';
 import { OrganizationEntity } from './organization.entity';
 
-export type OrganizationMemberRole = 'owner' | 'manager' | 'accountant' | 'employee';
+export type OrganizationMemberRole = 'owner' | 'manager' | 'accountant' | 'employee' | 'representative';
 export type OrganizationMemberStatus = 'pending' | 'active' | 'rejected';
 
 @Entity('organization_members')

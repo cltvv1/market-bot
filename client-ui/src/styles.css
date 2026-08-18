@@ -2170,6 +2170,108 @@ svg {
     color: var(--green);
     font-weight: 800;
 }
+
+.organizations-page .page-heading {
+    align-items: end;
+}
+.organizations-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.08fr) minmax(360px, 0.92fr);
+    gap: 22px;
+    align-items: start;
+}
+.organization-access-form,
+.organization-access-results > section {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 26px;
+}
+.organization-access-form > header {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 22px;
+}
+.organization-access-form > header > svg {
+    color: var(--green);
+    width: 26px;
+    height: 26px;
+}
+.organization-access-form h2,
+.organization-access-results h2 {
+    font-size: 21px;
+    margin-bottom: 5px;
+}
+.organization-access-form header p {
+    margin: 0;
+    font-size: 13px;
+}
+.organization-access-form form > .button {
+    margin-top: 18px;
+}
+.form-success {
+    color: var(--green-dark);
+    background: var(--green-soft);
+    border-left: 3px solid var(--green);
+    padding: 10px 12px;
+    font-size: 13px;
+}
+.organization-access-results {
+    display: grid;
+    gap: 18px;
+}
+.organization-list,
+.access-request-list {
+    display: grid;
+    margin-top: 17px;
+}
+.organization-list article,
+.access-request-list article {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 0;
+    border-top: 1px solid var(--line);
+}
+.organization-list article:first-child,
+.access-request-list article:first-child {
+    border-top: 0;
+    padding-top: 0;
+}
+.organization-list article > svg,
+.access-request-list article > div:first-child > svg {
+    color: var(--green);
+    width: 20px;
+}
+.organization-list article > div,
+.access-request-list article > div:first-child {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+}
+.organization-list strong,
+.organization-list span,
+.access-request-list strong,
+.access-request-list span {
+    display: block;
+}
+.organization-list span,
+.access-request-list span,
+.empty-copy {
+    color: var(--muted);
+    font-size: 12px;
+}
+.access-request-list article > div:last-child {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.access-request-list .button {
+    min-height: 34px;
+    padding: 6px 8px;
+    font-size: 12px;
+}
 .prose {
     line-height: 1.75;
 }
@@ -2504,6 +2606,9 @@ svg {
 @media (max-width: 820px) {
     .container {
         width: min(100% - 28px, 1240px);
+    }
+    .organizations-layout {
+        grid-template-columns: 1fr;
     }
     .topline .container > span,
     .topline .container > div > span {

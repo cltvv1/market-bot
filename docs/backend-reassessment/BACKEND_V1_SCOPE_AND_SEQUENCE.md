@@ -45,6 +45,14 @@ Direct 1C API, exact warehouse stock, automatic accounting documents, SMS OTP, c
 
 ## Vertical packages
 
+### BKV1-0 — Organization access approval (implemented)
+
+- **Result:** knowledge of INN creates a pending request, not active owner membership.
+- **Review:** operator/superadmin manually approve or reject; approval creates `representative` atomically.
+- **Safety:** session ownership, RBAC negatives, partial unique pending constraint and concurrent submit/approve tests.
+- **Limits:** existing memberships are preserved; no legal identity proof, invitations, channel merge or detailed ACL.
+- **Details:** `docs/backend-v1/BKV1_0_ORGANIZATION_ACCESS.md`.
+
 ### BKV1-1 — Canonical service requests
 
 - **Goal/result:** one real web/bot/admin request contract, including structured answers, attachments, customer status and history.
@@ -101,7 +109,7 @@ Direct 1C API, exact warehouse stock, automatic accounting documents, SMS OTP, c
 
 ## Dependency order
 
-`BKV1-1 -> BKV1-2 -> BKV1-3 -> BKV1-4 -> BKV1-5`, with BKV1-3 design starting before BKV1-1 is finalized because request linkage depends on it. BKV1-6 begins once event/transition contracts stabilize and completes before pilot.
+`BKV1-0 -> BKV1-1 -> BKV1-2 -> BKV1-3 -> BKV1-4 -> BKV1-5`, with the organization approval foundation already complete. BKV1-3 still adds location/equipment context and explicit capabilities. BKV1-6 begins once event/transition contracts stabilize and completes before pilot.
 
 ## Readiness checklist
 

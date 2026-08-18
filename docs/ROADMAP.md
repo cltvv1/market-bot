@@ -655,6 +655,8 @@ flowchart LR
 
 ## 7. Этап 4. Единый профиль клиента
 
+**Прогресс BKV1-0 (2026-08-18):** базовый запрос доступа уже отделён от membership. ИНН создаёт `pending`, operator/superadmin approve/reject, approve выдаёт `representative`. Полное объединение каналов, invitations, owner management, location и equipment ownership остаются в этом этапе.
+
 **Приоритет:** P1
 **Сложность:** XL
 **Цель:** один подтверждённый клиент с несколькими каналами, организациями и историей.

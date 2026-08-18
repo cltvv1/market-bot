@@ -25,6 +25,8 @@ import { UserChannelEntity } from '../src/users/entities/user-channel.entity';
 import { UserEntity } from '../src/users/entities/user.entity';
 import { UsersService } from '../src/users/users.service';
 import { StoredFileEntity } from '../src/files/entities/stored-file.entity';
+import { AuditService } from '../src/audit/audit.service';
+import { AuditEventEntity } from '../src/audit/entities/audit-event.entity';
 
 const testIdentity = {
     platform: 'web' as const,
@@ -131,6 +133,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             dataSource.getRepository(OrganizationEntity),
             dataSource.getRepository(OrganizationMemberEntity),
             usersService,
+            new AuditService(dataSource.getRepository(AuditEventEntity)),
         );
         const activityService = new CustomerActivityService(
             dataSource.getRepository(CustomerActivityEntity),

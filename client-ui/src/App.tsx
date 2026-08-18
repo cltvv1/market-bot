@@ -21,6 +21,7 @@ import { ServiceRequestPage } from './pages/ServiceRequestPage';
 import { ServiceStatusPage } from './pages/ServiceStatusPage';
 import { SearchPage } from './pages/SearchPage';
 import { SolutionsPage } from './pages/SolutionsPage';
+import { OrganizationsPage } from './pages/OrganizationsPage';
 
 export function App() {
     return (
@@ -54,6 +55,10 @@ export function App() {
                             <Route
                                 path="cash-registration"
                                 element={<CashRegistrationPage />}
+                            />
+                            <Route
+                                path="organizations"
+                                element={<OrganizationsPage />}
                             />
                             <Route path="about" element={<AboutPage />} />
                             <Route path="delivery" element={<DeliveryPage />} />

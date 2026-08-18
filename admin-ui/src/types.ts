@@ -1,5 +1,5 @@
 // prettier-ignore
-export type Tab = 'registrations' | 'service' | 'tickets' | 'opportunities' | 'organizations' | 'equipment-kits' | 'integrations' | 'staff' | 'audit';
+export type Tab = 'registrations' | 'service' | 'tickets' | 'opportunities' | 'organization-access' | 'organizations' | 'equipment-kits' | 'integrations' | 'staff' | 'audit';
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
 export type AdminRole = 'operator' | 'engineer' | 'sales_manager' | 'superadmin';
 
@@ -129,6 +129,15 @@ export interface EquipmentKit extends BaseItem {
   ofdActivationCode?: string;
   marketplaceOrderId?: string;
   registrationRequestId?: number;
+}
+
+export type OrganizationAccessStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export interface OrganizationAccessRequest extends BaseItem {
+  status: OrganizationAccessStatus; requestedRole: 'representative'; submittedName?: string; submittedPhone?: string;
+  submittedEmail?: string; comment?: string; reviewComment?: string; reviewedAt?: string; cancelledAt?: string;
+  organization?: { id: number; name?: string; inn: string; kpp?: string };
+  customer?: { id: number; name?: string; username?: string; platform: string; chatId: string };
+  reviewer?: { id: number; displayName: string };
 }
 
 // prettier-ignore

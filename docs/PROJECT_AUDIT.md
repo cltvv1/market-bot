@@ -151,7 +151,7 @@ flowchart LR
 |---|---|---|
 | `AppModule` | конфигурация, TypeORM, Telegram bootstrap, подключение модулей | Работает, но содержит production-риски конфигурации |
 | `UsersModule` | создание channel-scoped пользователя, `UserChannel`, старый диалог оператор-клиент | Частично готов к единому профилю |
-| `OrganizationsModule` | организация по ИНН, членство пользователя | Работает, но привязка по ИНН сразу даёт активную роль владельца |
+| `OrganizationsModule` | организация по ИНН, access request и членство пользователя | BKV1-0: ИНН создаёт pending; active representative появляется только после ручного approve |
 | `AssetsModule` | ККТ, ФН, ОФД организации | Работает для ручных данных, модель ограничена ККТ |
 | `RegistrationsModule` | пошаговая анкета ККТ, фото, PDF, уведомление операторов | Работает, валидация полей минимальна |
 | `TicketsModule` | вопрос/чат, текст и метаданные медиа | Работает, нет общего надёжного файлового контракта |
@@ -182,7 +182,8 @@ flowchart LR
 | Сущность | Назначение | Замечания |
 |---|---|---|
 | `OrganizationEntity` | реквизиты организации/ИП | Есть уникальность `(inn, kpp)` |
-| `OrganizationMemberEntity` | представитель организации | Есть FK и роли представителя; привязка по ИНН сразу активируется без подтверждения |
+| `OrganizationMemberEntity` | подтверждённый представитель организации | Есть FK; BKV1-0 добавил безопасную роль `representative`, legacy owners сохранены |
+| `OrganizationAccessRequestEntity` | запрос клиента на доступ | pending/approved/rejected/cancelled, reviewer, partial unique pending; не является membership |
 | `CashRegisterEntity` | ККТ организации | `organizationId` хранится без TypeORM relation/FK |
 | `FiscalDriveEntity` | ФН и срок действия | Связи с организацией/ККТ только числовыми полями |
 | `OfdSubscriptionEntity` | ОФД и срок подписки | Связи только числовыми полями |
@@ -240,7 +241,7 @@ flowchart LR
 | `GET/POST /api/client/tickets...` | свой вопрос и сообщения | Web session; ticket/message ownership проверяется server-side |
 | `POST /api/client/tickets/media` | файл/медиа | Web session + rate/body perimeter; полная file MIME/size/path policy отложена в E0-08 |
 | `GET /api/client/ticket-messages/:id/file` | скачать свой файл сообщения | Web session + server-side owner check |
-| `GET/POST /api/client/organizations...` | организации пользователя и привязка по ИНН | Web session; server identity; бизнес-подтверждение организации ещё не реализовано |
+| `GET/POST /api/client/organizations...` | active организации и собственные access requests | Web session; ИНН создаёт pending, роль из browser DTO не принимается |
 | `GET/POST /api/client/organizations/:id/assets...` | ККТ, ФН, ОФД | Web session + membership + DTO |
 
 **Подтверждённый дефект:** маршруты `GET types`, `GET list`, `POST start`, `POST answers`, `POST confirm-price` для `/api/client/service-requests` зарегистрированы одновременно в `ClientApiController` и `ServiceRequestsController`.
