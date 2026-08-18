@@ -5,6 +5,9 @@ import type {
     ServiceRequestRecord,
     ServiceRequestStatus,
     ServiceTypeOption,
+    OrganizationAccessFormData,
+    OrganizationAccessRequest,
+    OrganizationMembership,
 } from '../types';
 
 const REQUESTS_KEY = 'vitma_service_requests';
@@ -312,6 +315,39 @@ export const registrationService = {
             {
                 values,
             },
+        );
+    },
+};
+
+export const organizationAccessService = {
+    async listOrganizations(): Promise<OrganizationMembership[]> {
+        return get<OrganizationMembership[]>('/api/client/organizations');
+    },
+    async listRequests(): Promise<OrganizationAccessRequest[]> {
+        return get<OrganizationAccessRequest[]>(
+            '/api/client/organizations/access-requests',
+        );
+    },
+    async submit(
+        data: OrganizationAccessFormData,
+    ): Promise<OrganizationAccessRequest> {
+        return post<OrganizationAccessRequest>(
+            '/api/client/organizations/link-by-inn',
+            {
+                organizationName: data.organizationName.trim() || undefined,
+                inn: data.inn.replace(/\D/g, ''),
+                kpp: data.kpp.replace(/\D/g, '') || undefined,
+                name: data.name.trim() || undefined,
+                phone: data.phone.trim() || undefined,
+                email: data.email.trim() || undefined,
+                comment: data.comment.trim() || undefined,
+            },
+        );
+    },
+    async cancel(id: number): Promise<OrganizationAccessRequest> {
+        return post<OrganizationAccessRequest>(
+            `/api/client/organizations/access-requests/${id}/cancel`,
+            {},
         );
     },
 };
