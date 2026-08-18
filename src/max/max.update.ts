@@ -8,7 +8,7 @@ import {
     OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Bot, Keyboard } from '@maxhub/max-bot-api';
+import { Bot, Context, Keyboard } from '@maxhub/max-bot-api';
 import { RegistrationsService } from 'src/registrations/registrations.service';
 import { TicketsService } from 'src/tickets/tickets.service';
 import { UserContextService } from 'src/userContext/user-context.service';
@@ -26,6 +26,17 @@ import { MessengerAdminAccessService } from 'src/admin/messenger-admin-access.se
 import { extractMaxMedia, materializeMaxMedia } from './max-media';
 
 export const MAX_OFD_CALLBACK = 'wantToOfd';
+
+export const MAX_BOT_COMMANDS = [
+    { name: 'start', description: 'Запустить бота' },
+    { name: 'menu', description: 'Открыть главное меню' },
+];
+
+export async function registerMaxBotCommands(api: {
+    setMyCommands: (commands: typeof MAX_BOT_COMMANDS) => Promise<unknown>;
+}) {
+    await api.setMyCommands(MAX_BOT_COMMANDS);
+}
 
 @Injectable()
 export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
@@ -66,14 +77,22 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             this.logger.error('MAX bot update failed', error);
         });
 
+        try {
+            await registerMaxBotCommands(this.bot.api);
+            this.logger.log('MAX bot commands registered');
+        } catch (error) {
+            const message =
+                error instanceof Error ? error.message : 'unknown error';
+            this.logger.warn(`MAX bot commands registration failed: ${message}`);
+        }
+
         this.bot.on('bot_started', async (ctx) => {
             await this.upsertUser(ctx);
             await this.sendMainMenu(ctx);
         });
 
-        this.bot.command('start', async (ctx) => {
-            await this.upsertUser(ctx);
-            await this.sendMainMenu(ctx);
+        this.bot.command(['start', 'menu'], async (ctx) => {
+            await this.handleMainMenuCommand(ctx);
         });
 
         this.bot.action('mainMenu', async (ctx) => {
@@ -231,6 +250,12 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
         if (!ctx.chatId) return;
 
         await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
+    }
+
+    async handleMainMenuCommand(ctx: Pick<Context, 'chatId' | 'reply'>) {
+        await this.upsertUser(ctx);
+        this.ctxService.set(String(ctx.chatId), { mode: 'IDLE' }, 'max');
+        await this.sendMainMenu(ctx);
     }
 
     private async handleAdminBindCommand(ctx: any, text: string) {
