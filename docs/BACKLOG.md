@@ -146,6 +146,8 @@
 | INT-02 | Mapping и export orders | Хранить external mappings и формировать согласованный экспорт заказа-заявки | SHOP-07, формат 1С | integrations/orders | Export не объявляется бухгалтерским документом; mapping аудитируется | M | P2 |
 | INT-03 | Исследование АТОЛ/ОФД | Проверить официальные API, договорные права, лимиты, auth и sandbox; оформить adapter contracts | EQ-02, доступы | docs + integration ports | Есть подтверждённая документация/решение «доступно или нет»; секреты не получены в код | M | P2 |
 | INT-04 | Первый внешний adapter | Реализовать один подтверждённый read-only sync через port с run/error history | INT-03, одобренный provider | `src/integrations/<provider>` (new) | Outage не ломает core; повтор идемпотентен; manual data не перезаписывается молча | XL | P2 |
+| INT-05 | АТОЛ Connect + Platforma OFD shadow sync | Два изолированных bridge, mappings, observations и единая очередь возможностей | INT-03, INT-04 | `src/integrations`, `scripts/*-bridge.mjs`, admin UI | Данные поступают порциями и идемпотентно; клиентские сообщения не отправляются | XL | P1 |
+| INT-06 | Эксплуатационная сверка shadow sync | Сверить выборку организаций, касс, ФН, подписок и сигналов с кабинетами; зафиксировать расхождения схемы | INT-05, локальные доступы | bridges, integration runs, checklist | Выборка по обоим источникам подтверждена; секреты не попали в БД/логи; решение о расписании принято отдельно | M | P1 |
 
 ## Этап 8. Подборщик оборудования
 

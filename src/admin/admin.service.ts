@@ -27,6 +27,8 @@ import type { TicketMessageType } from 'src/tickets/entities/ticket-message.enti
 import { AdminUserEntity } from './entities/admin-user.entity';
 import type { AdminPrincipal } from './admin-auth.types';
 import { FilesService } from 'src/files/files.service';
+// prettier-ignore
+import { OrganizationContactEntity } from 'src/integrations/entities/organization-contact.entity';
 
 export type AdminStatusFilter = 'all' | 'new' | 'in_work' | 'processed';
 
@@ -59,6 +61,8 @@ export class AdminService {
         private readonly serviceRequestsRepo: Repository<ServiceRequestEntity>,
         @InjectRepository(AdminUserEntity)
         private readonly adminUsersRepo: Repository<AdminUserEntity>,
+        @InjectRepository(OrganizationContactEntity)
+        private readonly organizationContactsRepo: Repository<OrganizationContactEntity>,
         private readonly serviceRequestsService: ServiceRequestsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
@@ -297,7 +301,8 @@ export class AdminService {
 
     async getCustomerContext(input: { userId?: number; organizationId?: number; platform?: UserPlatform; chatId?: string }) {
         const user = await this.findContextUser(input);
-        const [organization, memberships, assets, activities] = await Promise.all([
+        // prettier-ignore
+        const [organization, memberships, assets, activities, contacts] = await Promise.all([
             input.organizationId ? this.organizationsRepo.findOne({ where: { id: input.organizationId } }) : Promise.resolve(null),
             user ? this.organizationMembersRepo.find({
                 where: { userId: user.id, status: 'active' },
@@ -310,6 +315,10 @@ export class AdminService {
                 order: { createdAt: 'DESC' },
                 take: 8,
             }),
+            input.organizationId ? this.organizationContactsRepo.find({
+                where: { organizationId: input.organizationId, isActive: true },
+                order: { kind: 'ASC', id: 'ASC' },
+            }) : Promise.resolve([]),
         ]);
 
         return {
@@ -323,6 +332,7 @@ export class AdminService {
             })),
             assets,
             activities,
+            contacts,
         };
     }
 

@@ -75,6 +75,50 @@ export class ServiceRequestsService {
         return this.serviceRequestsRepo.findOne({ where: { id } });
     }
 
+    async createFromOpportunity(input: {
+        opportunityId: number;
+        type: string;
+        organizationId: number;
+        cashRegisterId?: number;
+        title: string;
+        description: string | null;
+        priority: ServiceRequestPriority;
+        operatorId: number;
+    }) {
+        const existing = await this.serviceRequestsRepo
+            .createQueryBuilder('request')
+            .where(`request.answers ->> 'sourceOpportunityId' = :opportunityId`, {
+                opportunityId: String(input.opportunityId),
+            })
+            .getOne();
+        if (existing) return existing;
+
+        await this.ensureDefaultTypes();
+        const serviceTypeCode = input.type === 'fn_expiring'
+            ? 'fn_replacement'
+            : 'kkt_remote_work';
+        const serviceType = await this.serviceTypesRepo.findOneByOrFail({ code: serviceTypeCode });
+        const request = await this.serviceRequestsRepo.save(this.serviceRequestsRepo.create({
+            serviceTypeId: serviceType.id,
+            serviceTypeCode: serviceType.code,
+            serviceTypeTitle: input.title,
+            organizationId: input.organizationId,
+            platform: 'web',
+            chatId: `opportunity:${input.opportunityId}`,
+            status: 'review_required',
+            currentStep: serviceRequestFlows[serviceType.flow].length,
+            answers: {
+                sourceOpportunityId: input.opportunityId,
+                cashRegisterId: input.cashRegisterId ?? null,
+                problemDescription: input.description ?? input.title,
+            },
+            priority: input.priority,
+            responsibleOperatorId: String(input.operatorId),
+        }));
+        await this.addEvent(request, 'created', 'operator', `Создано из внешнего сигнала #${input.opportunityId}`);
+        return request;
+    }
+
     async getRequestDetails(id: number) {
         const request = await this.getRequest(id);
         if (!request) {
@@ -99,17 +143,38 @@ export class ServiceRequestsService {
     }
 
     async listForAdmin(status?: ServiceRequestStatus | 'active' | 'all', platform?: UserPlatform, assignedEngineerId?: number) {
-        return this.serviceRequestsRepo
-            .find({
-                where: {
-                    ...(status && status !== 'all' && status !== 'active' ? { status } : {}),
-                    ...(platform ? { platform } : {}),
-                    ...(assignedEngineerId ? { assignedEngineerId } : {}),
-                },
-                order: { createdAt: 'DESC' },
-                take: 100,
-            })
-            .then((items) => (status === 'active' ? items.filter((item) => item.status !== 'completed' && item.status !== 'cancelled') : items));
+        const query = this.serviceRequestsRepo
+            .createQueryBuilder('request')
+            .andWhere(
+                `(request.status <> 'draft'
+                    OR request.currentStep > 0
+                    OR request.assignedEngineerId IS NOT NULL
+                    OR request.responsibleOperatorId IS NOT NULL
+                    OR request.operatorComment IS NOT NULL)`,
+            );
+
+        if (status === 'active') {
+            query.andWhere(
+                'request.status NOT IN (:...closedStatuses)',
+                { closedStatuses: ['completed', 'cancelled'] },
+            );
+        } else if (status && status !== 'all') {
+            query.andWhere('request.status = :status', { status });
+        }
+        if (platform) {
+            query.andWhere('request.platform = :platform', { platform });
+        }
+        if (assignedEngineerId) {
+            query.andWhere(
+                'request.assignedEngineerId = :assignedEngineerId',
+                { assignedEngineerId },
+            );
+        }
+
+        return query
+            .orderBy('request.createdAt', 'DESC')
+            .take(100)
+            .getMany();
     }
 
     async start(identity: ServiceRequestIdentity, serviceTypeCode: string) {
@@ -122,6 +187,13 @@ export class ServiceRequestsService {
         });
         if (!serviceType) {
             throw new BadRequestException('Service type was not found');
+        }
+
+        const existing = await this.getLatestDraftForClient(identity, [
+            serviceTypeCode,
+        ]);
+        if (existing) {
+            return this.present(existing);
         }
 
         const request = await this.serviceRequestsRepo.save(
@@ -337,6 +409,88 @@ export class ServiceRequestsService {
         return serviceTypeCodes?.length ? (items.find((item) => serviceTypeCodes.includes(item.serviceTypeCode)) ?? null) : (items[0] ?? null);
     }
 
+    async getLatestWaitingPaymentForClient(
+        identity: ServiceRequestIdentity,
+    ) {
+        const user = await this.usersService.getOrCreateOrUpdate(
+            identity.chatId,
+            identity.name,
+            identity.username,
+            identity.platform,
+        );
+        return this.serviceRequestsRepo.findOne({
+            where: [
+                { userId: user.id, status: 'waiting_payment' },
+                {
+                    chatId: identity.chatId,
+                    platform: identity.platform,
+                    status: 'waiting_payment',
+                },
+            ],
+            order: { updatedAt: 'DESC', id: 'DESC' },
+        });
+    }
+
+    async attachPaymentProof(
+        identity: ServiceRequestIdentity,
+        file: {
+            buffer: Buffer;
+            fileName?: string;
+            mimeType?: string;
+        },
+    ) {
+        const request =
+            await this.getLatestWaitingPaymentForClient(identity);
+        if (!request) {
+            return null;
+        }
+
+        const storedFile = await this.filesService.saveBuffer({
+            purpose: 'payment-proof',
+            buffer: file.buffer,
+            originalName: file.fileName || `payment_${request.id}`,
+            mimeType: file.mimeType,
+            createdByCustomerId: request.userId ?? undefined,
+            metadata: { serviceRequestId: request.id },
+        });
+        const previousFileId = request.paymentProofFileId;
+
+        let saved: ServiceRequestEntity;
+        try {
+            request.paymentProofFileId = storedFile.id;
+            saved = await this.serviceRequestsRepo.save(request);
+        } catch (error) {
+            await this.filesService.logicalDelete(storedFile.id);
+            throw error;
+        }
+
+        await this.addEvent(
+            saved,
+            'payment_proof_attached',
+            'client',
+            'Клиент прикрепил платежное поручение',
+            { storedFileId: storedFile.id },
+        );
+        await this.activityService.add({
+            userId: saved.userId,
+            organizationId: saved.organizationId,
+            platform: saved.platform,
+            chatId: saved.chatId,
+            type: 'service_request_payment_proof_attached',
+            title: saved.serviceTypeTitle,
+            description: `Получено платежное поручение по заявке #${saved.id}`,
+            serviceRequestId: saved.id,
+        });
+        await this.adminNotificationsService.notify(
+            'serviceRequests',
+            `Клиент отправил платежное поручение по заявке #${saved.id}. Проверьте файл в админке.`,
+        );
+        if (previousFileId && previousFileId !== storedFile.id) {
+            await this.filesService.logicalDelete(previousFileId);
+        }
+        return this.present(saved);
+    }
+
     async answerLatestDraft(identity: ServiceRequestIdentity, value: string, serviceTypeCodes?: string[]) {
         const request = await this.getLatestDraftForClient(identity, serviceTypeCodes);
         if (!request) {
@@ -452,6 +606,16 @@ export class ServiceRequestsService {
 
     async markPaymentReceived(id: number, operatorId = 'admin-panel') {
         const request = await this.requireRequest(id);
+        if (request.status !== 'waiting_payment') {
+            throw new BadRequestException(
+                'Service request is not waiting for payment',
+            );
+        }
+        if (!request.paymentProofFileId) {
+            throw new BadRequestException(
+                'Payment proof must be attached before confirmation',
+            );
+        }
         request.status = 'paid';
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
@@ -687,7 +851,7 @@ export class ServiceRequestsService {
             return;
         }
 
-        const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.`;
+        const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.\n\nПосле оплаты отправьте сюда PDF-файл или фотографию платежного поручения. Оператор проверит документ и подтвердит оплату.`;
         if (request.invoiceStoredFileId && this.filesService) {
             const { file, stream } = await this.filesService.open(request.invoiceStoredFileId);
             await this.messengerService.sendMessage(request.chatId, message, {

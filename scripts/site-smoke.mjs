@@ -78,6 +78,9 @@ try {
     await desktop.goto(`${baseUrl}/site/service/request`, {
         waitUntil: 'networkidle',
     });
+    await desktop
+        .getByLabel('Вид сервисной заявки')
+        .selectOption('kkt_remote_work');
     await desktop.getByLabel('Название организации').fill('ООО Демо');
     await desktop.getByLabel('ИНН').fill('2460000000');
     await desktop.getByLabel('Контактное лицо').fill('Анна Петрова');
@@ -86,7 +89,6 @@ try {
     await desktop.getByRole('button', { name: /Продолжить/ }).click();
     await desktop.getByLabel('Модель').fill('АТОЛ 30Ф');
     await desktop.getByRole('button', { name: /Продолжить/ }).click();
-    await desktop.getByLabel('Тип проблемы').selectOption('cash-service');
     await desktop
         .getByLabel('Подробное описание')
         .fill('Касса перестала печатать чеки после обновления программы.');

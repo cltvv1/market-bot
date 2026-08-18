@@ -28,6 +28,7 @@ export type ServiceRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
 @Entity('service_requests')
 @Index('IDX_service_requests_assigned_engineer', ['assignedEngineerId'])
 @Index('IDX_service_invoice_file', ['invoiceStoredFileId'])
+@Index('IDX_service_payment_proof_file', ['paymentProofFileId'])
 export class ServiceRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;
@@ -77,6 +78,16 @@ export class ServiceRequestEntity {
     @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
     @JoinColumn({ name: 'invoiceStoredFileId', foreignKeyConstraintName: 'FK_service_invoice_file' })
     invoiceStoredFile: StoredFileEntity | null;
+
+    @Column({ type: 'integer', nullable: true })
+    paymentProofFileId: number | null;
+
+    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({
+        name: 'paymentProofFileId',
+        foreignKeyConstraintName: 'FK_service_payment_proof_file',
+    })
+    paymentProofFile: StoredFileEntity | null;
 
     @Column({ type: 'integer', nullable: true })
     generatedConsentFileId: number | null;

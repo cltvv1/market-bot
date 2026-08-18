@@ -1,15 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bell, Check, ExternalLink, FileText, KeyRound, Link, LogOut, RefreshCw, Send, ShieldCheck, UserPlus, UserRound, X } from 'lucide-react';
+// prettier-ignore
+import {
+    Activity, Bell, Check, Database, ExternalLink, FileText, KeyRound, Link,
+    LogOut, RefreshCw, Send, ShieldCheck, UserPlus, UserRound, X,
+} from 'lucide-react';
 import { ApiError, api, post, upload } from './api';
 import { answerLabels, fmtDate, priorityText, registrationStatus, statusText, value } from './format';
-import type { Admin, AdminRole, CustomerCard, EquipmentKit, NotificationSettings, Priority, Registration, ServiceEvent, ServiceRequest, Staff, Summary, Tab, Ticket, TicketMessage } from './types';
+// prettier-ignore
+import type {
+    Admin, AdminRole, CustomerCard, EquipmentKit, IntegrationBridgeState,
+    IntegrationExclusion, IntegrationRun, NotificationSettings, OpportunityDetail,
+    OpportunityStatus, Priority, Registration, ServiceEvent, ServiceOpportunity,
+    ServiceRequest, Staff, Summary, Tab, Ticket, TicketMessage,
+} from './types';
 
+// prettier-ignore
 const tabs: Array<{ id: Tab; label: string; permissions: string[] }> = [
   { id: 'registrations', label: 'Регистрации', permissions: ['registrations.read'] },
   { id: 'service', label: 'Заявки по сервису', permissions: ['serviceRequests.read.all', 'serviceRequests.read.assigned'] },
   { id: 'tickets', label: 'Вопросы', permissions: ['tickets.read'] },
+  { id: 'opportunities', label: 'Сигналы', permissions: ['opportunities.read'] },
   { id: 'organizations', label: 'Организации', permissions: ['organizations.read'] },
   { id: 'equipment-kits', label: 'Комплекты', permissions: ['assets.read'] },
+  { id: 'integrations', label: 'Интеграции', permissions: ['integrations.read'] },
   { id: 'staff', label: 'Сотрудники', permissions: ['staff.roles.manage'] },
   { id: 'audit', label: 'Audit Log', permissions: ['audit.read'] },
 ];
@@ -19,6 +32,7 @@ const priorities: Array<{ value: Priority | ''; label: string }> = [
   { value: 'normal', label: 'Обычный' }, { value: 'high', label: 'Высокий' }, { value: 'urgent', label: 'Срочный' },
 ];
 
+// prettier-ignore
 export function App() {
   const [admin, setAdmin] = useState<Admin | null>(null);
   const [checking, setChecking] = useState(true);
@@ -48,11 +62,18 @@ export function App() {
         : 'Недостаточно прав для этого действия.';
       setNotice(message);
     };
+    const notify = (event: Event) => {
+      if (event instanceof CustomEvent && typeof event.detail === 'string') {
+        setNotice(event.detail);
+      }
+    };
     window.addEventListener('vitma:unauthorized', expired);
     window.addEventListener('vitma:forbidden', forbidden);
+    window.addEventListener('vitma:notice', notify);
     return () => {
       window.removeEventListener('vitma:unauthorized', expired);
       window.removeEventListener('vitma:forbidden', forbidden);
+      window.removeEventListener('vitma:notice', notify);
     };
   }, []);
 
@@ -103,7 +124,7 @@ export function App() {
           {visibleTabs.map((item) => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setSelection(null); setStatus('new'); }}>{item.label}</button>)}
         </nav>
 
-        {tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'staff' && tab !== 'audit' && (
+        {tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'opportunities' && tab !== 'integrations' && tab !== 'staff' && tab !== 'audit' && (
           <section className="filters">
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="new">Новые</option><option value="in_work">В работе</option>
@@ -121,8 +142,10 @@ export function App() {
         {tab === 'registrations' && <Registrations status={status} platform={platform} priority={priority} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} />}
         {tab === 'tickets' && <Tickets status={status} platform={platform} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} />}
         {tab === 'service' && <ServiceRequests status={status} platform={platform} priority={priority} responsible={responsible} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} permissions={admin.permissions} />}
+        {tab === 'opportunities' && <Opportunities refreshKey={refreshKey} onChanged={refresh} onNavigate={navigate} />}
         {tab === 'organizations' && <Organizations refreshKey={refreshKey} />}
         {tab === 'equipment-kits' && <EquipmentKits refreshKey={refreshKey} onChanged={refresh} />}
+        {tab === 'integrations' && <IntegrationRuns refreshKey={refreshKey} permissions={admin.permissions} onChanged={refresh} />}
         {tab === 'staff' && <StaffManagement refreshKey={refreshKey} onChanged={refresh} />}
         {tab === 'audit' && <AuditLog refreshKey={refreshKey} />}
         {!visibleTabs.length && <Empty text="Для назначенных ролей пока нет рабочих разделов" />}
@@ -217,14 +240,15 @@ function ServiceRequests(props: ListProps & { responsible: string; permissions: 
   return <Workbench title="Заявки по сервису" items={filtered} selectedId={selectedId} onSelect={setSelectedId} loading={loading} error={error} row={(item) => <><div className="row-top"><strong>Заявка #{item.id} · {item.serviceTypeTitle}</strong><span>{fmtDate(item.createdAt)}</span></div><div className="badges"><Badge>{statusText(item.status)}</Badge><Badge priority={item.priority}>{priorityText(item.priority)}</Badge></div><span className="row-preview">{item.executorName ? `Исполнитель: ${item.executorName}` : item.platform}</span></>} detail={selectedId ? <ServiceDetail id={selectedId} onNavigate={props.onNavigate} onChanged={props.onChanged} permissions={props.permissions} /> : null} />;
 }
 
+// prettier-ignore
 function ServiceDetail({ id, onNavigate, onChanged, permissions }: { id: number; onNavigate: Navigate; onChanged: () => void; permissions: string[] }) {
   const [data, setData] = useState<{ request: ServiceRequest; events: ServiceEvent[] }>(); const [card, setCard] = useState<CustomerCard | null>(null); const [priority, setPriority] = useState<Priority>('normal'); const [comment, setComment] = useState(''); const [invoice, setInvoice] = useState<File>(); const [address, setAddress] = useState(''); const [visitTime, setVisitTime] = useState(''); const [engineers, setEngineers] = useState<Staff[]>([]); const [engineerId, setEngineerId] = useState('');
-  const allowed = (permission: string) => permissions.includes(permission);
+  const allowed = (permission: string) => permissions.includes(permission) && (permission !== 'serviceRequests.payment' || (data?.request.status === 'waiting_payment' && Boolean(data.request.paymentProofFileId)));
   const load = useCallback(() => api<{ request: ServiceRequest; events: ServiceEvent[] }>(`/admin/api/service-requests/${id}`).then((result) => { setData(result); setPriority(result.request.priority || 'normal'); setComment(result.request.operatorComment || ''); setEngineerId(result.request.assignedEngineerId ? String(result.request.assignedEngineerId) : ''); }), [id]);
   useEffect(() => { setCard(null); load(); }, [load]);
-  useEffect(() => { if (allowed('serviceRequests.assign')) api<Staff[]>('/admin/api/staff/engineers').then(setEngineers); }, [permissions.join('|')]);
+  useEffect(() => { if (allowed('serviceRequests.assign')) api<Staff[]>('/admin/api/staff/engineers').then(setEngineers); }, [permissions.join('|')]); useEffect(() => { if (data?.request.status !== 'waiting_payment' || data.request.paymentProofFileId) return; const timer = window.setInterval(() => { void api<{ request: ServiceRequest; events: ServiceEvent[] }>(`/admin/api/service-requests/${id}`).then(setData); }, 5000); return () => window.clearInterval(timer); }, [id, data?.request.status, data?.request.paymentProofFileId]);
   if (!data) return <Empty text="Загрузка заявки..." />;
-  const request = data.request; const answers = Object.entries(request.answers || {}).filter(([key]) => !['generatedPdfPath', 'signedConsentPath'].includes(key));
+  const request = data.request; const answers = Object.entries(request.answers || {}).filter(([key]) => !['generatedPdfPath', 'signedConsentPath'].includes(key)); if (request.paymentProofFileId) answers.unshift(['paymentProof', `/admin/api/service-requests/${id}/payment-proof`]);
   const save = async () => { await post(`/admin/api/service-requests/${id}/operator-state`, { priority, operatorComment: comment }); await load(); onChanged(); };
   const assign = async () => { if (!engineerId) return; await post(`/admin/api/service-requests/${id}/assign-engineer`, { assignedEngineerId: Number(engineerId) }); await load(); onChanged(); };
   const uploadInvoice = async () => { if (!invoice) return; const form = new FormData(); form.append('file', invoice); await upload(`/admin/api/service-requests/${id}/invoice-file`, form); await load(); };
@@ -235,9 +259,50 @@ function ServiceDetail({ id, onNavigate, onChanged, permissions }: { id: number;
   return <><DetailHeader title={`Сервисная заявка #${id} · ${request.serviceTypeTitle}`} subtitle={`${request.platform} · ${statusText(request.status)} · ${fmtDate(request.createdAt)}`} onCustomer={allowed('organizations.read') ? openCard : undefined} /><div className="detail-body"><FieldGrid fields={[['Статус', statusText(request.status)], ['Приоритет', priorityText(request.priority)], ['Куратор', request.responsibleOperatorId], ['Исполнитель', request.executorName], ['Внутренний комментарий', request.operatorComment], ['Стоимость', request.calculatedPrice ? `${request.calculatedPrice} ₽` : 'Не рассчитана'], ...answers.map(([key, val]) => [answerLabels[key] || key, val] as [string, unknown])]} /><div className="messages event-list">{data.events?.map((event) => <div className="message" key={event.id}><div>{event.type === 'answered' && event.payload?.value !== undefined ? String(event.payload.value) : event.message || event.type}</div><span>{event.actor} · {fmtDate(event.createdAt)}</span></div>)}</div>{allowed('serviceRequests.update') && <div className="operator-panel"><div className="form-row"><PrioritySelect value={priority} onChange={setPriority} /><button className="primary" onClick={save}><Check size={16} />Сохранить</button></div><textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Внутренний комментарий или поручение" />{allowed('serviceRequests.assign') && <div className="form-row"><select value={engineerId} onChange={(e) => setEngineerId(e.target.value)}><option value="">Выберите инженера</option>{engineers.map((engineer) => <option value={engineer.id} key={engineer.id}>{engineer.displayName}</option>)}</select><button onClick={assign}>Назначить</button></div>}{allowed('serviceRequests.invoice') && <div className="form-row"><input type="file" accept="application/pdf" onChange={(e) => setInvoice(e.target.files?.[0])} /><button onClick={uploadInvoice}>Загрузить PDF</button>{request.invoiceFileId && <a className="button" href={`/admin/api/service-requests/${id}/invoice`} target="_blank">Скачать счёт</a>}{Boolean(request.answers?.signedConsentPath) && <a className="button" href={`/admin/api/service-requests/${id}/signed-consent`} target="_blank">Согласие</a>}</div>}{allowed('serviceRequests.schedule') && <div className="form-row"><input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Адрес визита" /><input type="datetime-local" value={visitTime} onChange={(e) => setVisitTime(e.target.value)} /><button onClick={schedule}>Назначить визит</button></div>}<div className="actions">{allowed('serviceRequests.payment') && <button onClick={() => action('payment-received')}>Оплата получена</button>}{allowed('serviceRequests.close') && <><button onClick={() => action('complete')}>Завершить</button><button className="danger" onClick={() => action('cancel')}>Отменить</button></>}</div></div>}</div></>;
 }
 
+// prettier-ignore
 function CustomerCardView({ card, onClose, onNavigate }: { card: CustomerCard; onClose: () => void; onNavigate: Navigate }) {
-  const user = card.user || {}; const history = [...(card.registrations || []).map((item) => ({ tab: 'registrations' as Tab, id: item.id, date: item.createdAt, title: `Анкета #${item.id} · ${item.orgName || item.innKpp || 'Без названия'}`, meta: registrationStatus(item) })), ...(card.serviceRequests || []).map((item) => ({ tab: 'service' as Tab, id: item.id, date: item.createdAt, title: `Сервис #${item.id} · ${item.serviceTypeTitle || item.serviceTypeCode}`, meta: statusText(item.status) })), ...(card.tickets || []).map((item) => ({ tab: 'tickets' as Tab, id: item.id, date: item.createdAt, title: `Вопрос #${item.id} · ${item.text || 'Без текста'}`, meta: item.isAnswered ? 'Закрыт' : 'Открыт' }))].sort((a, b) => +new Date(b.date) - +new Date(a.date));
-  return <><div className="detail-header"><div><h2>Карточка клиента</h2><span>{user.platform} · {user.chatId}</span></div><button onClick={onClose}><X size={16} />Закрыть</button></div><div className="customer-card"><section className="context-panel"><h3>Клиент</h3><Info label="Платформа" value={user.platform} /><Info label="Chat ID" value={user.chatId} /><Info label="User ID" value={user.id} /><Info label="Имя" value={user.name || user.username} /></section><section className="history"><h3>История обращений</h3>{history.length ? history.map((item) => <button key={`${item.tab}-${item.id}`} onClick={() => onNavigate(item.tab, item.id)}><strong>{item.title}</strong><span>{item.meta} · {fmtDate(item.date)}</span></button>) : <Empty text="Обращений пока нет" />}</section></div></>;
+  const user = card.user; const history = [...(card.registrations || []).map((item) => ({ tab: 'registrations' as Tab, id: item.id, date: item.createdAt, title: `Анкета #${item.id} · ${item.orgName || item.innKpp || 'Без названия'}`, meta: registrationStatus(item) })), ...(card.serviceRequests || []).map((item) => ({ tab: 'service' as Tab, id: item.id, date: item.createdAt, title: `Сервис #${item.id} · ${item.serviceTypeTitle || item.serviceTypeCode}`, meta: statusText(item.status) })), ...(card.tickets || []).map((item) => ({ tab: 'tickets' as Tab, id: item.id, date: item.createdAt, title: `Вопрос #${item.id} · ${item.text || 'Без текста'}`, meta: item.isAnswered ? 'Закрыт' : 'Открыт' }))].sort((a, b) => +new Date(b.date) - +new Date(a.date));
+  const organization = card.organization; const registers = card.assets?.cashRegisters || []; const drives = card.assets?.fiscalDrives || []; const subscriptions = card.assets?.ofdSubscriptions || [];
+  return <><div className="detail-header"><div><h2>Карточка клиента</h2><span>{user?.platform} · {user?.chatId}</span></div><button onClick={onClose}><X size={16} />Закрыть</button></div><div className="customer-card"><div className="customer-context"><section className="context-panel"><h3>Клиент</h3><Info label="Платформа" value={user?.platform} /><Info label="Chat ID" value={user?.chatId} /><Info label="User ID" value={user?.id} /><Info label="Имя" value={user?.name || user?.username} /></section>{organization?.id && <section className="context-panel"><h3>Организация</h3><Info label="Название" value={organization.name} /><Info label="ИНН / КПП" value={[organization.inn, organization.kpp].filter(Boolean).join(' / ')} />{card.contacts?.map((contact) => <Info key={contact.id} label={`${contact.kind === 'phone' ? 'Телефон' : 'Email'} · ${providerName(contact.source)}`} value={contact.normalizedValue || contact.rawValue} />)}</section>}{(registers.length || drives.length || subscriptions.length) > 0 && <section className="context-panel"><h3>Кассы и подписки</h3>{registers.map((item) => <Info key={`kkt-${item.id}`} label={item.model || 'Касса'} value={[item.serialNumber, item.registrationNumber].filter(Boolean).join(' · ')} />)}{drives.map((item) => <Info key={`fn-${item.id}`} label={`ФН ${item.serialNumber}`} value={item.validUntil ? `до ${fmtDate(item.validUntil)}` : 'Срок не указан'} />)}{subscriptions.map((item) => <Info key={`ofd-${item.id}`} label={item.provider} value={item.validUntil ? `до ${fmtDate(item.validUntil)}` : item.status} />)}</section>}</div><section className="history"><h3>История обращений</h3>{history.length ? history.map((item) => <button key={`${item.tab}-${item.id}`} onClick={() => onNavigate(item.tab, item.id)}><strong>{item.title}</strong><span>{item.meta} · {fmtDate(item.date)}</span></button>) : <Empty text="Обращений пока нет" />}</section></div></>;
+}
+
+const opportunityStatuses: Array<{ value: OpportunityStatus | 'all'; label: string }> = [
+  { value: 'new', label: 'Новые' }, { value: 'in_progress', label: 'В работе' },
+  { value: 'contact_later', label: 'Связаться позже' }, { value: 'converted', label: 'Создана заявка' },
+  { value: 'resolved', label: 'Решённые' }, { value: 'not_relevant', label: 'Неактуальные' }, { value: 'all', label: 'Все' },
+];
+function opportunityStatus(value: OpportunityStatus) { return opportunityStatuses.find((item) => item.value === value)?.label ?? value; }
+function providerName(value: string) { return value === 'atol_connect' ? 'АТОЛ Connect' : value === 'platforma_ofd' ? 'Платформа ОФД' : value; }
+
+// prettier-ignore
+function Opportunities({ refreshKey, onChanged, onNavigate }: { refreshKey: number; onChanged: () => void; onNavigate: Navigate }) {
+  const [status, setStatus] = useState<OpportunityStatus | 'all'>('new'); const [provider, setProvider] = useState(''); const [search, setSearch] = useState(''); const [selectedId, setSelectedId] = useState<number>();
+  const query = useMemo(() => new URLSearchParams({ status, ...(provider ? { provider } : {}), ...(search.trim() ? { search: search.trim() } : {}) }).toString(), [status, provider, search]);
+  const data = useList<ServiceOpportunity>(`/admin/api/opportunities?${query}`, refreshKey); const selected = data.items.find((item) => item.id === selectedId);
+  useEffect(() => { if (selectedId && !data.items.some((item) => item.id === selectedId)) setSelectedId(undefined); }, [data.items, selectedId]);
+  return <><section className="filters signal-filters"><select value={status} onChange={(event) => setStatus(event.target.value as OpportunityStatus | 'all')}>{opportunityStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><select value={provider} onChange={(event) => setProvider(event.target.value)}><option value="">Все источники</option><option value="atol_connect">АТОЛ Connect</option><option value="platforma_ofd">Платформа ОФД</option></select><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Организация, ИНН или касса" /></section><Workbench title="Сервисные сигналы" items={data.items} selectedId={selectedId} onSelect={setSelectedId} loading={data.loading} error={data.error} row={(item) => <><div className="row-top"><strong>{item.organization?.name || item.organization?.inn || 'Неопознанный клиент'}</strong><span>{fmtDate(item.lastSeenAt)}</span></div><span className="row-preview">{item.title}</span><div className="badges"><Badge>{opportunityStatus(item.status)}</Badge><Badge priority={item.priority}>{priorityText(item.priority)}</Badge>{item.providers?.map((source) => <Badge key={source}>{providerName(source)}</Badge>)}</div></>} detail={selected ? <OpportunityDetailView id={selected.id} onChanged={onChanged} onNavigate={onNavigate} /> : null} /></>;
+}
+
+// prettier-ignore
+function OpportunityDetailView({ id, onChanged, onNavigate }: { id: number; onChanged: () => void; onNavigate: Navigate }) {
+  const [data, setData] = useState<OpportunityDetail>(); const [status, setStatus] = useState<OpportunityStatus>('new'); const [comment, setComment] = useState(''); const [callbackAt, setCallbackAt] = useState(''); const [busy, setBusy] = useState(false);
+  const load = useCallback(() => api<OpportunityDetail>(`/admin/api/opportunities/${id}`).then((result) => { setData(result); setStatus(result.opportunity.status); setComment(result.opportunity.operatorComment || ''); setCallbackAt(result.opportunity.callbackAt?.slice(0, 16) || ''); }), [id]);
+  useEffect(() => { void load(); }, [load]); if (!data) return <Empty text="Загрузка..." />; const opportunity = data.opportunity;
+  const save = async () => { setBusy(true); try { await post(`/admin/api/opportunities/${id}`, { status, comment, callbackAt: callbackAt || undefined }); await load(); onChanged(); } finally { setBusy(false); } };
+  const convert = async () => { setBusy(true); try { const result = await post<{ request: ServiceRequest }>(`/admin/api/opportunities/${id}/convert`); onChanged(); onNavigate('service', result.request.id); } finally { setBusy(false); } };
+  return <div className="detail-panel"><div className="detail-header"><div><h2><Activity size={18} />Сигнал #{opportunity.id} · {opportunity.title}</h2><span>{[...new Set(data.observations.map((item) => providerName(item.provider)))].join(', ')} · {fmtDate(opportunity.lastSeenAt)}</span></div></div><section className="detail-fields"><Info label="Организация" value={data.organization?.name || data.organization?.inn} /><Info label="ИНН" value={data.organization?.inn} /><Info label="Касса" value={[data.cashRegister?.model, data.cashRegister?.serialNumber].filter(Boolean).join(' · ')} /><Info label="РНМ" value={data.cashRegister?.registrationNumber} /><Info label="Приоритет" value={priorityText(opportunity.priority)} /><Info label="Первое событие" value={fmtDate(opportunity.firstSeenAt)} /></section>{opportunity.description && <div className="signal-description">{opportunity.description}</div>}<section className="signal-observations"><h3>Наблюдения</h3>{data.observations.map((item) => <article key={item.id}><div><strong>{providerName(item.provider)}</strong><span>{fmtDate(item.occurredAt)}</span></div><p>{item.title}</p>{item.description && <small>{item.description}</small>}</article>)}</section><section className="operator-controls"><div className="control-row"><select value={status} onChange={(event) => setStatus(event.target.value as OpportunityStatus)}>{opportunityStatuses.filter((item) => item.value !== 'all' && item.value !== 'converted').map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select><input type="datetime-local" value={callbackAt} onChange={(event) => setCallbackAt(event.target.value)} /><button className="primary" disabled={busy} onClick={() => void save()}><Check size={17} />Сохранить</button></div><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Комментарий оператора" />{opportunity.serviceRequestId ? <button onClick={() => onNavigate('service', opportunity.serviceRequestId)}>Открыть заявку #{opportunity.serviceRequestId}</button> : <button className="primary" disabled={busy} onClick={() => void convert()}><ExternalLink size={17} />Создать сервисную заявку</button>}</section></div>;
+}
+
+// prettier-ignore
+function IntegrationRuns({ refreshKey, permissions, onChanged }: { refreshKey: number; permissions: string[]; onChanged: () => void }) {
+  const data = useList<IntegrationRun>('/admin/api/integration-runs', refreshKey); const exclusions = useList<IntegrationExclusion>('/admin/api/integration-exclusions', refreshKey);
+  const [bridges, setBridges] = useState<Record<string, IntegrationBridgeState>>({}); const [syncing, setSyncing] = useState(''); const [inn, setInn] = useState(''); const [provider, setProvider] = useState(''); const [type, setType] = useState(''); const [reason, setReason] = useState(''); const [error, setError] = useState('');
+  const loadHealth = useCallback(() => api<Record<string, IntegrationBridgeState>>('/admin/api/integration-bridges').then(setBridges), []); useEffect(() => { void loadHealth(); }, [loadHealth, refreshKey]);
+  const sync = async (source: 'atol_connect' | 'platforma_ofd') => { setSyncing(source); try { await post(`/admin/api/integration-bridges/${source}/sync`); await loadHealth(); onChanged(); } finally { setSyncing(''); } };
+  const createExclusion = async () => { setError(''); try { await post('/admin/api/integration-exclusions', { inn, ...(provider ? { provider } : {}), ...(type.trim() ? { observationType: type.trim() } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) }); setInn(''); setType(''); setReason(''); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : 'Не удалось добавить исключение'); } };
+  const toggleExclusion = async (item: IntegrationExclusion, isActive: boolean) => { await post(`/admin/api/integration-exclusions/${item.id}`, { isActive }); onChanged(); };
+  if (data.loading) return <Empty text="Загрузка..." />; if (data.error) return <Empty text={data.error} />;
+  return <section className="integration-runs"><header><Database size={20} /><div><h2>Синхронизация источников</h2><span>Последние запуски импорта в VITMA MARKET</span></div></header><div className="bridge-grid">{(['atol_connect', 'platforma_ofd'] as const).map((source) => { const state = bridges[source]; return <article className="bridge-state" key={source}><div><strong>{providerName(source)}</strong><Badge>{state?.ready ? state.syncing ? 'Синхронизация' : 'Готов' : 'Недоступен'}</Badge></div><Info label="Последняя синхронизация" value={state?.lastSync ? fmtDate(state.lastSync) : null} />{(state?.lastError || state?.error) && <span className="form-error">{state.lastError || state.error}</span>}{permissions.includes('integrations.manage') && <button className="primary" disabled={!state?.ready || Boolean(syncing)} onClick={() => void sync(source)}><RefreshCw size={17} />{syncing === source ? 'Синхронизация...' : 'Запустить'}</button>}</article>; })}</div><section className="integration-exclusions"><header><div><h3>Исключения из сигналов</h3><span>Данные обновляются, но новые задачи оператору не создаются</span></div></header>{permissions.includes('integrations.manage') && <div className="exclusion-form"><input value={inn} onChange={(event) => setInn(event.target.value)} placeholder="ИНН" /><select value={provider} onChange={(event) => setProvider(event.target.value)}><option value="">Все источники</option><option value="atol_connect">АТОЛ Connect</option><option value="platforma_ofd">Платформа ОФД</option></select><input value={type} onChange={(event) => setType(event.target.value)} placeholder="Тип сигнала, необязательно" /><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Причина" /><button className="primary" disabled={!inn.trim()} onClick={() => void createExclusion()}>Добавить</button></div>}{error && <p className="form-error">{error}</p>}<div className="exclusion-list">{exclusions.items.length ? exclusions.items.map((item) => <article key={item.id}><div><strong>ИНН {item.inn}</strong><span>{[item.provider ? providerName(item.provider) : 'Все источники', item.observationType || 'Все сигналы'].join(' · ')}</span></div><span>{item.reason || 'Без комментария'}</span><label><input type="checkbox" checked={item.isActive} disabled={!permissions.includes('integrations.manage')} onChange={(event) => void toggleExclusion(item, event.target.checked)} />Активно</label></article>) : <span className="muted">Исключений пока нет</span>}</div></section><div className="integration-run-list">{data.items.length ? data.items.map((run) => <article key={run.id} className={`integration-run ${run.status}`}><div className="row-top"><strong>{providerName(run.provider)} · {run.kind}</strong><span>{fmtDate(run.startedAt)}</span></div><div className="badges"><Badge>{run.mode === 'shadow' ? 'Теневой режим' : 'Рабочий режим'}</Badge><Badge>{run.status}</Badge></div><div className="run-stats"><Info label="Получено" value={run.receivedCount} /><Info label="Применено" value={run.appliedCount} /><Info label="Пропущено" value={run.skippedCount} /><Info label="Ошибки" value={run.errorCount} /></div>{run.errorSummary && <p className="form-error">{run.errorSummary}</p>}</article>) : <Empty text="Запусков синхронизации пока нет" />}</div></section>;
 }
 
 function Organizations({ refreshKey }: { refreshKey: number }) { const data = useList<any>('/admin/api/organizations', refreshKey); return <section className="simple-grid">{data.loading ? <Empty text="Загрузка..." /> : data.items.map((org) => <article className="simple-card" key={org.id}><h3>{org.name || `Организация #${org.id}`}</h3><Info label="ИНН / КПП" value={[org.inn, org.kpp].filter(Boolean).join(' / ')} /><Info label="ОГРН" value={org.ogrn} /><Info label="СНО" value={org.taxSystem} /><Info label="Представители" value={org.members?.length} /></article>)}</section>; }
@@ -298,9 +363,19 @@ function StaffManagement({ refreshKey, onChanged }: { refreshKey: number; onChan
   const [form, setForm] = useState({ login: '', displayName: '', password: '', roles: ['operator'] as AdminRole[] });
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
-    await post('/admin/api/staff', form);
-    setForm({ login: '', displayName: '', password: '', roles: ['operator'] });
-    onChanged();
+    try {
+      await post('/admin/api/staff', form);
+      setForm({ login: '', displayName: '', password: '', roles: ['operator'] });
+      onChanged();
+    } catch (error) {
+      let message = 'Не удалось создать сотрудника. Проверьте данные и повторите попытку.';
+      if (error instanceof ApiError && error.status === 409) {
+        message = 'Сотрудник с таким логином уже существует.';
+      } else if (error instanceof ApiError && error.status === 400) {
+        message = 'Пароль должен содержать 12-128 символов, не включать логин и использовать минимум три группы: строчные, заглавные, цифры или специальные символы.';
+      }
+      window.dispatchEvent(new CustomEvent('vitma:notice', { detail: message }));
+    }
   };
   const toggle = (role: AdminRole) => setForm((current) => ({ ...current, roles: current.roles.includes(role) ? current.roles.filter((item) => item !== role) : [...current.roles, role] }));
   return <><form className="staff-form" onSubmit={create}><div className="form-row"><input required minLength={3} placeholder="Логин" value={form.login} onChange={(e) => setForm({ ...form, login: e.target.value })} /><input required placeholder="Имя сотрудника" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} /><input required minLength={12} type="password" autoComplete="new-password" placeholder="Пароль" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /><button className="primary" disabled={!form.roles.length}><UserPlus size={16} />Создать</button></div><div className="role-picker">{roleOptions.map((role) => <label key={role.value}><input type="checkbox" checked={form.roles.includes(role.value)} onChange={() => toggle(role.value)} />{role.label}</label>)}</div></form><section className="simple-grid">{data.loading ? <Empty text="Загрузка..." /> : data.error ? <Empty text={data.error} /> : data.items.map((staff) => <StaffCard key={staff.id} staff={staff} onChanged={onChanged} />)}</section></>;
@@ -324,7 +399,8 @@ type Navigate = (tab: Tab, id?: number) => void;
 interface ListProps { status: string; platform: string; priority?: string; refreshKey: number; requestedId?: number; onNavigate: Navigate; onChanged: () => void; permissions?: string[] }
 function DetailHeader({ title, subtitle, onCustomer, right }: { title: string; subtitle: string; onCustomer?: () => void; right?: React.ReactNode }) { return <div className="detail-header"><div><h2>{title}</h2><span>{subtitle}</span></div><div className="actions">{onCustomer && <button onClick={onCustomer}><UserRound size={16} />Карточка клиента</button>}{right}</div></div>; }
 function FieldGrid({ fields }: { fields: Array<[string, unknown]> }) { return <div className="field-grid">{fields.map(([label, val]) => <Info key={label} label={label} value={val} />)}</div>; }
-function Info({ label, value: input }: { label: string; value: unknown }) { return <div className="info"><span>{label}</span><strong>{value(input)}</strong></div>; }
+// prettier-ignore
+function Info({ label, value: input }: { label: string; value: unknown }) { const fileUrl = typeof input === 'string' && input.startsWith('/admin/api/') ? input : null; return <div className="info"><span>{label}</span><strong>{fileUrl ? <a className="button" href={fileUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />Открыть файл</a> : value(input)}</strong></div>; }
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div>; }
 function Badge({ children, priority }: { children: React.ReactNode; priority?: Priority }) { return <span className={`badge ${priority ? `priority-${priority}` : ''}`}>{children}</span>; }
 function PrioritySelect({ value, onChange }: { value: Priority; onChange: (value: Priority) => void }) { return <select value={value} onChange={(e) => onChange(e.target.value as Priority)}>{priorities.filter((item) => item.value).map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>; }

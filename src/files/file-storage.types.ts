@@ -26,7 +26,8 @@ export type FilePurpose =
     | 'service-invoice'
     | 'atol-consent'
     | 'generated-pdf'
-    | 'signed-document';
+    | 'signed-document'
+    | 'payment-proof';
 
 export interface SaveFileInput {
     purpose: FilePurpose;

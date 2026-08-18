@@ -479,6 +479,31 @@ export class AdminController {
         return result;
     }
 
+    @Get('api/service-requests/:id/payment-proof')
+    @RequireAnyPermission(
+        'serviceRequests.read.all',
+        'serviceRequests.read.assigned',
+    )
+    async downloadServiceRequestPaymentProof(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Res() response: Response,
+    ) {
+        const details =
+            await this.adminService.getServiceRequestDetailsForAdmin(
+                admin,
+                Number(params.id),
+            );
+        if (!details.request.paymentProofFileId) {
+            throw new BadRequestException('Payment proof was not found');
+        }
+        return this.sendStoredFile(
+            response,
+            details.request.paymentProofFileId,
+            true,
+        );
+    }
+
     @Post('api/service-requests/:id/schedule')
     @RequirePermissions('serviceRequests.schedule')
     async scheduleServiceRequestVisit(
@@ -808,10 +833,17 @@ export class AdminController {
         return item ? decodeURIComponent(item.slice(prefix.length)) : null;
     }
 
-    private async sendStoredFile(response: Response, fileId: number) {
+    private async sendStoredFile(
+        response: Response,
+        fileId: number,
+        inline = false,
+    ) {
         const { file, stream } = await this.filesService.open(fileId);
         response.setHeader('Content-Type', file.mimeType);
-        response.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`);
+        response.setHeader(
+            'Content-Disposition',
+            `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
+        );
         response.setHeader('Cache-Control', 'private, no-store');
         response.setHeader('X-Content-Type-Options', 'nosniff');
         stream.pipe(response);

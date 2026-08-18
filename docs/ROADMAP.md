@@ -1046,6 +1046,19 @@ flowchart LR
 4. Проверка API партнёрского ОФД.
 5. Только затем direct adapters.
 
+### Текущее состояние интеграционной ветки
+
+- подтверждены private read-only contracts АТОЛ Connect и Платформы ОФД;
+- добавлены два изолированных browser bridge;
+- добавлены `integration_runs`, sanitized errors, exclusions, mappings, contacts и external observations;
+- SmartRadar и мониторинг ОФД сводятся в общие `service_opportunities`;
+- админка показывает health, runs и очередь сигналов;
+- superadmin управляет исключениями по ИНН/источнику/типу сигнала;
+- оператор явно преобразует сигнал в `ServiceRequest`;
+- режим остаётся shadow-only до сверки данных на тестовой/локальной БД;
+- 1С import, автоматические клиентские уведомления, расписание и receipt-level sync остаются отдельными этапами;
+- до production необходима эксплуатационная сверка `INT-06` на реальных кабинетах в shadow mode.
+
 ### Вертикальный сценарий импорта
 
 1. Менеджер выгружает файл из 1С.

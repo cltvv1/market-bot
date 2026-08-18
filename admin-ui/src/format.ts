@@ -11,7 +11,7 @@ export const statusText = (status?: string) => ({
 }[status || ''] || status || 'Не указан');
 
 export const answerLabels: Record<string, string> = {
-  problemDescription: 'Описание задачи', contactForCall: 'Контакт', inn: 'ИНН',
+  paymentProof: 'Платёжное поручение', problemDescription: 'Описание задачи', contactForCall: 'Контакт', inn: 'ИНН',
   cashRegisterIdentity: 'Касса/шильдик', fiscalDriveTerm: 'ФН', consentId: 'ID согласия',
   city: 'Город', clientName: 'Клиент', representativeName: 'В лице',
   representativeBasis: 'Основание', signedConsentName: 'Подписанный файл',

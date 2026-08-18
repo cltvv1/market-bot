@@ -7,6 +7,7 @@ export type CustomerActivityType =
     | 'service_request_answered'
     | 'service_request_price_confirmed'
     | 'service_request_invoice_attached'
+    | 'service_request_payment_proof_attached'
     | 'service_request_payment_received'
     | 'service_request_visit_scheduled'
     | 'service_request_completed'

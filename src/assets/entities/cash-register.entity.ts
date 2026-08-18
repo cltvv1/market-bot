@@ -21,6 +21,9 @@ export class CashRegisterEntity {
     registrationNumber: string | null;
 
     @Column({ type: 'varchar', nullable: true })
+    installationAddress: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
     fnSerialNumber: string | null;
 
     @Column({ type: 'varchar', nullable: true })

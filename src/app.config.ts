@@ -41,4 +41,11 @@ export const validationSchema = Joi.object({
     ENABLE_LEGACY_UI: Joi.boolean().default(false),
     ADMIN_UI_DIST: Joi.string().default('admin-ui/dist'),
     CLIENT_UI_DIST: Joi.string().default('client-ui/dist'),
+    INTEGRATION_BRIDGE_KEY: Joi.string().min(32).allow('').optional(),
+    ATOL_BRIDGE_URL: Joi.string()
+        .uri({ scheme: ['http', 'https'] })
+        .default('http://127.0.0.1:4318'),
+    POFD_BRIDGE_URL: Joi.string()
+        .uri({ scheme: ['http', 'https'] })
+        .default('http://127.0.0.1:4319'),
 }).unknown(true);

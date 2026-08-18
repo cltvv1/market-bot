@@ -23,6 +23,10 @@ export const ADMIN_PERMISSIONS = [
     'organizations.update',
     'assets.read',
     'assets.update',
+    'opportunities.read',
+    'opportunities.update',
+    'integrations.read',
+    'integrations.manage',
     'audit.read',
 ] as const;
 
@@ -46,6 +50,9 @@ const OPERATOR_PERMISSIONS: AdminPermission[] = [
     'organizations.update',
     'assets.read',
     'assets.update',
+    'opportunities.read',
+    'opportunities.update',
+    'integrations.read',
 ];
 
 export const ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[]> = {

@@ -53,6 +53,16 @@ export interface ServiceDirection {
     icon: string;
 }
 
+export interface ServiceTypeOption {
+    code: string;
+    title: string;
+    description?: string;
+    flow: 'simple' | 'fn_replacement';
+    settings?: {
+        prices?: Record<string, number>;
+    } | null;
+}
+
 export type ServiceRequestStatus =
     | 'accepted'
     | 'assigned'
@@ -75,6 +85,7 @@ export interface ServiceRequestFormData {
     serialNumber: string;
     software: string;
     problemType: string;
+    fiscalDriveTerm: '15' | '36';
     urgency: 'normal' | 'urgent' | 'critical';
     helpFormat: 'remote' | 'visit' | 'workshop';
     description: string;

@@ -192,6 +192,33 @@ export class ClientWorkflowService {
         };
     }
 
+    async submitServiceRequestPaymentProof(
+        input: ClientIdentity,
+        file: {
+            buffer: Buffer;
+            fileName?: string;
+            mimeType?: string;
+        },
+    ): Promise<ClientFlowResult> {
+        const identity = await this.resolveServiceRequestIdentity(input);
+        const result = await this.serviceRequestsService.attachPaymentProof(
+            identity,
+            file,
+        );
+        if (!result) {
+            return {
+                status: 'not_found',
+                message: 'Service request waiting for payment was not found.',
+            };
+        }
+
+        return {
+            status: 'completed',
+            message: 'Payment proof saved for operator review.',
+            data: result.request,
+        };
+    }
+
     private async notifyAdminsAboutRegistration(registration: RegistrationRequestEntity, filePath: string) {
         try {
             await this.registrationsService.notifyAdminsAboutNewReg(registration, filePath);

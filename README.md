@@ -115,15 +115,15 @@ npm run build
 
 ## Данные клиентского сайта
 
-Каталог, готовые решения по типу бизнеса, корзина, оформление заказов и демонстрационные статусы находятся в типизированных модулях `client-ui/src/data` и `client-ui/src/services`. Глобальный поиск по `/site/search` объединяет товары и сервисные направления. Корзина, созданные mock-заявки и заявки на обратный звонок сохраняются в `localStorage`.
+Каталог, готовые решения по типу бизнеса, корзина и оформление заказов находятся в типизированных модулях `client-ui/src/data` и `client-ui/src/services`. Глобальный поиск по `/site/search` объединяет товары и сервисные направления. Корзина пока сохраняется в `localStorage`.
 
-Расширенная сервисная форма по умолчанию использует mock-адаптер, поскольку текущий API хранит только краткое описание и телефон. Заявка на звонок в режиме реального API создаёт вопрос оператору в общей админке. Чтобы включить эти интеграции, создайте `client-ui/.env`:
+Сервисная форма по умолчанию использует реальный API, общий каталог `service_types` и тот же workflow, что Telegram и MAX. Созданные заявки сохраняются в PostgreSQL и отображаются в админке. Mock-режим можно включить только явно:
 
 ```env
-VITE_USE_REAL_SERVICE_API=true
+VITE_USE_REAL_SERVICE_API=false
 ```
 
-Для полноценной production-интеграции потребуются backend-модели товаров, заказов, вложений сервисной заявки и публичный endpoint статуса по защищённому токену.
+Для полноценной production-интеграции ещё потребуются backend-модели товаров, заказов и общих вложений сервисной заявки.
 
 ## Полезные команды
 
@@ -136,7 +136,13 @@ npm run test:characterization # pure/unit characterization tests
 npm run test:e2e           # e2e-тесты Nest
 npm run test:integration   # clean test DB + migrations + API/characterization
 npm run db:backup          # резервная копия PostgreSQL
+npm run start:bridge:atol  # read-only ATOL Connect bridge
+npm run start:bridge:pofd  # read-only Platforma OFD bridge
+npm run sync:integrations  # запустить обе синхронизации вручную
 ```
+
+Настройка внешних синхронизаций описана в
+[`docs/integrations/INTEGRATION_RUNBOOK.md`](docs/integrations/INTEGRATION_RUNBOOK.md).
 
 Демонстрационные контакты и реквизиты вынесены в `client-ui/src/data/company.ts` и должны быть заменены перед публикацией.
 

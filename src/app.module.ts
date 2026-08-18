@@ -24,6 +24,7 @@ import { RateLimitGuard } from './security/rate-limit';
 import { FilesModule } from './files/files.module';
 import { AuditModule } from './audit/audit.module';
 import { UiServingModule } from './ui/ui-serving.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 
 @Module({
   imports: [
@@ -78,7 +79,7 @@ import { UiServingModule } from './ui/ui-serving.module';
     TicketsModule,
     FilesModule,
     AuditModule,
-    UiServingModule,
+    UiServingModule, IntegrationsModule,
   ],
   controllers: [AppController],
   providers: [

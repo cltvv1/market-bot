@@ -250,6 +250,43 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         );
     });
 
+    it('reuses an untouched FN draft and hides it from admin work', async () => {
+        const first = await serviceRequestsService.start(
+            testIdentity,
+            'fn_replacement',
+        );
+        const second = await serviceRequestsService.start(
+            testIdentity,
+            'fn_replacement',
+        );
+
+        expect(second.request.id).toBe(first.request.id);
+        expect(
+            await dataSource
+                .getRepository(ServiceRequestEntity)
+                .countBy({ serviceTypeCode: 'fn_replacement' }),
+        ).toBe(1);
+        expect(
+            await dataSource
+                .getRepository(ServiceRequestEventEntity)
+                .countBy({ serviceRequestId: first.request.id }),
+        ).toBe(1);
+        expect(await serviceRequestsService.listForAdmin('active')).toEqual([]);
+        expect(await serviceRequestsService.listForAdmin('all')).toEqual([]);
+
+        await serviceRequestsService.answer(
+            testIdentity,
+            first.request.id,
+            '2460000000',
+        );
+
+        expect(
+            (await serviceRequestsService.listForAdmin('active')).map(
+                (request) => request.id,
+            ),
+        ).toEqual([first.request.id]);
+    });
+
     it('submits a simple service request without external delivery', async () => {
         const started = await serviceRequestsService.start(
             testIdentity,
@@ -273,6 +310,11 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         });
         expect(notifications.notify).toHaveBeenCalledTimes(1);
         expect(messenger.sendMessage.mock.calls).toHaveLength(0);
+        expect(
+            (await serviceRequestsService.listForAdmin('active')).map(
+                (request) => request.id,
+            ),
+        ).toContain(started.request.id);
     });
 
     it('keeps FN price confirmation and invoice/payment/visit transitions', async () => {
@@ -320,6 +362,24 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         );
         expect(invoiced.request.status).toBe('waiting_payment');
 
+        await expect(
+            serviceRequestsService.markPaymentReceived(
+                started.request.id,
+                'operator-1',
+            ),
+        ).rejects.toThrow('Payment proof must be attached');
+
+        // prettier-ignore
+        const paymentProof =
+            await serviceRequestsService.attachPaymentProof(testIdentity, {
+                buffer: Buffer.from('%PDF-1.7 payment'),
+                fileName: 'payment.pdf',
+                mimeType: 'application/pdf',
+            });
+        expect(paymentProof?.request.id).toBe(started.request.id);
+        expect(paymentProof?.request.status).toBe('waiting_payment');
+        expect(typeof paymentProof?.request.paymentProofFileId).toBe('number');
+
         const paid = await serviceRequestsService.markPaymentReceived(
             started.request.id,
             'operator-1',
@@ -346,6 +406,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
                 'answered',
                 'price_confirmed',
                 'invoice_attached',
+                'payment_proof_attached',
                 'payment_received',
                 'visit_scheduled',
                 'completed',

@@ -4,6 +4,7 @@
 /client-ui/dist
 /node_modules
 /build
+/.integration-profiles
 
 # Logs
 logs
