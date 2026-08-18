@@ -1,4 +1,9 @@
-import { MAX_OFD_CALLBACK, MaxUpdate } from './max.update';
+import {
+    MAX_BOT_COMMANDS,
+    MAX_OFD_CALLBACK,
+    MaxUpdate,
+    registerMaxBotCommands,
+} from './max.update';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
 
 describe('MaxUpdate media handling', () => {
@@ -30,6 +35,7 @@ describe('MaxUpdate media handling', () => {
     };
     const contexts = { set: jest.fn().mockResolvedValue(undefined) };
     const clientWorkflow = {
+        upsertClient: jest.fn().mockResolvedValue(undefined),
         submitTicketMedia: jest.fn().mockResolvedValue({ status: 'completed' }),
         submitServiceRequestPaymentProof: jest
             .fn()
@@ -131,6 +137,36 @@ describe('MaxUpdate media handling', () => {
             '55',
             { mode: 'TICKET' },
             'max',
+        );
+    });
+
+    it('registers the supported MAX commands through the SDK', async () => {
+        const setMyCommands = jest.fn().mockResolvedValue({
+            commands: MAX_BOT_COMMANDS,
+        });
+
+        await registerMaxBotCommands({ setMyCommands });
+
+        expect(setMyCommands).toHaveBeenCalledWith([
+            { name: 'start', description: 'Запустить бота' },
+            { name: 'menu', description: 'Открыть главное меню' },
+        ]);
+    });
+
+    it('opens the main menu command and resets an active flow', async () => {
+        await update.handleMainMenuCommand(ctx);
+
+        expect(clientWorkflow.upsertClient).toHaveBeenCalledWith(
+            expect.objectContaining({ platform: 'max', chatId: '55' }),
+        );
+        expect(contexts.set).toHaveBeenCalledWith(
+            '55',
+            { mode: 'IDLE' },
+            'max',
+        );
+        expect(ctx.reply).toHaveBeenCalledWith(
+            'Я чат-бот компании ВитмаМаркет. Чем могу помочь?',
+            expect.anything(),
         );
     });
 
