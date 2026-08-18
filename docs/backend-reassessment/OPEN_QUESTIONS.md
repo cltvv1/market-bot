@@ -4,7 +4,7 @@ Only decisions not derivable from code, tests, Git or existing dated evidence ar
 
 ## Blocks canonical model selection
 
-1. **Organization claim:** how must a customer prove authority over an INN: operator approval, code to known corporate contact, document, provider data, or another process? What read/write access is allowed while pending?
+1. **Organization claim (решено для v1):** право подтверждает оператор вручную; pending не даёт доступа к защищённым данным. Это временный рабочий процесс, не окончательная юридическая идентификация.
 2. **Service status:** which customer-facing states and messages are approved, separately from internal operator/engineer states?
 3. **Location:** is a trading point shared across multiple KKT and organizations, and which minimum address/contact/timezone fields are required?
 4. **Service relationship:** must every service request reference equipment/location, or are ad-hoc requests without an organization/equipment valid?
@@ -14,7 +14,7 @@ Only decisions not derivable from code, tests, Git or existing dated evidence ar
 1. **BKV1-1:** which service request attachments are allowed per type, who can read them after closure, and what retention applies?
 2. **BKV1-1:** which existing service types are public on web, Telegram and MAX, and which are operator-only?
 3. **BKV1-2:** is one equipment/FN barcode photo always mandatory for KKT registration, and what is the accepted substitute when the client cannot provide it?
-4. **BKV1-3:** who approves organization membership and equipment ownership corrections?
+4. **BKV1-3:** operator уже подтверждает обычный membership; отдельно требуется решить, кто и как исправляет ownership оборудования и назначает owner.
 5. **BKV1-4:** who owns catalog content, publication, price and coarse availability; are prices VAT-inclusive and can checkout proceed without a final price?
 6. **BKV1-4:** which contact/address/delivery fields are mandatory, and what is the first customer access channel for an order: web session, public token, linked messenger, or a combination?
 7. **BKV1-4:** must the first release import catalog from 1C/CSV, or is manual admin entry acceptable for launch?

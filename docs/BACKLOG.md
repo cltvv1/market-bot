@@ -114,12 +114,14 @@
 
 ## Этап 4. Единый профиль клиента
 
+`ID-04 / BKV1-0` частично выполнен: ручной operator approval, безопасная роль `representative`, session isolation и concurrency guards реализованы. Invitations, owner assignment policy и детальные organization capabilities остаются в backlog.
+
 | ID | Название | Описание | Зависимость | Модули/файлы | Критерии приёмки | Сложность | Приоритет |
 |---|---|---|---|---|---|---|---|
 | ID-01 | Канонический customer backfill | Сделать `users.id` каноническим, backfill channels, добавить merge/status/phone fields | Этапы 1-3, E0-01 | users/channels/migrations | Все старые FK сохранены; для каждого messenger user есть channel | L | P1 |
 | ID-02 | Привязка Telegram/MAX | Одноразовый nonce и deep link, transactional channel reassignment | ID-01 | identity API, bot commands | Владение подтверждается messenger account; nonce одноразовый/истекает | L | P1 |
 | ID-03 | Клиентский кабинет | Заказы, сервис, регистрации, документы и preferences для подтверждённого профиля | ID-01, SHOP/SR APIs | client-ui account, identity API | Клиент видит историю всех своих подтверждённых каналов и только разрешённых организаций | XL | P1 |
-| ID-04 | Безопасное членство организации | Invitations/operator approval вместо active owner по одному ИНН | ID-01 | organizations/members/admin/client | ИНН не даёт автоматический доступ; права представителя проверяются backend | L | P1 |
+| ID-04 | Безопасное членство организации | BKV1-0: operator approval реализован; далее invitations и детальные capabilities | BKV1-0 выполнен, ID-01 для cross-channel | organizations/members/admin/client | ИНН не даёт автоматический доступ; права представителя проверяются backend | L | P1 |
 | ID-05 | Управляемый merge | Preview conflicts, transactional FK move, immutable merge audit и ручное разрешение | ID-01, ID-04 | identity merge service/admin | Нет auto-merge по телефону; source не удаляется; спорный merge обратим компенсирующей операцией | XL | P1 |
 
 ## Этап 5. Оборудование

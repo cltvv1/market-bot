@@ -69,6 +69,8 @@ Admin/integrations -> separate admin/import paths -> same organizations/assets
 
 Break: claim verification is absent. Integration matching can enrich core records, but customer-written and provider-written precedence is only service logic, not a general provenance model.
 
+`RESOLVED_AFTER_AUDIT (BKV1-0)`: flow теперь `web session -> pending OrganizationAccessRequest -> operator approve/reject -> active representative membership`. Старый URL не является обходом. Pending не открывает assets; собственные запросы изолированы server-side web session.
+
 ### ATOL/OFD shadow sync
 
 ```text

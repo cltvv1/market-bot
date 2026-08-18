@@ -9,7 +9,7 @@ import { answerLabels, fmtDate, priorityText, registrationStatus, statusText, va
 // prettier-ignore
 import type {
     Admin, AdminRole, CustomerCard, EquipmentKit, IntegrationBridgeState,
-    IntegrationExclusion, IntegrationRun, NotificationSettings, OpportunityDetail,
+    IntegrationExclusion, IntegrationRun, NotificationSettings, OpportunityDetail, OrganizationAccessRequest,
     OpportunityStatus, Priority, Registration, ServiceEvent, ServiceOpportunity,
     ServiceRequest, Staff, Summary, Tab, Ticket, TicketMessage,
 } from './types';
@@ -20,6 +20,7 @@ const tabs: Array<{ id: Tab; label: string; permissions: string[] }> = [
   { id: 'service', label: 'Заявки по сервису', permissions: ['serviceRequests.read.all', 'serviceRequests.read.assigned'] },
   { id: 'tickets', label: 'Вопросы', permissions: ['tickets.read'] },
   { id: 'opportunities', label: 'Сигналы', permissions: ['opportunities.read'] },
+  { id: 'organization-access', label: 'Доступ к организациям', permissions: ['organizationAccess.read'] },
   { id: 'organizations', label: 'Организации', permissions: ['organizations.read'] },
   { id: 'equipment-kits', label: 'Комплекты', permissions: ['assets.read'] },
   { id: 'integrations', label: 'Интеграции', permissions: ['integrations.read'] },
@@ -124,7 +125,7 @@ export function App() {
           {visibleTabs.map((item) => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setSelection(null); setStatus('new'); }}>{item.label}</button>)}
         </nav>
 
-        {tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'opportunities' && tab !== 'integrations' && tab !== 'staff' && tab !== 'audit' && (
+        {tab !== 'organization-access' && tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'opportunities' && tab !== 'integrations' && tab !== 'staff' && tab !== 'audit' && (
           <section className="filters">
             <select value={status} onChange={(event) => setStatus(event.target.value)}>
               <option value="new">Новые</option><option value="in_work">В работе</option>
@@ -143,6 +144,7 @@ export function App() {
         {tab === 'tickets' && <Tickets status={status} platform={platform} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} />}
         {tab === 'service' && <ServiceRequests status={status} platform={platform} priority={priority} responsible={responsible} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} permissions={admin.permissions} />}
         {tab === 'opportunities' && <Opportunities refreshKey={refreshKey} onChanged={refresh} onNavigate={navigate} />}
+        {tab === 'organization-access' && <OrganizationAccessQueue refreshKey={refreshKey} onChanged={refresh} canReview={admin.permissions.includes('organizationAccess.review')} />}
         {tab === 'organizations' && <Organizations refreshKey={refreshKey} />}
         {tab === 'equipment-kits' && <EquipmentKits refreshKey={refreshKey} onChanged={refresh} />}
         {tab === 'integrations' && <IntegrationRuns refreshKey={refreshKey} permissions={admin.permissions} onChanged={refresh} />}
@@ -306,6 +308,21 @@ function IntegrationRuns({ refreshKey, permissions, onChanged }: { refreshKey: n
 }
 
 function Organizations({ refreshKey }: { refreshKey: number }) { const data = useList<any>('/admin/api/organizations', refreshKey); return <section className="simple-grid">{data.loading ? <Empty text="Загрузка..." /> : data.items.map((org) => <article className="simple-card" key={org.id}><h3>{org.name || `Организация #${org.id}`}</h3><Info label="ИНН / КПП" value={[org.inn, org.kpp].filter(Boolean).join(' / ')} /><Info label="ОГРН" value={org.ogrn} /><Info label="СНО" value={org.taxSystem} /><Info label="Представители" value={org.members?.length} /></article>)}</section>; }
+
+const accessStatusLabels: Record<string, string> = { pending: 'Ожидает проверки', approved: 'Одобрен', rejected: 'Отклонён', cancelled: 'Отозван' };
+
+function OrganizationAccessQueue({ refreshKey, onChanged, canReview }: { refreshKey: number; onChanged: () => void; canReview: boolean }) {
+  const [status, setStatus] = useState('pending'); const data = useList<OrganizationAccessRequest>(`/admin/api/organization-access-requests?status=${status}`, refreshKey); const [selectedId, setSelectedId] = useState<number>();
+  useEffect(() => { if (!data.items.some((item) => item.id === selectedId)) setSelectedId(data.items[0]?.id); }, [data.items, selectedId]);
+  const selected = data.items.find((item) => item.id === selectedId);
+  return <><section className="filters"><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="pending">Ожидают проверки</option><option value="approved">Одобренные</option><option value="rejected">Отклонённые</option><option value="cancelled">Отозванные</option><option value="all">Все</option></select></section><Workbench title="Запросы доступа" items={data.items} selectedId={selectedId} onSelect={setSelectedId} loading={data.loading} error={data.error} row={(item) => <><div className="row-top"><strong>{item.organization?.name || `Организация #${item.organization?.id}`}</strong><span>{fmtDate(item.createdAt)}</span></div><span className="row-preview">ИНН {item.organization?.inn} · {item.submittedName || item.customer?.name || 'Имя не указано'}</span><div className="badges"><Badge>{accessStatusLabels[item.status]}</Badge></div></>} detail={selected ? <OrganizationAccessDetail item={selected} canReview={canReview} onChanged={onChanged} /> : null} /></>;
+}
+
+function OrganizationAccessDetail({ item, canReview, onChanged }: { item: OrganizationAccessRequest; canReview: boolean; onChanged: () => void }) {
+  const [comment, setComment] = useState(item.reviewComment || ''); const [busy, setBusy] = useState(false); useEffect(() => setComment(item.reviewComment || ''), [item.id, item.reviewComment]);
+  const decide = async (decision: 'approve' | 'reject') => { setBusy(true); try { await post(`/admin/api/organization-access-requests/${item.id}/${decision}`, { reviewComment: comment || undefined }); onChanged(); } finally { setBusy(false); } };
+  return <><DetailHeader title={`Запрос #${item.id} · ${item.organization?.name || 'Организация'}`} subtitle={`${accessStatusLabels[item.status]} · ${fmtDate(item.createdAt)}`} /><div className="detail-body"><FieldGrid fields={[["ИНН / КПП", [item.organization?.inn, item.organization?.kpp].filter(Boolean).join(' / ')], ["Клиент", item.submittedName || item.customer?.name], ["Телефон", item.submittedPhone], ["Email", item.submittedEmail], ["Канал", item.customer ? `${item.customer.platform} · ${item.customer.chatId}` : null], ["Комментарий клиента", item.comment], ["Роль после одобрения", 'Представитель'], ["Проверил", item.reviewer?.displayName], ["Рассмотрен", item.reviewedAt ? fmtDate(item.reviewedAt) : null]]} />{canReview && item.status === 'pending' && <div className="operator-panel"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Комментарий проверки" maxLength={1000} /><div className="actions"><button className="primary" disabled={busy} onClick={() => void decide('approve')}><Check size={16} />Одобрить</button><button className="danger" disabled={busy} onClick={() => void decide('reject')}><X size={16} />Отклонить</button></div></div>}{item.status !== 'pending' && item.reviewComment && <div className="operator-panel"><Info label="Комментарий проверки" value={item.reviewComment} /></div>}</div></>;
+}
 
 function AuditLog({ refreshKey }: { refreshKey: number }) {
   const [result, setResult] = useState('');

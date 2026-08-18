@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AuditEventEntity, type AuditActorType, type AuditResult } from './entities/audit-event.entity';
 import { sanitizeAuditMetadata } from './audit-sanitizer';
 
@@ -37,8 +37,11 @@ export class AuditService {
         private readonly events: Repository<AuditEventEntity>,
     ) {}
 
-    record(input: AuditInput) {
-        return this.events.save(this.events.create({
+    record(input: AuditInput, manager?: EntityManager) {
+        const events = manager
+            ? manager.getRepository(AuditEventEntity)
+            : this.events;
+        const event = events.create({
             actorType: input.actorType,
             actorStaffId: input.actorStaffId ?? null,
             actorCustomerId: input.actorCustomerId ?? null,
@@ -52,7 +55,8 @@ export class AuditService {
             metadata: input.metadata
                 ? sanitizeAuditMetadata(input.metadata) as Record<string, unknown>
                 : null,
-        }));
+        });
+        return events.save(event);
     }
 
     async list(query: AuditQuery) {

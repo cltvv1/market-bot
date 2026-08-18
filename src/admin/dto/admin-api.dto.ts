@@ -158,6 +158,20 @@ export class SearchQueryDto {
     q?: string;
 }
 
+export class OrganizationAccessListQueryDto {
+    @IsOptional()
+    @IsIn(['all', 'pending', 'approved', 'rejected', 'cancelled'])
+    status?: 'all' | 'pending' | 'approved' | 'rejected' | 'cancelled';
+}
+
+export class OrganizationAccessReviewDto {
+    @IsOptional()
+    @IsString()
+    @Transform(trim)
+    @MaxLength(1000)
+    reviewComment?: string;
+}
+
 export class InvoiceReferenceDto {
     @IsString()
     @Transform(trim)

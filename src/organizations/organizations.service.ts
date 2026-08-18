@@ -1,10 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+    BadRequestException,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { UserPlatform } from 'src/users/entities/user.entity';
 import { UsersService } from 'src/users/users.service';
 import { OrganizationEntity } from './entities/organization.entity';
-import { OrganizationMemberEntity, OrganizationMemberRole } from './entities/organization-member.entity';
+import { OrganizationMemberEntity } from './entities/organization-member.entity';
+import { AuditService } from 'src/audit/audit.service';
 
 export interface UpsertOrganizationInput {
     inn: string;
@@ -16,14 +21,6 @@ export interface UpsertOrganizationInput {
     taxSystem?: string;
 }
 
-export interface LinkOrganizationInput extends UpsertOrganizationInput {
-    chatId: string;
-    platform: UserPlatform;
-    userName?: string;
-    username?: string;
-    role?: OrganizationMemberRole;
-}
-
 @Injectable()
 export class OrganizationsService {
     constructor(
@@ -32,7 +29,8 @@ export class OrganizationsService {
         @InjectRepository(OrganizationMemberEntity)
         private readonly membersRepo: Repository<OrganizationMemberEntity>,
         private readonly usersService: UsersService,
-    ) { }
+        private readonly auditService: AuditService,
+    ) {}
 
     async upsertByInn(input: UpsertOrganizationInput) {
         const inn = this.normalizeInn(input.inn);
@@ -43,7 +41,9 @@ export class OrganizationsService {
         });
 
         if (!organization && !kpp) {
-            organization = await this.organizationsRepo.findOne({ where: { inn } });
+            organization = await this.organizationsRepo.findOne({
+                where: { inn },
+            });
         }
 
         if (!organization) {
@@ -55,47 +55,43 @@ export class OrganizationsService {
 
         organization.ogrn = input.ogrn?.trim() || organization.ogrn;
         organization.name = input.name?.trim() || organization.name;
-        organization.legalAddress = input.legalAddress?.trim() || organization.legalAddress;
-        organization.actualAddress = input.actualAddress?.trim() || organization.actualAddress;
-        organization.taxSystem = input.taxSystem?.trim() || organization.taxSystem;
+        organization.legalAddress =
+            input.legalAddress?.trim() || organization.legalAddress;
+        organization.actualAddress =
+            input.actualAddress?.trim() || organization.actualAddress;
+        organization.taxSystem =
+            input.taxSystem?.trim() || organization.taxSystem;
 
         return this.organizationsRepo.save(organization);
     }
 
-    async linkUserByInn(input: LinkOrganizationInput) {
-        const user = await this.usersService.getOrCreateOrUpdate(
-            input.chatId,
-            input.userName,
-            input.username,
-            input.platform,
-        );
-        const organization = await this.upsertByInn(input);
-
-        let member = await this.membersRepo.findOne({
-            where: { userId: user.id, organizationId: organization.id },
+    async findOrCreateForAccess(
+        input: Pick<UpsertOrganizationInput, 'inn' | 'kpp' | 'name'>,
+        manager: EntityManager,
+    ) {
+        const inn = this.normalizeInn(input.inn);
+        const kpp = input.kpp?.trim() || null;
+        const repository = manager.getRepository(OrganizationEntity);
+        let organization = await repository.findOne({
+            where: kpp ? { inn, kpp } : { inn },
         });
+        if (organization) return organization;
 
-        if (!member) {
-            member = this.membersRepo.create({
-                userId: user.id,
-                organizationId: organization.id,
-                role: input.role ?? 'owner',
-                status: 'active',
-                confirmedAt: new Date(),
-            });
-        } else if (member.status !== 'active') {
-            member.status = 'active';
-            member.confirmedAt = new Date();
-        }
-
-        member.role = input.role ?? member.role;
-        member = await this.membersRepo.save(member);
-
-        return { user, organization, member };
+        organization = repository.create({
+            inn,
+            kpp,
+            name: input.name?.trim() || null,
+        });
+        return repository.save(organization);
     }
 
     async getUserOrganizations(chatId: string, platform: UserPlatform) {
-        const user = await this.usersService.getOrCreateOrUpdate(chatId, undefined, undefined, platform);
+        const user = await this.usersService.getOrCreateOrUpdate(
+            chatId,
+            undefined,
+            undefined,
+            platform,
+        );
 
         return this.membersRepo.find({
             where: { userId: user.id, status: 'active' },
@@ -104,23 +100,43 @@ export class OrganizationsService {
         });
     }
 
-    async assertUserOrganization(chatId: string, platform: UserPlatform, organizationId?: number) {
+    async assertUserOrganization(
+        chatId: string,
+        platform: UserPlatform,
+        organizationId?: number,
+    ) {
         if (!organizationId) return null;
 
-        const user = await this.usersService.getOrCreateOrUpdate(chatId, undefined, undefined, platform);
+        const user = await this.usersService.getOrCreateOrUpdate(
+            chatId,
+            undefined,
+            undefined,
+            platform,
+        );
         const member = await this.membersRepo.findOne({
             where: { userId: user.id, organizationId, status: 'active' },
             relations: { organization: true },
         });
 
         if (!member) {
-            throw new NotFoundException('Organization is not linked to this user');
+            await this.auditService.record({
+                actorType: 'customer',
+                actorCustomerId: user.id,
+                action: 'organization_access.denied',
+                targetType: 'organization',
+                targetId: organizationId,
+                result: 'denied',
+                reason: 'active_membership_required',
+            });
+            throw new NotFoundException(
+                'Organization is not linked to this user',
+            );
         }
 
         return member.organization;
     }
 
-    private normalizeInn(value: string) {
+    normalizeInn(value: string) {
         const inn = value?.replace(/\D/g, '');
 
         if (!inn || (inn.length !== 10 && inn.length !== 12)) {

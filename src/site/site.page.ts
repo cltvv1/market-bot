@@ -332,8 +332,7 @@ export const sitePageHtml = `<!doctype html>
     async function linkOrganization() {
       try {
         const result = await api('/api/client/organizations/link-by-inn', { method:'POST', body:JSON.stringify(identity({ inn:orgInn.value, kpp:orgKpp.value, organizationName:orgName.value })) });
-        orgStatus.textContent = 'Организация привязана: ' + (result.organization.name || result.organization.inn);
-        await loadOrganizations();
+        orgStatus.textContent = 'Запрос отправлен на проверку. Статус: ' + (result.status || 'pending');
       } catch (error) { orgStatus.innerHTML = '<span class="error">Проверьте ИНН и попробуйте еще раз</span>'; }
     }
     async function loadAssets(organizationId) {

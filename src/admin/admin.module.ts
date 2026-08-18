@@ -28,6 +28,7 @@ import {
 import { FilesModule } from 'src/files/files.module';
 import { AuditModule } from 'src/audit/audit.module';
 import { OrganizationContactEntity } from 'src/integrations/entities/organization-contact.entity';
+import { OrganizationsModule } from 'src/organizations/organizations.module';
 
 @Module({
     imports: [
@@ -54,6 +55,7 @@ import { OrganizationContactEntity } from 'src/integrations/entities/organizatio
         AdminNotificationsModule,
         FilesModule,
         AuditModule,
+        OrganizationsModule,
     ],
     controllers: [AdminController],
     providers: [

@@ -39,6 +39,7 @@ erDiagram
 - `OrganizationMemberEntity` имеет FK к organization/user и роли owner/manager/accountant/employee.
 - `OrganizationsService.linkUserByInn` создаёт или реактивирует membership сразу как `active`, default role `owner`, `confirmedAt=now`. `isVerified` организации при этом не проверяется.
 - `BUSINESS_DECISION_REQUIRED`: до client cabinet нужен claim/approval policy. В текущем виде любой web-session, знающий ИНН, может получить доступ к данным организации и добавлять equipment.
+- `RESOLVED_AFTER_AUDIT (BKV1-0)`: создан отдельный `OrganizationAccessRequest` со статусами pending/approved/rejected/cancelled. Active membership появляется только после ручного approve и получает роль `representative`; legacy memberships сохранены без автоматического backfill.
 - Location/trading point отсутствует (`MISSING`). Адрес есть строками в organization, cash register и service request visit, но это не canonical location.
 
 ## Equipment

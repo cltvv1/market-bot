@@ -43,6 +43,10 @@ VITMA MARKET уже является работающим модульным м�
 4. Настоящего backend-каталога, публикации, цены/наличия и заказа-заявки нет.
 5. Клиентские delivery failures не восстанавливаются автоматически; web получает состояние чтением, messenger delivery выполняется best-effort.
 
+## Обновление после BKV1-0
+
+Разрыв №2 закрыт пакетом BKV1-0: ИНН создаёт отдельный `pending` access request, оператор вручную approve/reject, а approve выдаёт только `representative`. Исходная формулировка выше сохранена как результат аудита на дату среза. Реализация и ограничения: `docs/backend-v1/BKV1_0_ORGANIZATION_ACCESS.md`.
+
 ## Backend v1 for client site
 
 `Backend v1` достигнут, когда сайт может использовать стабильные серверные контракты для:
@@ -57,6 +61,6 @@ Outbox, production monitoring, внешний backup/retention и deployment har
 
 ## Рекомендация
 
-Первый пакет: **BKV1-1 Canonical service request**. Он устраняет наиболее опасный временный контракт текущего сайта и задаёт шаблон ownership, status, attachments и history для остальных вертикалей. Детальная последовательность: [BACKEND_V1_SCOPE_AND_SEQUENCE.md](./BACKEND_V1_SCOPE_AND_SEQUENCE.md).
+После BKV1-0 следующий пакет: **BKV1-1 Canonical service request**. Он задаёт шаблон ownership, status, attachments и history для остальных вертикалей. Детальная последовательность: [BACKEND_V1_SCOPE_AND_SEQUENCE.md](./BACKEND_V1_SCOPE_AND_SEQUENCE.md).
 
 Архитектура: [CURRENT_BACKEND_ARCHITECTURE.md](./CURRENT_BACKEND_ARCHITECTURE.md). Риски: [RELIABILITY_SECURITY_AND_OPERATIONS.md](./RELIABILITY_SECURITY_AND_OPERATIONS.md).
