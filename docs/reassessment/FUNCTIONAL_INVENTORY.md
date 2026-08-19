@@ -77,7 +77,7 @@
 
 | Возможность | Реализация | Статус | Доказательство / предел |
 |---|---|---|---|
-| PostgreSQL migrations | 5 TypeORM migrations | WORKING | clean run twice, show и schema log passed |
+| PostgreSQL migrations | 7 TypeORM migrations | WORKING | clean run, repeat run, show и schema log passed |
 | Anonymous web ownership | HttpOnly session, hashed token | WORKING | security/integration tests |
 | FileStorage | local provider, policies, checksum | WORKING | unit/integration; S3/AV не реализованы |
 | Coordinated backup/restore | `scripts/backup.mjs` | CODE_CONFIRMED | существующий restore drill документ; в этом аудите не запускался, чтобы не трогать backup resources |
@@ -88,3 +88,12 @@
 | 1С integration | только target/backlog | NOT_IMPLEMENTED | Нет adapter/import |
 | Notifications reliability | direct messenger calls | PARTIAL | Нет durable outbox/retry/metrics |
 | CI | quality/build/database/offline smoke | WORKING | полный официальный набор passed 2026-08-18 |
+
+## BKV1-1 functional update
+
+| Возможность | Web | Telegram/MAX | Admin | Статус |
+|---|---|---|---|---|
+| Каноническая сервисная заявка | draft/update/files/submit/status | существующие flows создают тот же aggregate | list/detail/create/transition | IMPLEMENTED |
+| Versioned structured form | schema-driven backend validation | legacy step answers привязаны к form version | structured display | IMPLEMENTED |
+| Customer-safe history | session или bearer token | direct messenger replies | customer/internal messages | IMPLEMENTED, без realtime/outbox |
+| Generic attachments | до 5 managed files | invoice/proof/consent compatibility links | metadata/download | IMPLEMENTED |

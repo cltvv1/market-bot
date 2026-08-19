@@ -36,3 +36,10 @@ Only decisions not derivable from code, tests, Git or existing dated evidence ar
 4. When local protected storage should move to S3-compatible storage.
 5. Reminder timing for FN/OFD and marketing consent policy.
 6. Whether Ticket should later evolve into a general Conversation linked to requests/orders; current product need does not require that decision now.
+
+## BKV1-1 decisions
+
+- Для первой версии допускаются заявки без organization/location/equipment; подтверждённая ссылка используется только при доказанном ownership, иначе сохраняется snapshot.
+- Web-переписка работает обычным refresh без realtime.
+- Public status требует web session или bearer token; номер заявки не является секретом.
+- До production pilot остаются открытыми retention вложений, antivirus, окончательный публичный набор service types и утверждённые клиентские формулировки статусов.

@@ -1,4 +1,4 @@
-import { Check, Circle, Search } from 'lucide-react';
+import { Check, Circle, FileText, Paperclip, Search, Send } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -22,11 +22,19 @@ export function ServiceStatusPage() {
         ServiceRequestRecord | null | undefined
     >(undefined);
     const [loading, setLoading] = useState(false);
+    const [reply, setReply] = useState('');
+    const [file, setFile] = useState<File>();
+    const [replyError, setReplyError] = useState('');
     const search = async (value = number) => {
         if (!value.trim()) return;
         setLoading(true);
         setParams({ number: value.trim() }, { replace: true });
-        setResult(await serviceRequestService.find(value));
+        setResult(
+            await serviceRequestService.find(
+                value,
+                params.get('token') || undefined,
+            ),
+        );
         setLoading(false);
     };
     useEffect(() => {
@@ -36,6 +44,30 @@ export function ServiceStatusPage() {
     const submit = (event: FormEvent) => {
         event.preventDefault();
         void search();
+    };
+    const sendReply = async (event: FormEvent) => {
+        event.preventDefault();
+        if (!result || (!reply.trim() && !file)) return;
+        setLoading(true);
+        setReplyError('');
+        try {
+            const refreshed = await serviceRequestService.reply(
+                result,
+                reply.trim(),
+                file,
+            );
+            setResult(refreshed);
+            setReply('');
+            setFile(undefined);
+        } catch (error) {
+            setReplyError(
+                error instanceof Error
+                    ? error.message
+                    : 'Не удалось отправить ответ',
+            );
+        } finally {
+            setLoading(false);
+        }
     };
     return (
         <div className="page container">
@@ -120,6 +152,71 @@ export function ServiceStatusPage() {
                                 </li>
                             )}
                     </ol>
+                    {result.attachments && result.attachments.length > 0 && (
+                        <div className="request-status__files">
+                            <h3>Файлы заявки</h3>
+                            {result.attachments.map((attachment) => (
+                                <a
+                                    key={attachment.id}
+                                    href={
+                                        result.accessToken
+                                            ? `/api/public/service-requests/${encodeURIComponent(result.accessToken)}/attachments/${attachment.id}`
+                                            : `/api/client/service-requests/${result.id}/attachments/${attachment.id}`
+                                    }
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    <FileText />
+                                    {attachment.name}
+                                </a>
+                            ))}
+                        </div>
+                    )}
+                    {result.status !== 'closed' &&
+                        result.status !== 'completed' && (
+                            <form
+                                className="request-status__reply"
+                                onSubmit={(event) => void sendReply(event)}
+                            >
+                                <label>
+                                    <span>Ответ оператору</span>
+                                    <textarea
+                                        value={reply}
+                                        onChange={(event) =>
+                                            setReply(event.target.value)
+                                        }
+                                        maxLength={10000}
+                                        rows={4}
+                                        placeholder="Напишите уточнение или ответ"
+                                    />
+                                </label>
+                                <label className="button button--secondary">
+                                    <Paperclip />
+                                    {file ? file.name : 'Приложить файл'}
+                                    <input
+                                        type="file"
+                                        accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"
+                                        onChange={(event) =>
+                                            setFile(event.target.files?.[0])
+                                        }
+                                    />
+                                </label>
+                                <Button
+                                    type="submit"
+                                    disabled={
+                                        loading || (!reply.trim() && !file)
+                                    }
+                                >
+                                    <Send />
+                                    Отправить
+                                </Button>
+                                {replyError && (
+                                    <p className="form-error" role="alert">
+                                        {replyError}
+                                    </p>
+                                )}
+                            </form>
+                        )}
                 </section>
             ) : (
                 <div className="status-hint">

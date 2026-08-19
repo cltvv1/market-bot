@@ -85,26 +85,34 @@ export class ServiceRequestListQueryDto {
         'active',
         'all',
         'draft',
+        'submitted',
         'price_confirmed',
         'review_required',
+        'clarification_required',
         'invoice_required',
         'waiting_payment',
         'paid',
         'scheduled',
+        'in_progress',
         'completed',
+        'closed',
         'cancelled',
     ])
     status?:
         | 'active'
         | 'all'
         | 'draft'
+        | 'submitted'
         | 'price_confirmed'
         | 'review_required'
+        | 'clarification_required'
         | 'invoice_required'
         | 'waiting_payment'
         | 'paid'
         | 'scheduled'
+        | 'in_progress'
         | 'completed'
+        | 'closed'
         | 'cancelled';
 
     @IsOptional()

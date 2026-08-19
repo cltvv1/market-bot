@@ -13,6 +13,15 @@ import { ServiceRequestsController } from './service-requests.controller';
 import { ServiceRequestsService } from './service-requests.service';
 import { AtolTemporaryFileService } from './atol-temporary-file.service';
 import { FilesModule } from 'src/files/files.module';
+import { AuditModule } from 'src/audit/audit.module';
+import { CashRegisterEntity } from 'src/assets/entities/cash-register.entity';
+import { ServiceFormDefinitionEntity } from './entities/service-form-definition.entity';
+import { ServiceFormVersionEntity } from './entities/service-form-version.entity';
+import { ServiceRequestAttachmentEntity } from './entities/service-request-attachment.entity';
+import { ServiceRequestMessageEntity } from './entities/service-request-message.entity';
+import { ServiceFormService } from './service-form.service';
+import { CanonicalServiceRequestsService } from './canonical-service-requests.service';
+import { PublicServiceRequestsController } from './public-service-requests.controller';
 
 @Module({
     imports: [
@@ -20,6 +29,11 @@ import { FilesModule } from 'src/files/files.module';
             ServiceTypeEntity,
             ServiceRequestEntity,
             ServiceRequestEventEntity,
+            ServiceFormDefinitionEntity,
+            ServiceFormVersionEntity,
+            ServiceRequestAttachmentEntity,
+            ServiceRequestMessageEntity,
+            CashRegisterEntity,
         ]),
         UsersModule,
         OrganizationsModule,
@@ -28,17 +42,25 @@ import { FilesModule } from 'src/files/files.module';
         AdminNotificationsModule,
         PdfModule,
         FilesModule,
+        AuditModule,
     ],
-    controllers: [ServiceRequestsController],
-    providers: [ServiceRequestsService, AtolTemporaryFileService],
-    exports: [ServiceRequestsService, TypeOrmModule],
+    controllers: [ServiceRequestsController, PublicServiceRequestsController],
+    providers: [
+        ServiceRequestsService,
+        CanonicalServiceRequestsService,
+        ServiceFormService,
+        AtolTemporaryFileService,
+    ],
+    exports: [ServiceRequestsService, CanonicalServiceRequestsService, TypeOrmModule],
 })
 export class ServiceRequestsModule implements OnApplicationBootstrap {
     constructor(
         private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly canonicalRequestsService: CanonicalServiceRequestsService,
     ) {}
 
     async onApplicationBootstrap() {
         await this.serviceRequestsService.ensureDefaultTypes();
+        await this.canonicalRequestsService.getTypesWithForms();
     }
 }

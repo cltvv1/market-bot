@@ -90,3 +90,7 @@ Missing for public pilot: structured correlation across request/domain event/del
 Important gaps: no integrated organization claim negative policy because policy does not exist; no web registration photo parity; no catalog/order tests; no concurrency/idempotency tests; no delivery retry tests; limited domain audit assertions; no live provider tests by design.
 
 All runs used an isolated PostgreSQL 16 on localhost, temporary storage and polling disabled. No production resources or real Telegram/MAX/ATOL/OFD calls were used.
+
+## BKV1-1 reliability delta
+
+Пакет добавляет optimistic draft updates, row locking для submit/attachment limit, per-customer submit idempotency и hashed public access tokens. FileStorage остаётся единственным источником содержимого вложений, пользовательские filenames не становятся object keys. Это не решает durable messenger delivery, глобальную update deduplication, antivirus, retention scheduler или multi-replica realtime. Миграция и backfill проверяются только на disposable test DB; production/historical resources не подключались.

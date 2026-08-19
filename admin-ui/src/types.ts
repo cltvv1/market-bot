@@ -28,7 +28,6 @@ export interface NotificationSettings {
   notifyTickets: boolean;
   notifyServiceRequests: boolean;
 }
-
 export interface BaseItem {
   id: number;
   createdAt: string;
@@ -83,7 +82,9 @@ export interface TicketMessage extends BaseItem {
   fileName?: string;
 }
 
+// prettier-ignore
 export interface ServiceRequest extends BaseItem {
+  requestNumber?: string;
   serviceTypeTitle?: string;
   serviceTypeCode?: string;
   status: string;
@@ -95,6 +96,13 @@ export interface ServiceRequest extends BaseItem {
   calculatedPrice?: number;
   invoiceFileId?: string; paymentProofFileId?: number;
   answers?: Record<string, unknown>;
+  customerStatus?: string;
+  source?: string;
+  version?: number;
+  contactSnapshot?: Record<string, unknown>;
+  organizationSnapshot?: Record<string, unknown>;
+  locationSnapshot?: Record<string, unknown>;
+  equipmentSnapshot?: Record<string, unknown>;
 }
 
 export interface ServiceEvent extends BaseItem {
@@ -102,6 +110,20 @@ export interface ServiceEvent extends BaseItem {
   actor?: string;
   message?: string;
   payload?: Record<string, unknown>;
+}
+
+// prettier-ignore
+export interface ServiceMessage extends BaseItem {
+  authorType: 'customer' | 'staff' | 'system';
+  visibility: 'customer' | 'internal';
+  text?: string;
+}
+
+// prettier-ignore
+export interface ServiceAttachment extends BaseItem {
+  kind: string;
+  customerVisible: boolean;
+  file: { id: number; originalName?: string; mimeType: string; sizeBytes: number };
 }
 
 // prettier-ignore

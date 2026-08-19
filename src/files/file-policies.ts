@@ -31,6 +31,19 @@ export const FILE_POLICIES: Record<FilePurpose, FilePolicy> = {
         false,
         false,
     ),
+    'service-attachment': policy(
+        20 * MB,
+        [
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'text/plain',
+        ],
+        ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.txt'],
+        false,
+        true,
+    ),
 };
 
 function policy(

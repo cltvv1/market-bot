@@ -1333,3 +1333,13 @@ Stage 0: completed and verified in hosted CI and hosted backup restore drill.
 
 The recommended next package is the first real shop vertical slice described
 later in this document. It was deliberately not started here.
+
+## Backend v1 progress
+
+- BKV1-0 organization access: completed and merged.
+- BKV1-1 canonical service requests: implemented in a dedicated package with migration, shared application service, React client/admin integration and regression tests.
+- Deferred from BKV1-1: durable delivery/outbox, realtime, global deduplication, form-builder UI, S3/AV and legacy-column contraction.
+
+The next backend package must use canonical ServiceRequest rather than introducing another request table or channel-specific status model.
+
+Recommended next package: **BKV1-2 KKT registration parity**. It should unify registration contracts and channel behavior on the existing FileStorage, organization-access and canonical workflow foundations; implementation is not part of BKV1-1.

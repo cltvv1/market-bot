@@ -20,6 +20,7 @@ import { UserEntity } from 'src/users/entities/user.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import { CanonicalServiceRequestsService } from 'src/service-requests/canonical-service-requests.service';
 import { ServiceRequestEntity } from 'src/service-requests/entities/service-request.entity';
 import type { ServiceRequestPriority, ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
@@ -64,6 +65,7 @@ export class AdminService {
         @InjectRepository(OrganizationContactEntity)
         private readonly organizationContactsRepo: Repository<OrganizationContactEntity>,
         private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly canonicalServiceRequests: CanonicalServiceRequestsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
         private readonly filesService: FilesService,
@@ -223,7 +225,15 @@ export class AdminService {
                 );
             }
         }
-        return this.serviceRequestsService.getRequestDetails(id);
+        const [legacy, canonical] = await Promise.all([
+            this.serviceRequestsService.getRequestDetails(id),
+            this.canonicalServiceRequests.getAdminDetails(id),
+        ]);
+        return {
+            ...legacy,
+            messages: canonical.messages,
+            attachments: canonical.attachments,
+        };
     }
 
     async assignEngineer(

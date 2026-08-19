@@ -193,6 +193,11 @@ npm run test:integration
 
 1. `InitialSchema1785067383157` — clean baseline.
 2. `SecurityFoundation1785079000000` — роли сотрудников, поля отзыва сессий, анонимные web-сессии и назначение инженера.
+3. `FileStorageAndAudit1785085000000` — управляемое файловое хранилище и append-only журнал административных действий.
+4. `ServiceRequestPaymentProof1785226500000` — подтверждающие оплату файлы сервисных заявок.
+5. `IntegrationFoundation1786953600000` — нормализованный импорт внешних наблюдений.
+6. `OrganizationAccessRequests1787040000000` — заявки представителей организаций и подтверждаемое членство.
+7. `CanonicalServiceRequests1787126400000` — единая модель сервисных заявок, версии форм, сообщения и вложения.
 
 `SecurityFoundation.down()` удаляет security foundation и предназначен только для disposable test/development DB. На БД с ценными данными его выполнять нельзя.
 
@@ -206,3 +211,9 @@ npm run db:restore -- -DumpPath "backups\example.dump" -Force
 ```
 
 Перед initial migration дополнительно создана одноразовая страховочная копия в `backups/preflight-20260726_184939`: PostgreSQL dump, архив текущего `storage`, manifest размеров/SHA-256 и результат restore drill. Это не завершает E0-12: повторяемая система backup/restore БД и файлов будет добавлена после FileStorage foundation E0-08.
+
+## Канонические сервисные заявки
+
+Web, Telegram, MAX, админка и интеграции используют общий агрегат `ServiceRequest`. Web-клиент создаёт server-side draft, сохраняет структурированные ответы и вложения, затем идемпотентно отправляет заявку. Номер заявки служит только для отображения; публичный просмотр защищён отдельным bearer token, хеш которого хранится в БД.
+
+Описание модели, API, статусов и ограничений: [`docs/backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md`](docs/backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md). Правила backfill и запросы проверки: [`docs/backend-v1/BKV1_1_BACKFILL_REPORT.md`](docs/backend-v1/BKV1_1_BACKFILL_REPORT.md).

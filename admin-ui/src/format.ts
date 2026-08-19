@@ -5,9 +5,9 @@ export const value = (input: unknown) => input === null || input === undefined |
 export const priorityText = (priority?: Priority) => ({ low: 'Низкий', normal: 'Обычный', high: 'Высокий', urgent: 'Срочный' }[priority || 'normal']);
 export const registrationStatus = (item: Registration) => item.isProcessed || item.status === 'processed' ? 'Обработана' : item.status === 'in_work' ? 'В работе' : 'Новая';
 export const statusText = (status?: string) => ({
-  draft: 'Черновик', price_confirmed: 'Цена согласована', review_required: 'Нужно проверить',
-  invoice_required: 'Нужен счёт', waiting_payment: 'Ожидает оплату', paid: 'Оплачено',
-  scheduled: 'Визит назначен', completed: 'Завершена', cancelled: 'Отменена',
+  draft: 'Черновик', submitted: 'Получена', price_confirmed: 'Цена согласована', review_required: 'Нужно проверить',
+  clarification_required: 'Нужно уточнение', invoice_required: 'Нужен счёт', waiting_payment: 'Ожидает оплату', paid: 'Оплачено',
+  scheduled: 'Визит назначен', in_progress: 'В работе', completed: 'Завершена', closed: 'Закрыта', cancelled: 'Отменена',
 }[status || ''] || status || 'Не указан');
 
 export const answerLabels: Record<string, string> = {

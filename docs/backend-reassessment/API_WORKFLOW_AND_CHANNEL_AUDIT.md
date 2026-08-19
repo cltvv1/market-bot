@@ -111,3 +111,7 @@ Before frontend redesign freezes page contracts:
 3. Define idempotency and optimistic transition behavior for create/submit/confirm actions.
 4. Keep current bot callbacks through compatibility tests while routing all channels through the same application commands.
 5. Distinguish customer-safe status/messages from internal workflow and comments.
+
+## BKV1-1 resolution
+
+Web draft/update/upload/submit/status и admin create/message/transition используют один application service. Public token и web session возвращают только customer-safe представление; внутренние сообщения и operator fields не раскрываются. Telegram/MAX продолжают существующие сценарии через совместимый ServiceRequestsService, который теперь создаёт тот же aggregate и синхронизирует customer status. Общий messenger delivery по-прежнему direct и не является outbox.
