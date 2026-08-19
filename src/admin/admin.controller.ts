@@ -31,10 +31,7 @@ import {
     RequireAnyPermission,
     RequirePermissions,
 } from './admin-auth.decorators';
-import {
-    AdminPermissionGuard,
-    AdminSessionGuard,
-} from './admin-auth.guard';
+import { AdminPermissionGuard, AdminSessionGuard } from './admin-auth.guard';
 import type { AdminPrincipal } from './admin-auth.types';
 import type { AdminPermission } from './admin.permissions';
 import {
@@ -61,6 +58,14 @@ import {
     OrganizationAccessReviewDto,
     PositiveIdParamDto,
     RegistrationOperatorStateDto,
+    RegistrationOperatorValueDto,
+    RegistrationEvidenceParamsDto,
+    RegistrationEvidenceLinkDto,
+    RegistrationRequestDataDto,
+    RegistrationRequirementActionDto,
+    RegistrationNotRequiredDto,
+    RegistrationOfdModeDto,
+    RegistrationHandoffDto,
     ScheduleServiceRequestDto,
     SearchQueryDto,
     ServiceRequestListQueryDto,
@@ -74,6 +79,8 @@ import { UiServingService } from 'src/ui/ui-serving.service';
 import { OrganizationAccessService } from 'src/organizations/organization-access.service';
 import { OrganizationAccessAdminResponseDto } from 'src/organizations/dto/organization-api.dto';
 import { CanonicalServiceRequestsService } from 'src/service-requests/canonical-service-requests.service';
+import { RegistrationReadinessService } from 'src/registrations/registration-readiness.service';
+import { RegistrationsService } from 'src/registrations/registrations.service';
 import {
     AdminCreateServiceRequestDto,
     AdminServiceRequestMessageDto,
@@ -101,6 +108,8 @@ export class AdminController {
         private readonly uiServing: UiServingService,
         private readonly organizationAccessService: OrganizationAccessService,
         private readonly canonicalServiceRequests: CanonicalServiceRequestsService,
+        private readonly registrationReadiness: RegistrationReadinessService,
+        private readonly registrationsService: RegistrationsService,
     ) {}
 
     @Get()
@@ -114,13 +123,17 @@ export class AdminController {
     @Get('admin.js')
     @PublicAdmin()
     getReactScript(@Res() response: Response) {
-        return response.sendFile(this.uiServing.getAssetPath('admin', 'admin.js'));
+        return response.sendFile(
+            this.uiServing.getAssetPath('admin', 'admin.js'),
+        );
     }
 
     @Get('admin.css')
     @PublicAdmin()
     getReactStyles(@Res() response: Response) {
-        return response.sendFile(this.uiServing.getAssetPath('admin', 'admin.css'));
+        return response.sendFile(
+            this.uiServing.getAssetPath('admin', 'admin.css'),
+        );
     }
 
     @Get('api/me')
@@ -173,10 +186,7 @@ export class AdminController {
         @Res({ passthrough: true }) response: Response,
     ) {
         await this.authService.logout(
-            this.getCookie(
-                request,
-                this.authService.getSessionCookieName(),
-            ),
+            this.getCookie(request, this.authService.getSessionCookieName()),
         );
         await this.auditService.record({
             actorType: 'staff',
@@ -207,9 +217,20 @@ export class AdminController {
 
     @Post('api/staff')
     @RequirePermissions('staff.create')
-    async createStaff(@CurrentAdmin() admin: AdminPrincipal, @Body() body: CreateAdminUserDto) {
+    async createStaff(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Body() body: CreateAdminUserDto,
+    ) {
         const staff = await this.authService.createStaff(body);
-        await this.auditService.record({ actorType: 'staff', actorStaffId: admin.id, actorSessionId: admin.sessionId, action: 'staff.create', targetType: 'admin_user', targetId: staff.id, metadata: { roles: body.roles } });
+        await this.auditService.record({
+            actorType: 'staff',
+            actorStaffId: admin.id,
+            actorSessionId: admin.sessionId,
+            action: 'staff.create',
+            targetType: 'admin_user',
+            targetId: staff.id,
+            metadata: { roles: body.roles },
+        });
         return staff;
     }
 
@@ -220,8 +241,19 @@ export class AdminController {
         @Param() params: AdminIdParamDto,
         @Body() body: SetAdminRolesDto,
     ) {
-        const staff = await this.authService.setRoles(Number(params.id), body.roles);
-        await this.auditService.record({ actorType: 'staff', actorStaffId: admin.id, actorSessionId: admin.sessionId, action: 'staff.roles.change', targetType: 'admin_user', targetId: params.id, metadata: { roles: body.roles } });
+        const staff = await this.authService.setRoles(
+            Number(params.id),
+            body.roles,
+        );
+        await this.auditService.record({
+            actorType: 'staff',
+            actorStaffId: admin.id,
+            actorSessionId: admin.sessionId,
+            action: 'staff.roles.change',
+            targetType: 'admin_user',
+            targetId: params.id,
+            metadata: { roles: body.roles },
+        });
         return staff;
     }
 
@@ -232,8 +264,19 @@ export class AdminController {
         @Param() params: AdminIdParamDto,
         @Body() body: SetAdminActiveDto,
     ) {
-        const staff = await this.authService.setActive(Number(params.id), body.isActive);
-        await this.auditService.record({ actorType: 'staff', actorStaffId: admin.id, actorSessionId: admin.sessionId, action: 'staff.active.change', targetType: 'admin_user', targetId: params.id, metadata: { isActive: body.isActive } });
+        const staff = await this.authService.setActive(
+            Number(params.id),
+            body.isActive,
+        );
+        await this.auditService.record({
+            actorType: 'staff',
+            actorStaffId: admin.id,
+            actorSessionId: admin.sessionId,
+            action: 'staff.active.change',
+            targetType: 'admin_user',
+            targetId: params.id,
+            metadata: { isActive: body.isActive },
+        });
         return staff;
     }
 
@@ -248,15 +291,34 @@ export class AdminController {
             Number(params.id),
             body.password,
         );
-        await this.auditService.record({ actorType: 'staff', actorStaffId: admin.id, actorSessionId: admin.sessionId, action: 'staff.password.reset', targetType: 'admin_user', targetId: params.id });
+        await this.auditService.record({
+            actorType: 'staff',
+            actorStaffId: admin.id,
+            actorSessionId: admin.sessionId,
+            action: 'staff.password.reset',
+            targetType: 'admin_user',
+            targetId: params.id,
+        });
         return result;
     }
 
     @Post('api/staff/:id/sessions/revoke')
     @RequirePermissions('staff.sessions.revoke')
-    async revokeStaffSessions(@CurrentAdmin() admin: AdminPrincipal, @Param() params: AdminIdParamDto) {
-        const result = await this.authService.revokeAllSessions(Number(params.id));
-        await this.auditService.record({ actorType: 'staff', actorStaffId: admin.id, actorSessionId: admin.sessionId, action: 'staff.sessions.revoke', targetType: 'admin_user', targetId: params.id });
+    async revokeStaffSessions(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: AdminIdParamDto,
+    ) {
+        const result = await this.authService.revokeAllSessions(
+            Number(params.id),
+        );
+        await this.auditService.record({
+            actorType: 'staff',
+            actorStaffId: admin.id,
+            actorSessionId: admin.sessionId,
+            action: 'staff.sessions.revoke',
+            targetType: 'admin_user',
+            targetId: params.id,
+        });
         return result;
     }
 
@@ -300,9 +362,13 @@ export class AdminController {
     }
 
     @Get('api/registrations')
-    @RequirePermissions('registrations.read')
-    getRegistrations(@Query() query: AdminListQueryDto) {
-        return this.adminService.getRegistrations(
+    @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
+    getRegistrations(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Query() query: AdminListQueryDto,
+    ) {
+        return this.adminService.getRegistrationsForAdmin(
+            admin,
             query.status || 'new',
             query.platform,
             query.priority,
@@ -310,9 +376,18 @@ export class AdminController {
     }
 
     @Get('api/registrations/:id')
-    @RequirePermissions('registrations.read')
-    getRegistration(@Param() params: PositiveIdParamDto) {
-        return this.adminService.getRegistration(Number(params.id));
+    @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
+    async getRegistration(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+    ) {
+        const registration = await this.adminService.getRegistrationForAdmin(
+            admin,
+            Number(params.id),
+        );
+        if (!registration)
+            throw new NotFoundException('Registration was not found');
+        return this.registrationReadiness.details(registration.id);
     }
 
     @Get('api/tickets')
@@ -463,7 +538,13 @@ export class AdminController {
             body.assignedEngineerId,
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'service_request.engineer.assign', 'service_request', params.id, { assignedEngineerId: body.assignedEngineerId });
+        await this.recordStaffAction(
+            admin,
+            'service_request.engineer.assign',
+            'service_request',
+            params.id,
+            { assignedEngineerId: body.assignedEngineerId },
+        );
         return result;
     }
 
@@ -492,7 +573,12 @@ export class AdminController {
             body.invoiceFileName,
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'service_request.invoice.attach', 'service_request', params.id);
+        await this.recordStaffAction(
+            admin,
+            'service_request.invoice.attach',
+            'service_request',
+            params.id,
+        );
         return result;
     }
 
@@ -523,7 +609,13 @@ export class AdminController {
             admin.displayName,
             storedFile.id,
         );
-        await this.recordStaffAction(admin, 'service_request.invoice.upload', 'service_request', params.id, { storedFileId: storedFile.id });
+        await this.recordStaffAction(
+            admin,
+            'service_request.invoice.upload',
+            'service_request',
+            params.id,
+            { storedFileId: storedFile.id },
+        );
         return result;
     }
 
@@ -537,7 +629,10 @@ export class AdminController {
             Number(params.id),
         );
         if (details.request.invoiceStoredFileId) {
-            return this.sendStoredFile(response, details.request.invoiceStoredFileId);
+            return this.sendStoredFile(
+                response,
+                details.request.invoiceStoredFileId,
+            );
         }
         const invoicePath = details.request.invoiceFileId;
         if (!invoicePath || !fs.existsSync(invoicePath)) {
@@ -559,7 +654,10 @@ export class AdminController {
             Number(params.id),
         );
         if (details.request.signedConsentFileId) {
-            return this.sendStoredFile(response, details.request.signedConsentFileId);
+            return this.sendStoredFile(
+                response,
+                details.request.signedConsentFileId,
+            );
         }
         const answers = details.request.answers || {};
         const filePath =
@@ -582,11 +680,17 @@ export class AdminController {
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
     ) {
-        const result = await this.adminService.markServiceRequestPaymentReceived(
-            Number(params.id),
-            admin.displayName,
+        const result =
+            await this.adminService.markServiceRequestPaymentReceived(
+                Number(params.id),
+                admin.displayName,
+            );
+        await this.recordStaffAction(
+            admin,
+            'service_request.payment.confirm',
+            'service_request',
+            params.id,
         );
-        await this.recordStaffAction(admin, 'service_request.payment.confirm', 'service_request', params.id);
         return result;
     }
 
@@ -657,7 +761,12 @@ export class AdminController {
             body.operatorComment,
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'service_request.visit.schedule', 'service_request', params.id);
+        await this.recordStaffAction(
+            admin,
+            'service_request.visit.schedule',
+            'service_request',
+            params.id,
+        );
         return result;
     }
 
@@ -671,7 +780,12 @@ export class AdminController {
             Number(params.id),
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'service_request.complete', 'service_request', params.id);
+        await this.recordStaffAction(
+            admin,
+            'service_request.complete',
+            'service_request',
+            params.id,
+        );
         return result;
     }
 
@@ -685,7 +799,12 @@ export class AdminController {
             Number(params.id),
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'service_request.cancel', 'service_request', params.id);
+        await this.recordStaffAction(
+            admin,
+            'service_request.cancel',
+            'service_request',
+            params.id,
+        );
         return result;
     }
 
@@ -696,15 +815,22 @@ export class AdminController {
         @Param() params: PositiveIdParamDto,
         @Body() body: ServiceRequestOperatorStateDto,
     ) {
-        const result = await this.adminService.updateServiceRequestOperatorState(
-            Number(params.id),
-            body,
-            admin.displayName,
+        const result =
+            await this.adminService.updateServiceRequestOperatorState(
+                Number(params.id),
+                body,
+                admin.displayName,
+            );
+        await this.recordStaffAction(
+            admin,
+            'service_request.operator_state.update',
+            'service_request',
+            params.id,
+            {
+                priority: body.priority,
+                executorAssigned: body.executorName !== undefined,
+            },
         );
-        await this.recordStaffAction(admin, 'service_request.operator_state.update', 'service_request', params.id, {
-            priority: body.priority,
-            executorAssigned: body.executorName !== undefined,
-        });
         return result;
     }
 
@@ -790,7 +916,12 @@ export class AdminController {
         @Body() body: EquipmentKitDto,
     ) {
         const result = await this.adminService.createEquipmentKit(body);
-        await this.recordStaffAction(admin, 'equipment_kit.create', 'equipment_kit', result.id);
+        await this.recordStaffAction(
+            admin,
+            'equipment_kit.create',
+            'equipment_kit',
+            result.id,
+        );
         return result;
     }
 
@@ -801,13 +932,20 @@ export class AdminController {
         @Param() params: PositiveIdParamDto,
         @Body() body: LinkEquipmentKitDto,
     ) {
-        const result = await this.adminService.linkEquipmentKitToRegistration(
+        const result = await this.registrationReadiness.useEquipmentKit(
             Number(params.id),
             body.kitId,
+            admin.id,
         );
-        await this.recordStaffAction(admin, 'registration.equipment_kit.link', 'registration', params.id, {
-            equipmentKitId: body.kitId,
-        });
+        await this.recordStaffAction(
+            admin,
+            'registration.equipment_kit.link',
+            'registration',
+            params.id,
+            {
+                equipmentKitId: body.kitId,
+            },
+        );
         return result;
     }
 
@@ -829,9 +967,190 @@ export class AdminController {
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
     ) {
-        const result = await this.adminService.processRegistration(Number(params.id));
-        await this.recordStaffAction(admin, 'registration.process', 'registration', params.id);
+        const result = await this.registrationReadiness.handoff(
+            Number(params.id),
+            admin.id,
+        );
+        await this.recordStaffAction(
+            admin,
+            'registration.process',
+            'registration',
+            params.id,
+        );
         return result;
+    }
+
+    @Post('api/registrations/:id/request-data')
+    @RequirePermissions('registrations.update')
+    requestRegistrationData(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationRequestDataDto,
+    ) {
+        return this.registrationReadiness.requestData(
+            Number(params.id),
+            body.kind,
+            admin.id,
+            body.text,
+        );
+    }
+
+    @Post('api/registrations/:id/verify')
+    @RequirePermissions('registrations.update')
+    verifyRegistrationData(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationRequirementActionDto,
+    ) {
+        return this.registrationReadiness.verify(
+            Number(params.id),
+            body.kind,
+            admin.id,
+            body.comment,
+        );
+    }
+
+    @Post('api/registrations/:id/provide-value')
+    @RequirePermissions('registrations.update')
+    provideRegistrationValue(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationOperatorValueDto,
+    ) {
+        return this.registrationReadiness.provideStaffValue(
+            Number(params.id),
+            body.kind,
+            admin.id,
+            body.value,
+            body.source,
+        );
+    }
+
+    @Post('api/registrations/:id/re-request')
+    @RequirePermissions('registrations.update')
+    repeatRegistrationDataRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationRequestDataDto,
+    ) {
+        return this.registrationReadiness.revokeVerification(
+            Number(params.id),
+            body.kind,
+            admin.id,
+            body.text ||
+                body.comment ||
+                'Требуется повторно предоставить данные',
+        );
+    }
+
+    @Post('api/registrations/:id/not-required')
+    @RequirePermissions('registrations.update')
+    markRegistrationDataNotRequired(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationNotRequiredDto,
+    ) {
+        return this.registrationReadiness.markNotRequired(
+            Number(params.id),
+            body.kind,
+            admin.id,
+            body.reason,
+        );
+    }
+
+    @Post('api/registrations/:id/ofd-mode')
+    @RequirePermissions('registrations.update')
+    setRegistrationOfdMode(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationOfdModeDto,
+    ) {
+        return this.registrationReadiness.setOfdMode(
+            Number(params.id),
+            body.mode,
+            admin.id,
+            body.reason,
+        );
+    }
+
+    @Post('api/registrations/:id/handoff')
+    @RequirePermissions('registrations.update')
+    handoffRegistration(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationHandoffDto,
+    ) {
+        return this.registrationReadiness.handoff(
+            Number(params.id),
+            admin.id,
+            body.engineerId,
+        );
+    }
+
+    @Post('api/registrations/:id/final-pdf')
+    @RequirePermissions('registrations.update')
+    async generateFinalRegistrationPdf(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+    ) {
+        const filePath = await this.registrationsService.generateFinalPdf(
+            Number(params.id),
+        );
+        await this.recordStaffAction(
+            admin,
+            'registration.final_pdf.generated',
+            'registration',
+            params.id,
+        );
+        return { generated: Boolean(filePath) };
+    }
+
+    @Get('api/registration-evidence/:id/file')
+    @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
+    async downloadRegistrationEvidence(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Res() response: Response,
+    ) {
+        const item = await this.registrationReadiness.getEvidence(
+            Number(params.id),
+        );
+        if (!item) throw new NotFoundException('Evidence was not found');
+        const registration = await this.adminService.getRegistrationForAdmin(
+            admin,
+            item.registrationId,
+        );
+        if (!registration)
+            throw new NotFoundException('Evidence was not found');
+        return this.sendStoredFile(response, item.storedFileId);
+    }
+
+    @Post('api/registrations/:id/evidence/:evidenceId/remove')
+    @RequirePermissions('registrations.update')
+    removeRegistrationEvidence(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: RegistrationEvidenceParamsDto,
+    ) {
+        return this.registrationReadiness.removeEvidence(
+            Number(params.id),
+            params.evidenceId,
+            admin.id,
+        );
+    }
+
+    @Post('api/registrations/:id/link-evidence')
+    @RequirePermissions('registrations.update')
+    linkRegistrationEvidence(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: RegistrationEvidenceLinkDto,
+    ) {
+        return this.registrationReadiness.linkEvidence(
+            Number(params.id),
+            body.evidenceId,
+            body.kind,
+            admin.id,
+        );
     }
 
     @Post('api/registrations/:id/operator-state')
@@ -845,10 +1164,16 @@ export class AdminController {
             Number(params.id),
             body,
         );
-        await this.recordStaffAction(admin, 'registration.operator_state.update', 'registration', params.id, {
-            status: body.status,
-            priority: body.priority,
-        });
+        await this.recordStaffAction(
+            admin,
+            'registration.operator_state.update',
+            'registration',
+            params.id,
+            {
+                status: body.status,
+                priority: body.priority,
+            },
+        );
         return result;
     }
 
@@ -864,7 +1189,12 @@ export class AdminController {
             body.text,
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'ticket.reply_and_close', 'ticket', params.id);
+        await this.recordStaffAction(
+            admin,
+            'ticket.reply_and_close',
+            'ticket',
+            params.id,
+        );
         return result;
     }
 
@@ -880,7 +1210,12 @@ export class AdminController {
             body.text,
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'ticket.reply', 'ticket', params.id);
+        await this.recordStaffAction(
+            admin,
+            'ticket.reply',
+            'ticket',
+            params.id,
+        );
         return result;
     }
 
@@ -909,7 +1244,13 @@ export class AdminController {
             },
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'ticket.file.send', 'ticket', params.id, { mimeType: file.mimetype, sizeBytes: file.size });
+        await this.recordStaffAction(
+            admin,
+            'ticket.file.send',
+            'ticket',
+            params.id,
+            { mimeType: file.mimetype, sizeBytes: file.size },
+        );
         return result;
     }
 
@@ -944,22 +1285,34 @@ export class AdminController {
             Number(params.id),
             admin.displayName,
         );
-        await this.recordStaffAction(admin, 'ticket.close', 'ticket', params.id);
+        await this.recordStaffAction(
+            admin,
+            'ticket.close',
+            'ticket',
+            params.id,
+        );
         return result;
     }
 
     @Get('api/registrations/:id/pdf')
-    @RequirePermissions('registrations.read')
+    @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async getRegistrationPdf(
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
         @Res() response: Response,
     ) {
-        const registration = await this.adminService.getRegistration(
+        const registration = await this.adminService.getRegistrationForAdmin(
+            admin,
             Number(params.id),
         );
         if (registration?.pdfFileId) {
-            await this.recordStaffAction(admin, 'registration.pdf.download', 'registration', params.id, { storedFileId: registration.pdfFileId });
+            await this.recordStaffAction(
+                admin,
+                'registration.pdf.download',
+                'registration',
+                params.id,
+                { storedFileId: registration.pdfFileId },
+            );
             return this.sendStoredFile(response, registration.pdfFileId);
         }
         if (!registration?.pdfPath || !fs.existsSync(registration.pdfPath)) {
@@ -972,16 +1325,21 @@ export class AdminController {
     }
 
     @Get('api/registrations/:id/equipment-photo')
-    @RequirePermissions('registrations.read')
+    @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async getRegistrationEquipmentPhoto(
+        @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
         @Res() response: Response,
     ) {
-        const registration = await this.adminService.getRegistration(
+        const registration = await this.adminService.getRegistrationForAdmin(
+            admin,
             Number(params.id),
         );
         if (registration?.equipmentPhotoFileId) {
-            return this.sendStoredFile(response, registration.equipmentPhotoFileId);
+            return this.sendStoredFile(
+                response,
+                registration.equipmentPhotoFileId,
+            );
         }
         if (
             !registration?.equipmentPhotoPath ||

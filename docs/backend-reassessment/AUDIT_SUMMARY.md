@@ -1,5 +1,14 @@
 # Backend reassessment: summary
 
+## BKV1-2 implementation update
+
+The KKT registration gap identified by this reassessment is addressed in
+BKV1-2: one `RegistrationRequest` now owns a typed requirement checklist,
+evidence links, persistent customer data requests, OFD mode and readiness.
+Engineer handoff and final PDF are server-gated. The original audit snapshot
+below remains historical; current evidence is in
+[`../backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md`](../backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md).
+
 Дата среза: 2026-08-18. Полный SHA: `f5e3a2fce027f329fb87c227b0bcede6de1a2f51`.
 
 ## Git и метод

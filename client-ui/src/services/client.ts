@@ -493,6 +493,27 @@ export interface RegistrationFieldDto {
     label: string;
 }
 
+export type RegistrationRequirementKind =
+    | 'kkt_serial'
+    | 'fiscal_drive_serial'
+    | 'ofd_code';
+export interface RegistrationChecklistDto {
+    registration: { id: number; readiness: string; ofdProvisionMode: string };
+    requirements: Array<{
+        id: number;
+        kind: RegistrationRequirementKind;
+        status: string;
+        value?: string;
+        source?: string;
+    }>;
+    dataRequests: Array<{
+        id: number;
+        requirementId: number;
+        requestText: string;
+        status: string;
+    }>;
+}
+
 export const registrationService = {
     async getFields(): Promise<RegistrationFieldDto[]> {
         await ensureWebSession();
@@ -508,6 +529,23 @@ export const registrationService = {
             {
                 values,
             },
+        );
+    },
+    checklist(id: number) {
+        return get<RegistrationChecklistDto>(
+            `/api/client/registrations/${id}/checklist`,
+        );
+    },
+    value(id: number, kind: RegistrationRequirementKind, value: string) {
+        return post(
+            `/api/client/registrations/${id}/requirements/${kind}/value`,
+            { value },
+        );
+    },
+    evidence(id: number, kind: RegistrationRequirementKind, file: File) {
+        return upload(
+            `/api/client/registrations/${id}/requirements/${kind}/evidence`,
+            file,
         );
     },
 };

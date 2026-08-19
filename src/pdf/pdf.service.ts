@@ -15,14 +15,18 @@ export interface AtolConsentPdfData {
     representativeBasis?: string;
 }
 
+interface RegistrationPdfRequirement {
+    kind: 'kkt_serial' | 'fiscal_drive_serial' | 'ofd_code';
+    status: string;
+    value: string | null;
+}
+
 @Injectable()
 export class PdfGeneratorService {
     private readonly pdfDir: string;
     private readonly fontsDir = path.join(process.cwd(), 'src', 'pdf', 'fonts');
 
-    constructor(
-        private configService: ConfigService,
-    ) {
+    constructor(private configService: ConfigService) {
         this.pdfDir = this.configService.get<string>('PDF_DIR')!;
     }
 
@@ -32,57 +36,112 @@ export class PdfGeneratorService {
             bold: path.join(this.fontsDir, 'Roboto-Bold.ttf'),
             italics: path.join(this.fontsDir, 'Roboto-Italic.ttf'),
             bolditalics: path.join(this.fontsDir, 'Roboto-BoldItalic.ttf'),
-        }
+        },
     };
 
     async generateRegistrationPdf(
         request: RegistrationRequestEntity,
         fields: RegistrationFieldEntity[],
+        options?: {
+            draft?: boolean;
+            requirements?: RegistrationPdfRequirement[];
+        },
     ): Promise<string> {
         const printer = new PdfPrinter(this.fonts);
 
         const tableBody = [
             [
                 { text: 'Поле', style: 'tableHeader' },
-                { text: 'Значение', style: 'tableHeader' }
-            ]
+                { text: 'Значение', style: 'tableHeader' },
+            ],
         ];
 
         for (const f of fields.sort((a, b) => a.step - b.step)) {
             const value = (request as any)[f.name] ?? '-';
             tableBody.push([
                 { text: f.label, style: 'tableCell' },
-                { text: String(value), style: 'tableCell' }
+                { text: String(value), style: 'tableCell' },
             ]);
         }
 
+        const requirementLabels: Record<
+            RegistrationPdfRequirement['kind'],
+            string
+        > = {
+            kkt_serial: 'Заводской номер ККТ',
+            fiscal_drive_serial: 'Номер фискального накопителя',
+            ofd_code: 'Код активации ОФД',
+        };
+        for (const requirement of options?.requirements ?? []) {
+            tableBody.push([
+                {
+                    text: requirementLabels[requirement.kind],
+                    style: 'tableCell',
+                },
+                {
+                    text:
+                        requirement.value ||
+                        `Не готово (${requirement.status})`,
+                    style: 'tableCell',
+                },
+            ]);
+        }
+
+        const missingRequirements = (options?.requirements ?? []).filter(
+            (item) => !['verified', 'not_required'].includes(item.status),
+        );
+
         const docDefinition = {
             content: [
-                { text: `Заявка на регистрацию №${request.id} ${request.orgName}`, style: 'header', margin: [0, 0, 0, 20] },
+                {
+                    text: `Заявка на регистрацию №${request.id} ${request.orgName}`,
+                    style: 'header',
+                    margin: [0, 0, 0, 20],
+                },
+                ...(options?.draft
+                    ? [
+                          {
+                              text: missingRequirements.length
+                                  ? `ЧЕРНОВИК. Не готовы: ${missingRequirements
+                                        .map(
+                                            (item) =>
+                                                requirementLabels[item.kind],
+                                        )
+                                        .join(', ')}`
+                                  : 'ЧЕРНОВИК',
+                              bold: true,
+                              color: '#9a3412',
+                              margin: [0, 0, 0, 12],
+                          },
+                      ]
+                    : []),
                 {
                     table: {
                         widths: ['*', '*'],
-                        body: tableBody
-                    }
+                        body: tableBody,
+                    },
                 },
-                { text: `Создано: ${request.createdAt.toLocaleDateString('ru-RU')}`, margin: [0, 20, 0, 0] }
+                {
+                    text: `Создано: ${request.createdAt.toLocaleDateString('ru-RU')}`,
+                    margin: [0, 20, 0, 0],
+                },
             ],
             styles: {
                 header: {
                     fontSize: 18,
-                    bold: true
+                    bold: true,
                 },
                 tableHeader: {
                     bold: true,
                     fillColor: '#eeeeee',
                     fontSize: 12,
-                    margin: [3, 3, 3, 3]
+                    margin: [3, 3, 3, 3],
                 },
                 tableCell: {
                     fontSize: 11,
-                    margin: [3, 3, 3, 3]
-                }
-            }
+                    margin: [3, 3, 3, 3],
+                },
+            },
         };
 
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
@@ -108,8 +167,7 @@ export class PdfGeneratorService {
         const printer = new PdfPrinter(this.fonts);
         const dir = path.resolve(
             process.cwd(),
-            this.configService.get<string>('CONSENT_DIR') ??
-                'storage/consents',
+            this.configService.get<string>('CONSENT_DIR') ?? 'storage/consents',
         );
         await fs.promises.mkdir(dir, { recursive: true });
 
@@ -119,8 +177,10 @@ export class PdfGeneratorService {
         const year = String(today.getFullYear());
         const clientName = consent.clientName || '____________________________';
         const inn = consent.inn || '________________';
-        const representativeName = consent.representativeName || '____________________________';
-        const basis = consent.representativeBasis || '____________________________';
+        const representativeName =
+            consent.representativeName || '____________________________';
+        const basis =
+            consent.representativeBasis || '____________________________';
 
         const docDefinition = {
             pageSize: 'A4',
@@ -132,12 +192,26 @@ export class PdfGeneratorService {
             },
             content: [
                 { text: 'Согласие', style: 'title' },
-                { text: 'на дистанционный доступ и дистанционное управление', style: 'titleLine' },
-                { text: 'контрольно-кассовой техникой', style: 'titleLine', margin: [0, 0, 0, 16] },
+                {
+                    text: 'на дистанционный доступ и дистанционное управление',
+                    style: 'titleLine',
+                },
+                {
+                    text: 'контрольно-кассовой техникой',
+                    style: 'titleLine',
+                    margin: [0, 0, 0, 16],
+                },
                 {
                     columns: [
-                        { text: `г. ${consent.city || 'Красноярск'}`, width: '*' },
-                        { text: `«${day}» ${month} ${year} г.`, width: 'auto', alignment: 'right' },
+                        {
+                            text: `г. ${consent.city || 'Красноярск'}`,
+                            width: '*',
+                        },
+                        {
+                            text: `«${day}» ${month} ${year} г.`,
+                            width: 'auto',
+                            alignment: 'right',
+                        },
                     ],
                     margin: [0, 0, 0, 18],
                 },
@@ -147,7 +221,10 @@ export class PdfGeneratorService {
                         { text: '(далее - Клиент), ИНН ' },
                         { text: `${inn}`, decoration: 'underline' },
                         { text: ',\nв лице ' },
-                        { text: `${representativeName}`, decoration: 'underline' },
+                        {
+                            text: `${representativeName}`,
+                            decoration: 'underline',
+                        },
                         { text: ', действующего(ей) на основании ' },
                         { text: `${basis}`, decoration: 'underline' },
                         { text: ',' },
@@ -158,11 +235,25 @@ export class PdfGeneratorService {
                     text: 'подтверждает, что является владельцем контрольно-кассовой техники, изготовителем которой является Общество с ограниченной ответственностью «АТОЛ» (ИНН 5010051677) (далее - Кассы), дает свое согласие на доступ к данным Касс для целей дистанционного мониторинга и управления (далее - Согласие) на следующих условиях.',
                     margin: [0, 0, 0, 9],
                 },
-                { text: '1. Согласие распространяется на следующих лиц:', margin: [0, 0, 0, 4] },
-                { text: 'Общество с ограниченной ответственностью «АТОЛ» (ИНН 5010051677)' },
-                { text: 'Партнер ООО «АТОЛ» - ООО «ВИТМА-С» (ИНН 2466246780), код организации 1615.', margin: [0, 0, 0, 5] },
-                { text: '2. Клиент дает согласие на дистанционный мониторинг и управление всеми Кассами, которые имеются у Клиента в настоящий момент и будут приобретены в будущем.', margin: [0, 0, 0, 4] },
-                { text: '3. Согласие распространяется на следующие данные Касс и способы дистанционного управления ими:', margin: [0, 0, 0, 4] },
+                {
+                    text: '1. Согласие распространяется на следующих лиц:',
+                    margin: [0, 0, 0, 4],
+                },
+                {
+                    text: 'Общество с ограниченной ответственностью «АТОЛ» (ИНН 5010051677)',
+                },
+                {
+                    text: 'Партнер ООО «АТОЛ» - ООО «ВИТМА-С» (ИНН 2466246780), код организации 1615.',
+                    margin: [0, 0, 0, 5],
+                },
+                {
+                    text: '2. Клиент дает согласие на дистанционный мониторинг и управление всеми Кассами, которые имеются у Клиента в настоящий момент и будут приобретены в будущем.',
+                    margin: [0, 0, 0, 4],
+                },
+                {
+                    text: '3. Согласие распространяется на следующие данные Касс и способы дистанционного управления ими:',
+                    margin: [0, 0, 0, 4],
+                },
                 {
                     ul: [
                         'Данные Касс - версия ФФД; версия протокола Кассы; версии используемого программного обеспечения; сведения о фискальном накопителе - номер, дата его активации и дата окончания срока действия, количество оставшихся перерегистраций; наименование, адрес и ИНН владельца; система налогообложения; регистрационный номер ККМ, флаг фискальности Кассы; напряжение батарейки в мВ; наименование ОФД; состояние смены; последние коды ошибок сети, ОФД и ФН; ресурсы ТПГ в метрах и резчика в отрезах; номер документа ФН; дата и время последнего соединения с ОФД и самого раннего документа, не отправленного в ОФД; тип используемого интерфейса для связи с хостом.',
@@ -170,9 +261,18 @@ export class PdfGeneratorService {
                     ],
                     margin: [0, 0, 0, 4],
                 },
-                { text: '4. Настоящее Согласие не означает обязанностей со стороны лиц, упомянутых в п. 1 Согласия, организовывать мониторинг или управление и/или предоставлять Клиенту результаты вышеуказанных действий, для их получения требуется заключение отдельного договора.', margin: [0, 0, 0, 4] },
-                { text: '5. Клиент дает согласие ООО «АТОЛ» на обработку данных с Касс, включая сбор, систематизацию, накопление, хранение, уточнение (обновление, изменение), использование, передачу. Указанные действия могут совершаться с использованием средств автоматизации.', margin: [0, 0, 0, 4] },
-                { text: '6. Настоящее Согласие может быть отозвано в отношении ООО «АТОЛ» и/или указанного в п. 1 его партнера полностью (в отношении всех Касс) или частично (в отношении конкретных Касс) путем направления в адрес ООО «АТОЛ» соответствующего отзыва.', margin: [0, 0, 0, 10] },
+                {
+                    text: '4. Настоящее Согласие не означает обязанностей со стороны лиц, упомянутых в п. 1 Согласия, организовывать мониторинг или управление и/или предоставлять Клиенту результаты вышеуказанных действий, для их получения требуется заключение отдельного договора.',
+                    margin: [0, 0, 0, 4],
+                },
+                {
+                    text: '5. Клиент дает согласие ООО «АТОЛ» на обработку данных с Касс, включая сбор, систематизацию, накопление, хранение, уточнение (обновление, изменение), использование, передачу. Указанные действия могут совершаться с использованием средств автоматизации.',
+                    margin: [0, 0, 0, 4],
+                },
+                {
+                    text: '6. Настоящее Согласие может быть отозвано в отношении ООО «АТОЛ» и/или указанного в п. 1 его партнера полностью (в отношении всех Касс) или частично (в отношении конкретных Касс) путем направления в адрес ООО «АТОЛ» соответствующего отзыва.',
+                    margin: [0, 0, 0, 10],
+                },
                 { text: 'Клиент', margin: [0, 0, 0, 5] },
                 this.signatureLine('(наименование)'),
                 this.signatureLine('(подпись)'),
@@ -230,8 +330,17 @@ export class PdfGeneratorService {
     private signatureLine(label: string, bottomMargin = 4) {
         return {
             stack: [
-                { text: '________________________________________', width: 210 },
-                { text: label, fontSize: 7, alignment: 'center', width: 210, margin: [0, -2, 0, bottomMargin] },
+                {
+                    text: '________________________________________',
+                    width: 210,
+                },
+                {
+                    text: label,
+                    fontSize: 7,
+                    alignment: 'center',
+                    width: 210,
+                    margin: [0, -2, 0, bottomMargin],
+                },
             ],
             width: 210,
         };

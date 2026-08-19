@@ -1,7 +1,21 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, JoinColumn, ManyToOne, Index } from 'typeorm';
+import {
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    CreateDateColumn,
+    UpdateDateColumn,
+    JoinColumn,
+    ManyToOne,
+    Index,
+} from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
 import { RegistrationType } from '../registration.types';
+import type {
+    OfdProvisionMode,
+    RegistrationReadiness,
+} from '../registration.types';
+import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 
 export type RegistrationRequestStatus = 'new' | 'in_work' | 'processed';
 export type RegistrationRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
@@ -99,11 +113,36 @@ export class RegistrationRequestEntity {
     equipmentPhotoFileId: number | null;
 
     @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'equipmentPhotoFileId', foreignKeyConstraintName: 'FK_registration_photo_file' })
+    @JoinColumn({
+        name: 'equipmentPhotoFileId',
+        foreignKeyConstraintName: 'FK_registration_photo_file',
+    })
     equipmentPhotoFile: StoredFileEntity | null;
 
     @Column({ type: 'integer', nullable: true })
     equipmentKitId: number | null;
+
+    @Column({ type: 'varchar', default: 'clarification_required' })
+    ofdProvisionMode: OfdProvisionMode;
+
+    @Column({ type: 'varchar', default: 'incomplete' })
+    readiness: RegistrationReadiness;
+
+    @Column({ type: 'timestamp', nullable: true })
+    readinessUpdatedAt: Date | null;
+
+    @Column({ type: 'integer', nullable: true })
+    assignedEngineerId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({
+        name: 'assignedEngineerId',
+        foreignKeyConstraintName: 'FK_registration_assigned_engineer',
+    })
+    assignedEngineer: AdminUserEntity | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    handedOffAt: Date | null;
 
     @Column({ default: false })
     isFilled: boolean;
@@ -130,7 +169,10 @@ export class RegistrationRequestEntity {
     pdfFileId: number | null;
 
     @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'pdfFileId', foreignKeyConstraintName: 'FK_registration_pdf_file' })
+    @JoinColumn({
+        name: 'pdfFileId',
+        foreignKeyConstraintName: 'FK_registration_pdf_file',
+    })
     pdfFile: StoredFileEntity | null;
 
     @CreateDateColumn()

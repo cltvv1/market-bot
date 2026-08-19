@@ -21,14 +21,12 @@ import { AdminNotificationsModule } from './admin-notifications.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { AdminAuthService } from './admin-auth.service';
-import {
-    AdminPermissionGuard,
-    AdminSessionGuard,
-} from './admin-auth.guard';
+import { AdminPermissionGuard, AdminSessionGuard } from './admin-auth.guard';
 import { FilesModule } from 'src/files/files.module';
 import { AuditModule } from 'src/audit/audit.module';
 import { OrganizationContactEntity } from 'src/integrations/entities/organization-contact.entity';
 import { OrganizationsModule } from 'src/organizations/organizations.module';
+import { RegistrationsModule } from 'src/registrations/registrations.module';
 
 @Module({
     imports: [
@@ -56,6 +54,7 @@ import { OrganizationsModule } from 'src/organizations/organizations.module';
         FilesModule,
         AuditModule,
         OrganizationsModule,
+        RegistrationsModule,
     ],
     controllers: [AdminController],
     providers: [
@@ -66,4 +65,4 @@ import { OrganizationsModule } from 'src/organizations/organizations.module';
     ],
     exports: [AdminAuthService, AdminSessionGuard, AdminPermissionGuard],
 })
-export class AdminModule { }
+export class AdminModule {}

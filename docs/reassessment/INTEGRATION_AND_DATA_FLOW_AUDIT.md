@@ -1,5 +1,14 @@
 # Интеграции и потоки данных
 
+## Поток регистрации после BKV1-2
+
+`web/Telegram/MAX -> RegistrationRequest -> RegistrationRequirement ->
+RegistrationEvidence/StoredFile -> operator verify -> readiness -> engineer`.
+EquipmentKit используется только по точному ID как `internal_registry` и не
+даёт автоматический verify. АТОЛ/ОФД API не вызываются. DataRequest хранится в
+PostgreSQL; messenger delivery выполняется после commit и имеет status, но ещё
+не использует outbox.
+
 ## Границы владения
 
 **Подтверждено кодом:** VITMA MARKET владеет пользователями/каналами, web sessions, организациями, обращениями, регистрациями, сервисными решениями сотрудников, файлами, оплатой и Audit Log. АТОЛ Connect и Платформа ОФД являются read-only источниками наблюдений. Каталог/заказ магазина пока не имеют server-side владельца.

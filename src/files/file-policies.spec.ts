@@ -10,19 +10,38 @@ describe('file policies', () => {
     });
 
     it('accepts an allowed registration photo', () => {
-        expect(assertFilePolicy('registration-photo', jpeg, 'image/jpeg').mime).toBe('image/jpeg');
+        expect(
+            assertFilePolicy('registration-photo', jpeg, 'image/jpeg').mime,
+        ).toBe('image/jpeg');
+    });
+
+    it('accepts PDF and image registration evidence', () => {
+        expect(
+            assertFilePolicy('registration-evidence', pdf, 'application/pdf')
+                .mime,
+        ).toBe('application/pdf');
+        expect(
+            assertFilePolicy('registration-evidence', jpeg, 'image/jpeg').mime,
+        ).toBe('image/jpeg');
     });
 
     it('rejects a mismatched signature', () => {
-        expect(() => assertFilePolicy('service-invoice', jpeg, 'application/pdf')).toThrow();
+        expect(() =>
+            assertFilePolicy('service-invoice', jpeg, 'application/pdf'),
+        ).toThrow();
     });
 
     it('rejects a client supplied server-generated file', () => {
-        expect(() => assertFilePolicy('generated-pdf', pdf, 'application/pdf')).toThrow();
+        expect(() =>
+            assertFilePolicy('generated-pdf', pdf, 'application/pdf'),
+        ).toThrow();
     });
 
     it('accepts a server-generated PDF', () => {
-        expect(assertFilePolicy('generated-pdf', pdf, 'application/pdf', true).mime).toBe('application/pdf');
+        expect(
+            assertFilePolicy('generated-pdf', pdf, 'application/pdf', true)
+                .mime,
+        ).toBe('application/pdf');
     });
 
     // prettier-ignore

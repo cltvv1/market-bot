@@ -170,6 +170,41 @@ describe('MaxUpdate media handling', () => {
         );
     });
 
+    it('activates a persistent registration data request by opaque token', async () => {
+        const readiness = {
+            activateRequest: jest.fn().mockResolvedValue({ id: 9 }),
+        };
+        const handler = new MaxUpdate(
+            { get: jest.fn().mockReturnValue(false) } as never,
+            {} as never,
+            tickets as never,
+            contexts as never,
+            users as never,
+            clientWorkflow as never,
+            serviceRequests as never,
+            {} as never,
+            files as never,
+            access as never,
+            messenger,
+            readiness as never,
+        );
+        const requestCtx = {
+            ...ctx,
+            answerOnCallback: jest.fn().mockResolvedValue(undefined),
+        };
+        const token = '11111111-1111-4111-8111-111111111111';
+
+        await handler.activateRegistrationDataRequest(requestCtx, token);
+
+        expect(readiness.activateRequest).toHaveBeenCalledWith(
+            expect.objectContaining({ platform: 'max', chatId: '55' }),
+            token,
+        );
+        expect(requestCtx.answerOnCallback).toHaveBeenCalledWith({
+            notification: 'Запрос выбран',
+        });
+    });
+
     it('sends supported operator images as binary media', async () => {
         await update.handleMaxMedia(ctx, 'OPERATOR', {
             messageType: 'image',
