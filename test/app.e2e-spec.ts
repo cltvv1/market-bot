@@ -76,4 +76,38 @@ describe('AppController (e2e)', () => {
 
         expect(response.headers['content-type']).not.toMatch(/^text\/html/);
     });
+
+    it('publishes canonical service-request paths and request schemas in OpenAPI', async () => {
+        const response = await request(app.getHttpServer())
+            .get('/api/docs-json')
+            .expect(200);
+        const document = response.body as {
+            paths: Record<string, unknown>;
+            components: {
+                schemas: Record<
+                    string,
+                    { properties?: Record<string, unknown> }
+                >;
+                securitySchemes: Record<string, unknown>;
+            };
+        };
+        expect(document.paths).toHaveProperty(
+            '/api/client/service-requests/drafts',
+        );
+        expect(document.paths).toHaveProperty(
+            '/api/public/service-requests/{token}',
+        );
+        expect(
+            document.components.schemas.CreateServiceRequestDraftDto.properties,
+        ).toHaveProperty('answers');
+        expect(
+            document.components.schemas.SubmitServiceRequestDto.properties,
+        ).toHaveProperty('idempotencyKey');
+        expect(document.components.securitySchemes).toHaveProperty(
+            'webSession',
+        );
+        expect(document.components.securitySchemes).toHaveProperty(
+            'adminSession',
+        );
+    });
 });

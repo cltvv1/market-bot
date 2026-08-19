@@ -7,31 +7,77 @@ import {
     ManyToOne,
     PrimaryGeneratedColumn,
     UpdateDateColumn,
+    VersionColumn,
 } from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
+import { CashRegisterEntity } from 'src/assets/entities/cash-register.entity';
+import { ServiceFormVersionEntity } from './service-form-version.entity';
 
 export type ServiceRequestStatus =
     | 'draft'
+    | 'submitted'
     | 'price_confirmed'
     | 'review_required'
+    | 'clarification_required'
     | 'invoice_required'
     | 'waiting_payment'
     | 'paid'
     | 'scheduled'
+    | 'in_progress'
     | 'completed'
+    | 'closed'
     | 'cancelled';
 
 export type ServiceRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type ServiceRequestSource =
+    | 'web'
+    | 'telegram'
+    | 'max'
+    | 'admin'
+    | 'phone'
+    | 'integration'
+    | 'legacy';
+export type ServiceRequestCustomerStatus =
+    | 'received'
+    | 'clarification_required'
+    | 'accepted'
+    | 'waiting_for_customer'
+    | 'scheduled'
+    | 'completed'
+    | 'closed'
+    | 'cancelled';
+
+export interface ServiceRequestContactSnapshot {
+    name: string;
+    phone?: string;
+    email?: string;
+    messenger?: { platform: UserPlatform; chatId: string };
+    preferredChannel: 'phone' | 'email' | 'telegram' | 'max' | 'web';
+}
 
 @Entity('service_requests')
 @Index('IDX_service_requests_assigned_engineer', ['assignedEngineerId'])
 @Index('IDX_service_invoice_file', ['invoiceStoredFileId'])
 @Index('IDX_service_payment_proof_file', ['paymentProofFileId'])
+@Index('IDX_service_requests_form_version', ['formVersionId'])
+@Index('IDX_service_requests_cash_register', ['cashRegisterId'])
+@Index('IDX_service_requests_responsible_staff', ['responsibleOperatorStaffId'])
+@Index(
+    'IDX_service_requests_submit_idempotency',
+    ['userId', 'submitIdempotencyKey'],
+    {
+        unique: true,
+        where: '"submitIdempotencyKey" IS NOT NULL',
+    },
+)
 export class ServiceRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;
+
+    @Column({ type: 'varchar', unique: true })
+    requestNumber: string;
 
     @Column()
     serviceTypeId: number;
@@ -42,14 +88,43 @@ export class ServiceRequestEntity {
     @Column()
     serviceTypeTitle: string;
 
+    @Column({ type: 'integer', nullable: true })
+    formVersionId: number | null;
+
+    @ManyToOne(() => ServiceFormVersionEntity, {
+        nullable: true,
+        onDelete: 'RESTRICT',
+    })
+    @JoinColumn({
+        name: 'formVersionId',
+        foreignKeyConstraintName: 'FK_service_requests_form_version',
+    })
+    formVersion: ServiceFormVersionEntity | null;
+
     @Column({ nullable: true })
     userId: number;
 
     @Column({ nullable: true })
     organizationId: number;
 
+    @Column({ type: 'integer', nullable: true })
+    cashRegisterId: number | null;
+
+    @ManyToOne(() => CashRegisterEntity, {
+        nullable: true,
+        onDelete: 'SET NULL',
+    })
+    @JoinColumn({
+        name: 'cashRegisterId',
+        foreignKeyConstraintName: 'FK_service_requests_cash_register',
+    })
+    cashRegister: CashRegisterEntity | null;
+
     @Column({ type: 'varchar', default: 'web' })
     platform: UserPlatform;
+
+    @Column({ type: 'varchar', default: 'legacy' })
+    source: ServiceRequestSource;
 
     @Column({ type: 'text' })
     chatId: string;
@@ -57,11 +132,26 @@ export class ServiceRequestEntity {
     @Column({ type: 'varchar', default: 'draft' })
     status: ServiceRequestStatus;
 
+    @Column({ type: 'varchar', default: 'received' })
+    customerStatus: ServiceRequestCustomerStatus;
+
     @Column({ default: 0 })
     currentStep: number;
 
     @Column({ type: 'jsonb', default: {} })
     answers: Record<string, unknown>;
+
+    @Column({ type: 'jsonb', nullable: true })
+    contactSnapshot: ServiceRequestContactSnapshot | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    organizationSnapshot: Record<string, unknown> | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    locationSnapshot: Record<string, unknown> | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    equipmentSnapshot: Record<string, unknown> | null;
 
     @Column({ type: 'integer', nullable: true })
     calculatedPrice: number | null;
@@ -76,7 +166,10 @@ export class ServiceRequestEntity {
     invoiceStoredFileId: number | null;
 
     @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'invoiceStoredFileId', foreignKeyConstraintName: 'FK_service_invoice_file' })
+    @JoinColumn({
+        name: 'invoiceStoredFileId',
+        foreignKeyConstraintName: 'FK_service_invoice_file',
+    })
     invoiceStoredFile: StoredFileEntity | null;
 
     @Column({ type: 'integer', nullable: true })
@@ -93,14 +186,20 @@ export class ServiceRequestEntity {
     generatedConsentFileId: number | null;
 
     @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'generatedConsentFileId', foreignKeyConstraintName: 'FK_service_generated_consent_file' })
+    @JoinColumn({
+        name: 'generatedConsentFileId',
+        foreignKeyConstraintName: 'FK_service_generated_consent_file',
+    })
     generatedConsentFile: StoredFileEntity | null;
 
     @Column({ type: 'integer', nullable: true })
     signedConsentFileId: number | null;
 
     @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
-    @JoinColumn({ name: 'signedConsentFileId', foreignKeyConstraintName: 'FK_service_signed_consent_file' })
+    @JoinColumn({
+        name: 'signedConsentFileId',
+        foreignKeyConstraintName: 'FK_service_signed_consent_file',
+    })
     signedConsentFile: StoredFileEntity | null;
 
     @Column({ type: 'varchar', nullable: true })
@@ -114,6 +213,16 @@ export class ServiceRequestEntity {
 
     @Column({ type: 'varchar', nullable: true })
     responsibleOperatorId: string | null;
+
+    @Column({ type: 'integer', nullable: true })
+    responsibleOperatorStaffId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({
+        name: 'responsibleOperatorStaffId',
+        foreignKeyConstraintName: 'FK_service_requests_responsible_staff',
+    })
+    responsibleOperatorStaff: AdminUserEntity | null;
 
     @Column({ type: 'varchar', nullable: true })
     executorName: string | null;
@@ -130,6 +239,27 @@ export class ServiceRequestEntity {
 
     @Column({ type: 'varchar', default: 'normal' })
     priority: ServiceRequestPriority;
+
+    @Column({ type: 'varchar', nullable: true, unique: true })
+    publicTokenHash: string | null;
+
+    @Column({ type: 'varchar', nullable: true })
+    submitIdempotencyKey: string | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    submittedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    completedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    closedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    cancelledAt: Date | null;
+
+    @VersionColumn()
+    version: number;
 
     @CreateDateColumn()
     createdAt: Date;

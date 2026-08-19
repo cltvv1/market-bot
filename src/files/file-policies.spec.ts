@@ -34,4 +34,17 @@ describe('file policies', () => {
             assertFilePolicy('payment-proof', jpeg, 'image/jpeg').mime,
         ).toBe('image/jpeg');
     });
+
+    it('accepts safe service-request attachments and rejects media', () => {
+        expect(
+            assertFilePolicy('service-attachment', pdf, 'application/pdf').mime,
+        ).toBe('application/pdf');
+        expect(() =>
+            assertFilePolicy(
+                'service-attachment',
+                Buffer.from('OggScontent'),
+                'audio/ogg',
+            ),
+        ).toThrow();
+    });
 });

@@ -105,3 +105,7 @@ ATOL consent реализован как скрытый custom service type вн
 3. Replace conflicting registration flags with enforced transitions only after characterization/backfill.
 4. Add optimistic version or guarded conditional updates to mutable workflows.
 5. Keep JSONB for provider metadata and versioned answers; do not use it as an unchecked substitute for ownership or core relations.
+
+## BKV1-1 resolution
+
+ServiceRequest теперь имеет явные связи с form version, organization, cash register, staff, attachments и messages. JSONB сохранён для versioned structured answers и immutable snapshots. Published form versions защищены от изменения на уровне БД; mutable request использует optimistic `version`, а submit и лимит вложений дополнительно блокируют строку. Legacy columns остаются для совместимости и могут сокращаться только отдельным пакетом после эксплуатационного backfill.

@@ -63,6 +63,57 @@ const post = async <T>(url: string, body: unknown): Promise<T> => {
     return response.json() as Promise<T>;
 };
 
+const upload = async <T>(url: string, file: File): Promise<T> => {
+    await ensureWebSession();
+    const data = new FormData();
+    data.append('file', file);
+    const response = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        body: data,
+    });
+    if (!response.ok)
+        throw new Error(
+            (await readApiMessage(response)) || 'Не удалось загрузить файл',
+        );
+    return response.json() as Promise<T>;
+};
+
+const publicGet = async <T>(url: string): Promise<T> => {
+    const response = await fetch(url);
+    if (!response.ok) {
+        if (response.status === 404) throw new Error('Заявка не найдена');
+        throw new Error(
+            (await readApiMessage(response)) || 'Не удалось выполнить запрос',
+        );
+    }
+    return response.json() as Promise<T>;
+};
+
+const publicPost = async <T>(url: string, body: unknown): Promise<T> => {
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok)
+        throw new Error(
+            (await readApiMessage(response)) || 'Не удалось выполнить запрос',
+        );
+    return response.json() as Promise<T>;
+};
+
+const publicUpload = async <T>(url: string, file: File): Promise<T> => {
+    const data = new FormData();
+    data.append('file', file);
+    const response = await fetch(url, { method: 'POST', body: data });
+    if (!response.ok)
+        throw new Error(
+            (await readApiMessage(response)) || 'Не удалось загрузить файл',
+        );
+    return response.json() as Promise<T>;
+};
+
 const get = async <T>(url: string): Promise<T> => {
     await ensureWebSession();
     const response = await fetch(url, { credentials: 'include' });
@@ -147,68 +198,103 @@ export const serviceRequestService = {
     },
     async create(data: ServiceRequestFormData): Promise<ServiceRequestRecord> {
         if (useRealServiceApi) {
-            const started = await post<{
+            const answers = {
+                clientType:
+                    data.clientType === 'person'
+                        ? 'individual'
+                        : 'organization',
+                organization: data.organization,
+                inn: data.inn,
+                contactName: data.contactName,
+                phone: data.phone,
+                email: data.email,
+                city: data.city,
+                address: data.address,
+                equipmentType: data.equipmentType,
+                equipmentModel: data.equipmentModel,
+                serialNumber: data.serialNumber,
+                software: data.software,
+                urgency: data.urgency,
+                helpFormat: data.helpFormat,
+                description: data.description,
+                consent: data.consent,
+                ...(data.problemType === 'fn_replacement'
+                    ? { fiscalDriveTerm: data.fiscalDriveTerm }
+                    : {}),
+            };
+            const draft = await post<{
+                id: number;
+                version: number;
+                requestNumber: string;
+                serviceTypeTitle: string;
+                createdAt: string;
+            }>('/api/client/service-requests/drafts', {
+                serviceTypeCode: data.problemType,
+                contactSnapshot: {
+                    name: data.contactName,
+                    phone: data.phone,
+                    email: data.email,
+                    preferredChannel: 'phone',
+                },
+                organizationSnapshot:
+                    data.clientType === 'organization'
+                        ? {
+                              verified: false,
+                              name: data.organization,
+                              inn: data.inn,
+                          }
+                        : undefined,
+                locationSnapshot: {
+                    city: data.city,
+                    address: data.address,
+                },
+                equipmentSnapshot: {
+                    type: data.equipmentType,
+                    model: data.equipmentModel,
+                    serialNumber: data.serialNumber,
+                    software: data.software,
+                },
+                answers,
+            });
+            for (const file of data.files) {
+                await upload(
+                    `/api/client/service-requests/drafts/${draft.id}/attachments`,
+                    file,
+                );
+            }
+            const submitted = await post<{
                 request: {
-                    id: number;
+                    requestNumber: string;
                     serviceTypeTitle: string;
                     createdAt: string;
-                    currentStep: number;
+                    customerStatus: string;
+                    contactSnapshot?: { name?: string };
                 };
-            }>('/api/client/service-requests/start', {
-                name: data.contactName,
-                serviceTypeCode: data.problemType,
+                publicToken: string;
+                messages: Array<{ text?: string; createdAt: string }>;
+            }>(`/api/client/service-requests/drafts/${draft.id}/submit`, {
+                expectedVersion: draft.version,
+                idempotencyKey: crypto.randomUUID(),
             });
-            const equipment = [
-                data.equipmentType,
-                data.equipmentModel,
-                data.serialNumber,
-            ]
-                .filter(Boolean)
-                .join(', ');
-            const summary = [
-                data.description,
-                `Оборудование: ${equipment}`,
-                data.software ? `Программа: ${data.software}` : '',
-                data.organization ? `Организация: ${data.organization}` : '',
-                data.email ? `Email: ${data.email}` : '',
-                data.city ? `Город: ${data.city}` : '',
-                data.address ? `Адрес: ${data.address}` : '',
-                `Формат: ${data.helpFormat}`,
-                `Срочность: ${data.urgency}`,
-            ]
-                .filter(Boolean)
-                .join('. ');
-            const answers =
-                data.problemType === 'fn_replacement'
-                    ? [data.inn, equipment, data.fiscalDriveTerm, data.phone]
-                    : [summary, data.phone];
-            for (const value of answers.slice(started.request.currentStep)) {
-                await post(
-                    `/api/client/service-requests/${started.request.id}/answers`,
-                    { name: data.contactName, value },
-                );
-            }
-            if (data.problemType === 'fn_replacement') {
-                await post(
-                    `/api/client/service-requests/${started.request.id}/confirm-price`,
-                    { name: data.contactName },
-                );
-            }
+            localStorage.setItem(
+                `vitma_service_token_${submitted.request.requestNumber}`,
+                submitted.publicToken,
+            );
             return {
-                number: `SR-${started.request.id}`,
-                createdAt: new Date(started.request.createdAt).toLocaleString(
+                number: submitted.request.requestNumber,
+                createdAt: new Date(submitted.request.createdAt).toLocaleString(
                     'ru-RU',
                 ),
                 status: 'accepted',
-                title: started.request.serviceTypeTitle,
-                contactName: data.contactName,
-                history: [
-                    {
-                        status: 'accepted',
-                        title: 'Заявка принята',
-                        date: new Date().toLocaleString('ru-RU'),
-                    },
-                ],
+                title: submitted.request.serviceTypeTitle,
+                contactName:
+                    submitted.request.contactSnapshot?.name || data.contactName,
+                accessToken: submitted.publicToken,
+                history: submitted.messages.map((message) => ({
+                    status: 'accepted' as const,
+                    title: message.text || 'Заявка принята',
+                    date: new Date(message.createdAt).toLocaleString('ru-RU'),
+                })),
             };
         }
         await new Promise((resolve) => setTimeout(resolve, 700));
@@ -230,38 +316,103 @@ export const serviceRequestService = {
         saveRequest(request);
         return request;
     },
-    async find(number: string): Promise<ServiceRequestRecord | null> {
+    async find(
+        number: string,
+        accessToken?: string,
+    ): Promise<ServiceRequestRecord | null> {
         if (useRealServiceApi) {
-            const match = /^SR-(\d+)$/i.exec(number.trim());
-            if (!match) return null;
-            const requests = await get<
-                Array<{
+            const token =
+                accessToken ||
+                localStorage.getItem(`vitma_service_token_${number.trim()}`) ||
+                undefined;
+            type CanonicalDetails = {
+                request: {
                     id: number;
+                    requestNumber: string;
                     serviceTypeTitle: string;
-                    status: string;
+                    customerStatus: string;
                     createdAt: string;
-                }>
-            >('/api/client/service-requests');
-            const request = requests.find(
-                (item) => item.id === Number(match[1]),
+                    contactSnapshot?: { name?: string };
+                };
+                messages: Array<{ text?: string; createdAt: string }>;
+                attachments: Array<{
+                    id: number;
+                    file: {
+                        originalName?: string;
+                        mimeType: string;
+                        sizeBytes: number;
+                    };
+                }>;
+            };
+            let details: CanonicalDetails | undefined;
+            if (token) {
+                try {
+                    details = await publicGet<CanonicalDetails>(
+                        `/api/public/service-requests/${encodeURIComponent(token)}`,
+                    );
+                } catch {
+                    details = undefined;
+                }
+            }
+            if (!details) {
+                const requests = await get<
+                    Array<{
+                        request: CanonicalDetails['request'];
+                        messages: CanonicalDetails['messages'];
+                        attachments: CanonicalDetails['attachments'];
+                    }>
+                >('/api/client/service-requests');
+                details = requests.find(
+                    (item) =>
+                        item.request.requestNumber.toLowerCase() ===
+                        number.trim().toLowerCase(),
+                );
+            }
+            if (!details) return null;
+            if (token) {
+                localStorage.setItem(
+                    `vitma_service_token_${details.request.requestNumber}`,
+                    token,
+                );
+            }
+            const status = toClientServiceStatus(
+                details.request.customerStatus,
             );
-            if (!request) return null;
-            const status = toClientServiceStatus(request.status);
             return {
-                number: `SR-${request.id}`,
-                createdAt: new Date(request.createdAt).toLocaleString('ru-RU'),
+                id: details.request.id,
+                number: details.request.requestNumber,
+                createdAt: new Date(details.request.createdAt).toLocaleString(
+                    'ru-RU',
+                ),
                 status,
-                title: request.serviceTypeTitle,
-                contactName: 'Клиент сайта',
-                history: [
-                    {
-                        status,
-                        title: serviceStatusTitle(status),
-                        date: new Date(request.createdAt).toLocaleString(
-                            'ru-RU',
-                        ),
-                    },
-                ],
+                title: details.request.serviceTypeTitle,
+                contactName:
+                    details.request.contactSnapshot?.name || 'Клиент сайта',
+                accessToken: token,
+                attachments: details.attachments.map((attachment) => ({
+                    id: attachment.id,
+                    name:
+                        attachment.file.originalName || `Файл ${attachment.id}`,
+                    mimeType: attachment.file.mimeType,
+                    sizeBytes: attachment.file.sizeBytes,
+                })),
+                history: details.messages.length
+                    ? details.messages.map((message) => ({
+                          status,
+                          title: message.text || serviceStatusTitle(status),
+                          date: new Date(message.createdAt).toLocaleString(
+                              'ru-RU',
+                          ),
+                      }))
+                    : [
+                          {
+                              status,
+                              title: serviceStatusTitle(status),
+                              date: new Date(
+                                  details.request.createdAt,
+                              ).toLocaleString('ru-RU'),
+                          },
+                      ],
             };
         }
         await new Promise((resolve) => setTimeout(resolve, 350));
@@ -275,13 +426,55 @@ export const serviceRequestService = {
             ) ?? null
         );
     },
+    async reply(request: ServiceRequestRecord, text: string, file?: File) {
+        const token =
+            request.accessToken ||
+            localStorage.getItem(`vitma_service_token_${request.number}`) ||
+            undefined;
+        if (!token && !request.id) {
+            throw new Error('Не удалось подтвердить доступ к заявке');
+        }
+        if (text.trim()) {
+            if (token) {
+                await publicPost(
+                    `/api/public/service-requests/${encodeURIComponent(token)}/messages`,
+                    { text },
+                );
+            } else {
+                await post(
+                    `/api/client/service-requests/${request.id}/messages`,
+                    {
+                        text,
+                    },
+                );
+            }
+        }
+        if (file) {
+            if (token) {
+                await publicUpload(
+                    `/api/public/service-requests/${encodeURIComponent(token)}/messages/attachments`,
+                    file,
+                );
+            } else {
+                await upload(
+                    `/api/client/service-requests/${request.id}/messages/attachments`,
+                    file,
+                );
+            }
+        }
+        return this.find(request.number, token);
+    },
 };
 
 const toClientServiceStatus = (status: string): ServiceRequestStatus => {
     if (status === 'completed') return 'completed';
-    if (status === 'cancelled') return 'closed';
-    if (status === 'paid' || status === 'scheduled') return 'assigned';
-    if (status === 'waiting_payment') return 'waiting';
+    if (status === 'cancelled' || status === 'closed') return 'closed';
+    if (status === 'accepted' || status === 'scheduled') return 'assigned';
+    if (
+        status === 'waiting_for_customer' ||
+        status === 'clarification_required'
+    )
+        return 'waiting';
     return 'accepted';
 };
 

@@ -1,4 +1,11 @@
-import { ArrowLeft, ArrowRight, Check, CheckCircle2 } from 'lucide-react';
+import {
+    ArrowLeft,
+    ArrowRight,
+    Check,
+    CheckCircle2,
+    Paperclip,
+    X,
+} from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/Breadcrumbs';
@@ -22,7 +29,7 @@ const empty: ServiceRequestFormData = {
     email: '',
     city: 'Красноярск',
     address: '',
-    equipmentType: 'Онлайн-касса',
+    equipmentType: 'Касса',
     equipmentModel: '',
     serialNumber: '',
     software: '',
@@ -212,7 +219,7 @@ export function ServiceRequestPage() {
                 <div>
                     <Link
                         className="button button--primary"
-                        to={`/service/status?number=${result.number}`}
+                        to={`/service/status?number=${encodeURIComponent(result.number)}${result.accessToken ? `&token=${encodeURIComponent(result.accessToken)}` : ''}`}
                     >
                         Проверить статус
                     </Link>
@@ -434,7 +441,7 @@ export function ServiceRequestPage() {
                                     }
                                     error={errors.equipmentType}
                                 >
-                                    <option>Онлайн-касса</option>
+                                    <option>Касса</option>
                                     <option>Фискальный регистратор</option>
                                     <option>POS-система</option>
                                     <option>Сканер штрихкодов</option>
@@ -552,6 +559,64 @@ export function ServiceRequestPage() {
                                     placeholder="Что происходит, когда началась проблема, какие действия уже пробовали?"
                                     rows={6}
                                 />
+                                <div className="field-span service-files">
+                                    <label className="button button--secondary service-files__pick">
+                                        <Paperclip />
+                                        Приложить файлы
+                                        <input
+                                            type="file"
+                                            multiple
+                                            accept="image/jpeg,image/png,image/webp,application/pdf,text/plain"
+                                            onChange={(event) => {
+                                                const selected = Array.from(
+                                                    event.target.files || [],
+                                                );
+                                                set(
+                                                    'files',
+                                                    [
+                                                        ...form.files,
+                                                        ...selected,
+                                                    ].slice(0, 5),
+                                                );
+                                                event.target.value = '';
+                                            }}
+                                        />
+                                    </label>
+                                    <small>
+                                        До 5 фотографий, PDF или текстовых
+                                        документов, не более 20 МБ каждый.
+                                    </small>
+                                    {form.files.length > 0 && (
+                                        <ul>
+                                            {form.files.map((file, index) => (
+                                                <li
+                                                    key={`${file.name}-${file.size}-${index}`}
+                                                >
+                                                    <span>{file.name}</span>
+                                                    <button
+                                                        type="button"
+                                                        title="Удалить файл"
+                                                        onClick={() =>
+                                                            set(
+                                                                'files',
+                                                                form.files.filter(
+                                                                    (
+                                                                        _,
+                                                                        itemIndex,
+                                                                    ) =>
+                                                                        itemIndex !==
+                                                                        index,
+                                                                ),
+                                                            )
+                                                        }
+                                                    >
+                                                        <X />
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    )}
+                                </div>
                             </div>
                         </>
                     )}

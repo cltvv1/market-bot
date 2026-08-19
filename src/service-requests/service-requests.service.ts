@@ -1,6 +1,7 @@
 ﻿import * as fs from 'fs';
 import * as path from 'path';
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CustomerActivityService } from 'src/customer-activity/customer-activity.service';
@@ -17,6 +18,12 @@ import { AdminNotificationsService } from 'src/admin/admin-notifications.service
 import { FilesService } from 'src/files/files.service';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { AtolTemporaryFileService } from './atol-temporary-file.service';
+import { ServiceFormService } from './service-form.service';
+import { customerStatusFor } from './service-request-status';
+import {
+    ServiceRequestAttachmentEntity,
+    ServiceRequestAttachmentKind,
+} from './entities/service-request-attachment.entity';
 
 export interface ServiceRequestIdentity {
     platform: UserPlatform;
@@ -50,6 +57,11 @@ export class ServiceRequestsService {
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
         private readonly filesService: FilesService,
+        @Optional()
+        private readonly serviceForms?: ServiceFormService,
+        @Optional()
+        @InjectRepository(ServiceRequestAttachmentEntity)
+        private readonly requestAttachments?: Repository<ServiceRequestAttachmentEntity>,
     ) {}
 
     async ensureDefaultTypes() {
@@ -98,14 +110,20 @@ export class ServiceRequestsService {
             ? 'fn_replacement'
             : 'kkt_remote_work';
         const serviceType = await this.serviceTypesRepo.findOneByOrFail({ code: serviceTypeCode });
+        const formVersionId = await this.getFormVersionId(serviceType);
         const request = await this.serviceRequestsRepo.save(this.serviceRequestsRepo.create({
+            requestNumber: this.createRequestNumber(),
             serviceTypeId: serviceType.id,
             serviceTypeCode: serviceType.code,
             serviceTypeTitle: input.title,
             organizationId: input.organizationId,
+            cashRegisterId: input.cashRegisterId ?? null,
             platform: 'web',
+            source: 'integration',
             chatId: `opportunity:${input.opportunityId}`,
             status: 'review_required',
+            customerStatus: 'received',
+            formVersionId,
             currentStep: serviceRequestFlows[serviceType.flow].length,
             answers: {
                 sourceOpportunityId: input.opportunityId,
@@ -156,7 +174,7 @@ export class ServiceRequestsService {
         if (status === 'active') {
             query.andWhere(
                 'request.status NOT IN (:...closedStatuses)',
-                { closedStatuses: ['completed', 'cancelled'] },
+                { closedStatuses: ['completed', 'closed', 'cancelled'] },
             );
         } else if (status && status !== 'all') {
             query.andWhere('request.status = :status', { status });
@@ -188,6 +206,7 @@ export class ServiceRequestsService {
         if (!serviceType) {
             throw new BadRequestException('Service type was not found');
         }
+        const formVersionId = await this.getFormVersionId(serviceType);
 
         const existing = await this.getLatestDraftForClient(identity, [
             serviceTypeCode,
@@ -198,16 +217,28 @@ export class ServiceRequestsService {
 
         const request = await this.serviceRequestsRepo.save(
             this.serviceRequestsRepo.create({
+                requestNumber: this.createRequestNumber(),
                 serviceTypeId: serviceType.id,
                 serviceTypeCode: serviceType.code,
                 serviceTypeTitle: serviceType.title,
                 userId: user.id,
                 organizationId: identity.organizationId,
                 platform: identity.platform,
+                source: identity.platform,
                 chatId: identity.chatId,
                 status: 'draft',
+                customerStatus: 'received',
+                formVersionId,
                 currentStep: 0,
                 answers: {},
+                contactSnapshot: {
+                    name: identity.name?.trim() || 'Клиент',
+                    messenger: {
+                        platform: identity.platform,
+                        chatId: identity.chatId,
+                    },
+                    preferredChannel: identity.platform,
+                },
             }),
         );
 
@@ -230,6 +261,7 @@ export class ServiceRequestsService {
         const user = await this.usersService.getOrCreateOrUpdate(identity.chatId, identity.name, identity.username, identity.platform);
         await this.organizationsService.assertUserOrganization(identity.chatId, identity.platform, identity.organizationId);
         const serviceType = await this.ensureAtolConsentServiceType();
+        const formVersionId = await this.getFormVersionId(serviceType);
 
         const existing = await this.getLatestAtolConsentDraft(identity);
         if (existing) {
@@ -238,16 +270,28 @@ export class ServiceRequestsService {
 
         const request = await this.serviceRequestsRepo.save(
             this.serviceRequestsRepo.create({
+                requestNumber: this.createRequestNumber(),
                 serviceTypeId: serviceType.id,
                 serviceTypeCode: serviceType.code,
                 serviceTypeTitle: serviceType.title,
                 userId: user.id,
                 organizationId: identity.organizationId,
                 platform: identity.platform,
+                source: identity.platform,
                 chatId: identity.chatId,
                 status: 'draft',
+                customerStatus: 'received',
+                formVersionId,
                 currentStep: 0,
                 answers: {},
+                contactSnapshot: {
+                    name: identity.name?.trim() || 'Клиент',
+                    messenger: {
+                        platform: identity.platform,
+                        chatId: identity.chatId,
+                    },
+                    preferredChannel: identity.platform,
+                },
             }),
         );
 
@@ -319,6 +363,7 @@ export class ServiceRequestsService {
                 saved.generatedConsentFileId = generatedFile.id;
                 saved.answers = { ...saved.answers, generatedPdfPath: null };
                 saved = await this.serviceRequestsRepo.save(saved);
+                await this.linkStoredFile(saved.id, generatedFile.id, 'generated_consent');
                 await this.addEvent(saved, 'generated', 'system', 'Сформирован PDF согласия на доступ АТОЛ', {
                     storedFileId: generatedFile.id,
                 });
@@ -355,8 +400,9 @@ export class ServiceRequestsService {
             signedConsentName: originalName,
         };
         request.signedConsentFileId = storedFile.id;
-        request.status = 'review_required';
+        this.applyStatus(request, 'review_required');
         const saved = await this.serviceRequestsRepo.save(request);
+        await this.linkStoredFile(saved.id, storedFile.id, 'signed_consent');
 
         await this.addEvent(saved, 'signed_received', 'client', 'Получено подписанное согласие на доступ АТОЛ', {
             signedConsentName: originalName,
@@ -463,6 +509,7 @@ export class ServiceRequestsService {
             await this.filesService.logicalDelete(storedFile.id);
             throw error;
         }
+        await this.linkStoredFile(saved.id, storedFile.id, 'payment_proof');
 
         await this.addEvent(
             saved,
@@ -540,7 +587,7 @@ export class ServiceRequestsService {
         });
 
         if (!this.getCurrentStep(saved) && !this.requiresClientConfirmation(saved)) {
-            saved.status = 'invoice_required';
+            this.applyStatus(saved, 'invoice_required');
             saved = await this.serviceRequestsRepo.save(saved);
             await this.addEvent(saved, 'submitted', 'client', 'Service request submitted to operator');
             await this.notifyOperators(saved);
@@ -561,7 +608,7 @@ export class ServiceRequestsService {
             throw new BadRequestException('Service request cannot be confirmed in its current state');
         }
 
-        request.status = 'invoice_required';
+        this.applyStatus(request, 'invoice_required');
         const saved = await this.serviceRequestsRepo.save(request);
         await this.addEvent(saved, 'price_confirmed', 'client', 'Клиент согласился со стоимостью');
         await this.activityService.add({
@@ -584,9 +631,12 @@ export class ServiceRequestsService {
         request.invoiceFileId = invoiceFileId;
         request.invoiceFileName = invoiceFileName ?? invoiceFileId;
         request.invoiceStoredFileId = invoiceStoredFileId ?? null;
-        request.status = 'waiting_payment';
+        this.applyStatus(request, 'waiting_payment');
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
+        if (saved.invoiceStoredFileId) {
+            await this.linkStoredFile(saved.id, saved.invoiceStoredFileId, 'invoice');
+        }
 
         await this.addEvent(saved, 'invoice_attached', operatorId, 'Оператор прикрепил счет', { invoiceFileId, invoiceFileName });
         await this.activityService.add({
@@ -616,7 +666,7 @@ export class ServiceRequestsService {
                 'Payment proof must be attached before confirmation',
             );
         }
-        request.status = 'paid';
+        this.applyStatus(request, 'paid');
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
         await this.addEvent(saved, 'payment_received', operatorId, 'Оператор отметил оплату');
@@ -637,7 +687,7 @@ export class ServiceRequestsService {
 
     async scheduleVisit(id: number, visitAddress: string, visitTime?: string, operatorComment?: string, operatorId = 'admin-panel') {
         const request = await this.requireRequest(id);
-        request.status = 'scheduled';
+        this.applyStatus(request, 'scheduled');
         request.visitAddress = visitAddress;
         request.visitTime = visitTime ? new Date(visitTime) : null;
         request.operatorComment = operatorComment ?? null;
@@ -911,6 +961,9 @@ export class ServiceRequestsService {
     private async setFinalStatus(id: number, status: 'completed' | 'cancelled', operatorId: string) {
         const request = await this.requireRequest(id);
         request.status = status;
+        request.customerStatus = customerStatusFor(status);
+        if (status === 'completed') request.completedAt = new Date();
+        if (status === 'cancelled') request.cancelledAt = new Date();
         request.responsibleOperatorId = operatorId;
         const saved = await this.serviceRequestsRepo.save(request);
         await this.addEvent(saved, status, operatorId, status === 'completed' ? 'Заявка завершена' : 'Заявка отменена');
@@ -934,5 +987,41 @@ export class ServiceRequestsService {
         if (extension === '.png') return 'image/png';
         if (extension === '.webp') return 'image/webp';
         return 'image/jpeg';
+    }
+
+    private applyStatus(request: ServiceRequestEntity, status: ServiceRequestStatus) {
+        request.status = status;
+        request.customerStatus = customerStatusFor(status);
+        if (status !== 'draft' && !request.submittedAt) request.submittedAt = new Date();
+    }
+
+    private createRequestNumber() {
+        const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+        return `SR-${date}-${randomBytes(4).toString('hex').toUpperCase()}`;
+    }
+
+    private async getFormVersionId(serviceType: ServiceTypeEntity) {
+        return this.serviceForms
+            ? (await this.serviceForms.getPublishedForType(serviceType)).id
+            : undefined;
+    }
+
+    private async linkStoredFile(
+        serviceRequestId: number,
+        storedFileId: number,
+        kind: ServiceRequestAttachmentKind,
+    ) {
+        if (!this.requestAttachments) return;
+        await this.requestAttachments.delete({ serviceRequestId, kind });
+        await this.requestAttachments.save(
+            this.requestAttachments.create({
+                serviceRequestId,
+                storedFileId,
+                kind,
+                customerVisible: true,
+                uploadedByCustomerId: null,
+                uploadedByStaffId: null,
+            }),
+        );
     }
 }

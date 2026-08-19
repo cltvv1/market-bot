@@ -64,3 +64,7 @@ Outbox, production monitoring, внешний backup/retention и deployment har
 После BKV1-0 следующий пакет: **BKV1-1 Canonical service request**. Он задаёт шаблон ownership, status, attachments и history для остальных вертикалей. Детальная последовательность: [BACKEND_V1_SCOPE_AND_SEQUENCE.md](./BACKEND_V1_SCOPE_AND_SEQUENCE.md).
 
 Архитектура: [CURRENT_BACKEND_ARCHITECTURE.md](./CURRENT_BACKEND_ARCHITECTURE.md). Риски: [RELIABILITY_SECURITY_AND_OPERATIONS.md](./RELIABILITY_SECURITY_AND_OPERATIONS.md).
+
+## BKV1-1 update
+
+Рекомендация реализована ограниченным пакетом BKV1-1: существующая таблица `service_requests` расширена до канонического агрегата для web, Telegram, MAX, staff и integrations. Добавлены versioned forms, structured answers, customer/internal statuses, snapshots, messages, generic attachments, optimistic versioning и локальная submit-idempotency. Durable delivery, realtime и глобальная deduplication остаются вне пакета. Подробности: [`../backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md`](../backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md).

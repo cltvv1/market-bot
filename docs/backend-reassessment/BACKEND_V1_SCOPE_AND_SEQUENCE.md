@@ -121,3 +121,7 @@ Direct 1C API, exact warehouse stock, automatic accounting documents, SMS OTP, c
 - Migrations/backfill are repeatable and schema log is clean.
 - Admin queues consume the same aggregates.
 - Before pilot: delivery retry, backup/restore, retention, readiness and alerts are proven.
+
+## BKV1-1 implementation note
+
+BKV1-1 теперь реализует canonical ServiceRequest поверх существующего агрегата, не создавая параллельной V2-модели. Общими стали form version, structured answers, request number, source, customer status, snapshots, attachments, messages и guarded transitions. Старые bot callbacks и предметные поля invoice/payment/visit/ATOL сохранены. Следующая пачка должна опираться на этот контракт и не возвращать channel-specific заявки.

@@ -61,6 +61,20 @@ export interface ServiceTypeOption {
     settings?: {
         prices?: Record<string, number>;
     } | null;
+    formVersion?: {
+        id: number;
+        version: number;
+        schema: {
+            fields: Array<{
+                key: string;
+                type: string;
+                label: string;
+                required?: boolean;
+            }>;
+            maxAttachments?: number;
+            attachmentInstruction?: string;
+        };
+    };
 }
 
 export type ServiceRequestStatus =
@@ -94,11 +108,19 @@ export interface ServiceRequestFormData {
 }
 
 export interface ServiceRequestRecord {
+    id?: number;
     number: string;
     createdAt: string;
     status: ServiceRequestStatus;
     title: string;
     contactName: string;
+    accessToken?: string;
+    attachments?: Array<{
+        id: number;
+        name: string;
+        mimeType: string;
+        sizeBytes: number;
+    }>;
     history: Array<{
         status: ServiceRequestStatus;
         title: string;

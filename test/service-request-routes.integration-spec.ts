@@ -108,6 +108,11 @@ describe('service-request HTTP route ownership', () => {
                 'POST /api/client/service-requests/start',
                 'POST /api/client/service-requests/:id/answers',
                 'POST /api/client/service-requests/:id/confirm-price',
+                'POST /api/client/service-requests/drafts',
+                'PATCH /api/client/service-requests/drafts/:id',
+                'POST /api/client/service-requests/drafts/:id/submit',
+                'POST /api/client/service-requests/drafts/:id/attachments',
+                'DELETE /api/client/service-requests/drafts/:id/attachments/:attachmentId',
             ]) {
                 expect(byMethodAndPath.get(key)).toEqual([
                     expect.objectContaining({
@@ -115,6 +120,13 @@ describe('service-request HTTP route ownership', () => {
                     }),
                 ]);
             }
+            expect(
+                byMethodAndPath.get('GET /api/public/service-requests/:token'),
+            ).toEqual([
+                expect.objectContaining({
+                    controller: 'PublicServiceRequestsController',
+                }),
+            ]);
         } finally {
             await testingModule.close();
         }

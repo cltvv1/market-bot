@@ -1713,6 +1713,68 @@ svg {
     gap: 20px;
     align-items: start;
 }
+
+.service-files {
+    display: grid;
+    gap: 10px;
+    justify-items: start;
+}
+
+.service-files__pick {
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.service-files__pick input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.service-files ul {
+    display: grid;
+    width: 100%;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.service-files li {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+}
+
+.service-files li span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.service-files li button {
+    display: grid;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+}
+
+.service-files li svg {
+    width: 17px;
+    height: 17px;
+}
 .wizard-panel {
     background: #fff;
     border: 1px solid var(--line);
@@ -2035,6 +2097,45 @@ svg {
 .request-status li p {
     font-size: 11px;
     margin: 5px 0;
+}
+.request-status__files,
+.request-status__reply {
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+}
+.request-status__files {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.request-status__files h3 {
+    flex-basis: 100%;
+    margin: 0;
+}
+.request-status__files a {
+    align-items: center;
+    color: var(--green-dark);
+    display: inline-flex;
+    gap: 8px;
+}
+.request-status__reply {
+    display: grid;
+    gap: 12px;
+    margin-top: 20px;
+}
+.request-status__reply > label:first-child {
+    display: grid;
+    gap: 7px;
+}
+.request-status__reply textarea {
+    min-height: 96px;
+    resize: vertical;
+}
+.request-status__reply .button--secondary input {
+    display: none;
+}
+.request-status__reply .button {
+    justify-self: start;
 }
 
 .inner-hero {

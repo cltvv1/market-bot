@@ -28,14 +28,11 @@ export function configureApplication(
     }
 
     app.use(helmet({ contentSecurityPolicy: false }));
-    app.use(
-        json({ limit: config.get<string>('HTTP_JSON_LIMIT') || '256kb' }),
-    );
+    app.use(json({ limit: config.get<string>('HTTP_JSON_LIMIT') || '256kb' }));
     app.use(
         urlencoded({
             extended: false,
-            limit:
-                config.get<string>('HTTP_URLENCODED_LIMIT') || '64kb',
+            limit: config.get<string>('HTTP_URLENCODED_LIMIT') || '64kb',
         }),
     );
     app.use(
@@ -133,6 +130,14 @@ function configureSwagger(app: INestApplication, config: ConfigService) {
         .addCookieAuth(
             config.get<string>('ADMIN_SESSION_COOKIE_NAME') ||
                 'vitma_admin_session',
+            undefined,
+            'adminSession',
+        )
+        .addCookieAuth(
+            config.get<string>('WEB_SESSION_COOKIE_NAME') ||
+                'vitma_web_session',
+            undefined,
+            'webSession',
         )
         .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);

@@ -724,3 +724,11 @@ Stage 0: completed and verified in hosted CI and hosted backup restore drill.
 
 The current Telegram/MAX implementation audit starts at
 [`docs/bots/BOT_AUDIT_SUMMARY.md`](bots/BOT_AUDIT_SUMMARY.md).
+
+## Backend v1 implementation index
+
+- Organization access foundation: [`backend-v1/BKV1_0_ORGANIZATION_ACCESS.md`](backend-v1/BKV1_0_ORGANIZATION_ACCESS.md).
+- Canonical service requests: [`backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md`](backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md).
+- Canonical request backfill: [`backend-v1/BKV1_1_BACKFILL_REPORT.md`](backend-v1/BKV1_1_BACKFILL_REPORT.md).
+
+BKV1-1 reuses the existing ServiceRequest aggregate for all client channels. It does not add shop/order scope, durable delivery, global deduplication or production-provider verification.

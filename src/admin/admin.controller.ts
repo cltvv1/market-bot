@@ -4,6 +4,7 @@ import {
     BadRequestException,
     Body,
     Controller,
+    ForbiddenException,
     Get,
     Header,
     NotFoundException,
@@ -19,7 +20,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminService } from './admin.service';
 import { adminPageHtml } from './admin.page';
@@ -35,6 +36,7 @@ import {
     AdminSessionGuard,
 } from './admin-auth.guard';
 import type { AdminPrincipal } from './admin-auth.types';
+import type { AdminPermission } from './admin.permissions';
 import {
     AdminIdParamDto,
     AdminLoginDto,
@@ -71,6 +73,12 @@ import { AuditService } from 'src/audit/audit.service';
 import { UiServingService } from 'src/ui/ui-serving.service';
 import { OrganizationAccessService } from 'src/organizations/organization-access.service';
 import { OrganizationAccessAdminResponseDto } from 'src/organizations/dto/organization-api.dto';
+import { CanonicalServiceRequestsService } from 'src/service-requests/canonical-service-requests.service';
+import {
+    AdminCreateServiceRequestDto,
+    AdminServiceRequestMessageDto,
+    AdminTransitionServiceRequestDto,
+} from 'src/service-requests/dto/canonical-service-request.dto';
 
 interface UploadedMemoryFile {
     buffer: Buffer;
@@ -81,6 +89,7 @@ interface UploadedMemoryFile {
 
 @Controller('admin')
 @ApiTags('admin')
+@ApiCookieAuth('adminSession')
 @UseGuards(AdminSessionGuard, AdminPermissionGuard)
 export class AdminController {
     constructor(
@@ -91,6 +100,7 @@ export class AdminController {
         private readonly auditService: AuditService,
         private readonly uiServing: UiServingService,
         private readonly organizationAccessService: OrganizationAccessService,
+        private readonly canonicalServiceRequests: CanonicalServiceRequestsService,
     ) {}
 
     @Get()
@@ -345,6 +355,102 @@ export class AdminController {
         );
     }
 
+    @Post('api/service-requests/manual')
+    @RequirePermissions('serviceRequests.update')
+    async createManualServiceRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Body() body: AdminCreateServiceRequestDto,
+    ) {
+        const result = await this.canonicalServiceRequests.createManual(
+            admin.id,
+            body,
+        );
+        await this.recordStaffAction(
+            admin,
+            'service_request.manual.create',
+            'service_request',
+            result.request.id,
+            { source: body.source },
+        );
+        return result;
+    }
+
+    @Post('api/service-requests/:id/messages')
+    @RequirePermissions('serviceRequests.update')
+    async addServiceRequestMessage(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: AdminServiceRequestMessageDto,
+    ) {
+        const result = await this.canonicalServiceRequests.addStaffMessage(
+            admin.id,
+            Number(params.id),
+            body.text,
+            body.visibility ?? 'customer',
+        );
+        await this.recordStaffAction(
+            admin,
+            'service_request.message.add',
+            'service_request',
+            params.id,
+            { visibility: body.visibility ?? 'customer' },
+        );
+        return result;
+    }
+
+    @Post('api/service-requests/:id/transition')
+    @RequirePermissions('serviceRequests.update')
+    async transitionServiceRequest(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: PositiveIdParamDto,
+        @Body() body: AdminTransitionServiceRequestDto,
+    ) {
+        const requiredPermission = this.serviceTransitionPermission(
+            body.status,
+        );
+        if (!admin.permissions.includes(requiredPermission)) {
+            await this.auditService.record({
+                actorType: 'staff',
+                actorStaffId: admin.id,
+                actorSessionId: admin.sessionId,
+                action: 'permission.denied',
+                targetType: 'service_request',
+                targetId: params.id,
+                result: 'denied',
+                metadata: { operation: 'status_transition' },
+            });
+            throw new ForbiddenException('Insufficient permissions');
+        }
+        const result = await this.canonicalServiceRequests.transitionByStaff(
+            admin.id,
+            Number(params.id),
+            body.status,
+            body.expectedVersion,
+        );
+        await this.recordStaffAction(
+            admin,
+            'service_request.status.transition',
+            'service_request',
+            params.id,
+            { status: body.status },
+        );
+        return result;
+    }
+
+    private serviceTransitionPermission(
+        status: AdminTransitionServiceRequestDto['status'],
+    ): AdminPermission {
+        if (['invoice_required', 'waiting_payment'].includes(status)) {
+            return 'serviceRequests.invoice';
+        }
+        if (status === 'paid') return 'serviceRequests.payment';
+        if (status === 'scheduled') return 'serviceRequests.schedule';
+        if (['completed', 'closed', 'cancelled'].includes(status)) {
+            return 'serviceRequests.close';
+        }
+        return 'serviceRequests.update';
+    }
+
     @Post('api/service-requests/:id/assign-engineer')
     @RequirePermissions('serviceRequests.assign')
     async assignEngineer(
@@ -507,6 +613,34 @@ export class AdminController {
             details.request.paymentProofFileId,
             true,
         );
+    }
+
+    @Get('api/service-requests/:id/attachments/:attachmentId')
+    @RequireAnyPermission(
+        'serviceRequests.read.all',
+        'serviceRequests.read.assigned',
+    )
+    async downloadServiceRequestAttachment(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param('id') id: string,
+        @Param('attachmentId') attachmentId: string,
+        @Res() response: Response,
+    ) {
+        await this.adminService.getServiceRequestDetailsForAdmin(
+            admin,
+            Number(id),
+        );
+        const { file, stream } =
+            await this.canonicalServiceRequests.openAdminAttachment(
+                Number(id),
+                Number(attachmentId),
+            );
+        response.setHeader('Content-Type', file.mimeType);
+        response.setHeader(
+            'Content-Disposition',
+            `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName || 'file')}`,
+        );
+        stream.pipe(response);
     }
 
     @Post('api/service-requests/:id/schedule')

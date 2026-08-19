@@ -165,3 +165,7 @@ provider browser/session outside Nest
 4. Неполный customer-facing status при наличии более богатой server history.
 5. Direct messenger delivery без durable outbox/retry/status.
 6. Provider bridges зависят от недокументированных внутренних интерфейсов и требуют эксплуатационной сверки.
+
+## BKV1-1 data-flow update
+
+Риск потери структуры web service form устранён для новых заявок: client React отправляет typed answers в server-side draft, backend валидирует их против immutable published form version и сохраняет без flattening. Integration conversion, bots, web и staff-created requests теперь получают canonical number/source/customer status. Внешняя интеграция не получает право публичного чтения заявки; provider metadata и delivery остаются в прежних изолированных контурах.
