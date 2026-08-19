@@ -729,6 +729,9 @@ The current Telegram/MAX implementation audit starts at
 
 - Organization access foundation: [`backend-v1/BKV1_0_ORGANIZATION_ACCESS.md`](backend-v1/BKV1_0_ORGANIZATION_ACCESS.md).
 - Canonical service requests: [`backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md`](backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md).
+- BKV1-1 migration drill: [`backend-v1/BKV1_1_MIGRATION_DRILL.md`](backend-v1/BKV1_1_MIGRATION_DRILL.md).
 - Canonical request backfill: [`backend-v1/BKV1_1_BACKFILL_REPORT.md`](backend-v1/BKV1_1_BACKFILL_REPORT.md).
 
 BKV1-1 reuses the existing ServiceRequest aggregate for all client channels. It does not add shop/order scope, durable delivery, global deduplication or production-provider verification.
+
+The pre-merge migration drill passed against a restored local legacy source and a complete synthetic pre-migration fixture. Two bounded mapping defects were fixed before merge; source DB/storage remained unchanged.

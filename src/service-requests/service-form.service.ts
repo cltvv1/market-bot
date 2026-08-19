@@ -41,8 +41,10 @@ export class ServiceFormService {
         let version = await this.versions.findOne({
             where: { definitionId: definition.id, status: 'published' },
         });
+        const canonicalField =
+            type.code === 'atol_consent' ? 'clientName' : 'contactName';
         const canonical = version?.schema.fields.some(
-            (field) => field.key === 'contactName',
+            (field) => field.key === canonicalField,
         );
         if (version && !canonical) {
             await this.versions.update(version.id, { status: 'retired' });
@@ -53,7 +55,10 @@ export class ServiceFormService {
                 where: { definitionId: definition.id },
                 order: { version: 'DESC' },
             });
-            const schema = this.defaultSchema(type.flow === 'fn_replacement');
+            const schema =
+                type.code === 'atol_consent'
+                    ? this.defaultAtolConsentSchema()
+                    : this.defaultSchema(type.flow === 'fn_replacement');
             this.validateSchema(schema);
             version = await this.versions.save(
                 this.versions.create({
@@ -61,7 +66,10 @@ export class ServiceFormService {
                     version: (latest?.version ?? 0) + 1,
                     status: 'published',
                     schema,
-                    handlerKey: type.flow,
+                    handlerKey:
+                        type.code === 'atol_consent'
+                            ? 'atol_consent'
+                            : type.flow,
                     publishedAt: new Date(),
                 }),
             );
@@ -465,6 +473,49 @@ export class ServiceFormService {
             maxAttachments: 5,
             attachmentInstruction:
                 'Можно приложить до пяти фотографий или документов, которые помогут оценить задачу.',
+        };
+    }
+
+    private defaultAtolConsentSchema(): ServiceFormSchema {
+        return {
+            fields: [
+                {
+                    key: 'city',
+                    type: 'text',
+                    label: 'Город',
+                    required: true,
+                    maxLength: 255,
+                },
+                {
+                    key: 'clientName',
+                    type: 'text',
+                    label: 'Организация или ИП',
+                    required: true,
+                    maxLength: 255,
+                },
+                {
+                    key: 'inn',
+                    type: 'text',
+                    label: 'ИНН',
+                    required: true,
+                    maxLength: 12,
+                },
+                {
+                    key: 'representativeName',
+                    type: 'text',
+                    label: 'Представитель',
+                    required: true,
+                    maxLength: 255,
+                },
+                {
+                    key: 'representativeBasis',
+                    type: 'text',
+                    label: 'Основание полномочий',
+                    required: true,
+                    maxLength: 500,
+                },
+            ],
+            maxAttachments: 5,
         };
     }
 }

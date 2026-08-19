@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import type { Repository } from 'typeorm';
 import { ServiceFormDefinitionEntity } from './entities/service-form-definition.entity';
 import { ServiceFormVersionEntity } from './entities/service-form-version.entity';
+import { ServiceTypeEntity } from './entities/service-type.entity';
 import { ServiceFormService } from './service-form.service';
 import type { ServiceFormSchema } from './service-form.types';
 
@@ -121,5 +122,85 @@ describe('ServiceFormService', () => {
                 ],
             }),
         ).toThrow('Invalid or duplicate');
+    });
+});
+
+describe('ServiceFormService ATOL compatibility', () => {
+    const type = {
+        id: 7,
+        code: 'atol_consent',
+        flow: 'simple',
+    } as ServiceTypeEntity;
+    const definition = {
+        id: 11,
+        serviceTypeId: type.id,
+    } as ServiceFormDefinitionEntity;
+
+    it('keeps a published migrated ATOL form active', async () => {
+        const version = {
+            id: 13,
+            definitionId: definition.id,
+            status: 'published',
+            schema: {
+                fields: [
+                    { key: 'city', type: 'text', label: 'Город' },
+                    {
+                        key: 'clientName',
+                        type: 'text',
+                        label: 'Организация или ИП',
+                    },
+                ],
+            },
+            handlerKey: 'atol_consent',
+        } as ServiceFormVersionEntity;
+        const definitions = {
+            findOne: jest.fn().mockResolvedValue(definition),
+        } as unknown as Repository<ServiceFormDefinitionEntity>;
+        const update = jest.fn();
+        const save = jest.fn();
+        const versions = {
+            findOne: jest.fn().mockResolvedValue(version),
+            update,
+            save,
+        } as unknown as Repository<ServiceFormVersionEntity>;
+
+        const service = new ServiceFormService(definitions, versions);
+
+        await expect(service.ensureForType(type)).resolves.toBe(version);
+        expect(update).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
+    });
+
+    it('creates the dedicated ATOL form when no version exists', async () => {
+        const definitions = {
+            findOne: jest.fn().mockResolvedValue(definition),
+        } as unknown as Repository<ServiceFormDefinitionEntity>;
+        const create = jest.fn(
+            (value: Partial<ServiceFormVersionEntity>) =>
+                value as ServiceFormVersionEntity,
+        );
+        const save = jest.fn((value: ServiceFormVersionEntity) =>
+            Promise.resolve(value),
+        );
+        const versions = {
+            findOne: jest
+                .fn()
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce(null),
+            create,
+            save,
+        } as unknown as Repository<ServiceFormVersionEntity>;
+
+        const service = new ServiceFormService(definitions, versions);
+        const created = await service.ensureForType(type);
+
+        expect(created.handlerKey).toBe('atol_consent');
+        expect(created.schema.fields.map((field) => field.key)).toEqual([
+            'city',
+            'clientName',
+            'inn',
+            'representativeName',
+            'representativeBasis',
+        ]);
     });
 });

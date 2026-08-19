@@ -86,6 +86,8 @@ The React admin card shows canonical request numbers, snapshots, structured fiel
 
 Migration `1787126400000-CanonicalServiceRequests` creates the new tables and columns, backfills request numbers/source/status/form version/snapshots and existing file links, then installs form immutability and legacy-number triggers. The migration is transactional and leaves old columns intact.
 
+The migration drill corrected two pre-merge mappings: unsupported legacy platforms now become `source=legacy` without a fabricated typed contact channel, and ATOL consent receives its five-field legacy form plus `atol_consent` handler. See [BKV1_1_MIGRATION_DRILL.md](./BKV1_1_MIGRATION_DRILL.md).
+
 Draft writes require `expectedVersion`; an already-applied retry is accepted without another mutation. Submit, staff transitions and attachment upload/remove checks lock the request row. Submit uses a per-customer idempotency key. This is local request idempotency, not a general update deduplication or outbox.
 
 ## OpenAPI
@@ -97,9 +99,12 @@ Canonical DTOs expose explicit Swagger properties and validation limits. Client/
 - unit tests cover form validation, conditional fields, status mapping/transitions and file policy;
 - integration tests cover form publication, ownership isolation, token access, number denial, structured validation, optimistic conflicts, idempotent submit, attachment storage, admin RBAC and message visibility;
 - existing integration characterization covers Telegram/MAX-adjacent service methods, FN, invoice/payment/visit, ATOL and integration conversion;
-- 20 unit suites / 84 tests, 6 integration suites / 48 tests and 2 e2e suites / 7 tests pass;
+- 20 unit suites / 86 tests, 7 integration suites / 49 tests and 2 e2e suites / 7 tests pass;
 - migrations run from empty PostgreSQL, repeat with no pending work, and `schema:log` is empty;
 - admin/client/server production builds and offline browser/health smoke pass.
+- a restored real pre-migration copy preserved all 13 requests, 61 events and 12 StoredFile records;
+- a 16-request synthetic pre-migration fixture covers every required legacy category, unknown source/status and malformed accepted answers;
+- both legacy-field fingerprints matched before/after, migration rerun was empty and source DB/storage hashes remained unchanged.
 
 ## Remaining limits
 

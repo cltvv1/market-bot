@@ -190,6 +190,8 @@ No shop or 1C implementation belongs to this phase-zero package.
 
 BKV1-1 closes the canonical service-request foundation: one aggregate for channels, versioned forms, structured answers, customer-safe status/history, managed attachments, guarded transitions and manual staff creation.
 
+The BKV1-1 migration drill is complete with verdict `PASS`. Legacy backfill, files, admin cards, Telegram/MAX compatibility and the new web flow were verified on disposable copies. BKV1-2 remains the next package after PR #9 review and merge; it is not part of the drill.
+
 Remaining follow-up work is deliberately separate: form publication/admin editor, approved per-service schemas, retention/antivirus policy, durable message delivery, global messenger deduplication, realtime notifications, cleanup of compatibility columns after verified production backfill, and product-specific workflow expansion.
 
 The next approved backend candidate is BKV1-2: registration KKT parity across web, Telegram, MAX and admin. It is not implemented in this package.

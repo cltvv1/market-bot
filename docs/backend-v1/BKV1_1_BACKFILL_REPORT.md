@@ -1,41 +1,40 @@
 # BKV1-1 backfill report
 
-## Scope
+## Verdict
 
-The migration was exercised from a clean PostgreSQL test database. Production and historical databases were not connected, so the production legacy-row count is intentionally not recorded here.
+The 2026-08-19 migration drill passed. Full evidence and safety controls are in [BKV1_1_MIGRATION_DRILL.md](./BKV1_1_MIGRATION_DRILL.md).
 
-Before deployment, record the read-only count with:
+## Real legacy data
 
-```sql
-SELECT count(*) AS legacy_requests FROM service_requests;
-```
+The selected local pre-migration development copy contained 13 requests, 61 events and 12 StoredFile records. It covered MAX/web, four service types, answers, invoice/payment relations, cancelled rows and ATOL-related requests.
+
+The real legacy invariant fingerprint matched before and after migration. All 13 IDs, service/user links, statuses, priorities, answer hashes, price/file relations, comments and timestamps were preserved. The migration created 13 unique request numbers, four form definitions/versions and two generic attachment links. All 12 referenced StoredFile records resolved from the isolated storage copy and matched size/checksum metadata.
+
+The real source did not contain Telegram, drafts, confirmed price, paid, visits, engineer assignments or completed requests. No such rows were invented.
+
+## Synthetic fixture
+
+An isolated pre-BKV1-1 worktree and database supplied 16 synthetic requests covering all required categories: simple/FN/ATOL, draft, confirmed price, invoice, payment, visit, engineer, completed, cancelled, events, files, Telegram, MAX, unknown source/status and malformed accepted JSON.
+
+The synthetic legacy fingerprint also matched before and after migration. It produced 16 unique request numbers, three form definitions/versions and six expected generic attachment links. Repeating migration execution created no duplicate versions, numbers, attachments, messages or events.
 
 ## Mapping
 
-- request number: `SR-` plus the legacy numeric ID for existing rows;
-- source: `web`, `telegram` or `max` from `platform`; unknown values become `legacy`;
-- form version: the published legacy version for the row's `serviceTypeId`;
-- customer status: mapped centrally from the internal status;
-- contact snapshot: existing user name plus platform/chat identity when available;
-- submitted/completed/closed/cancelled timestamps: derived from legacy `updatedAt` where the status proves the lifecycle point.
+- existing request number: deterministic `SR-` plus zero-padded legacy ID;
+- source: `web`, `telegram` or `max` only when proven by the old platform; unsupported values become `legacy`;
+- contact: known channels preserve platform/chat identity; unsupported platforms do not become a typed channel;
+- form: FN, simple and ATOL consent receive matching immutable legacy schemas;
+- customer status: derived centrally while the legacy internal status remains unchanged;
+- lifecycle timestamps: derived from legacy `updatedAt` only when status proves the milestone;
+- public token: no token or hash is invented for an old request.
 
-## Preserved fields
+Existing invoice, payment-proof, generated-consent and signed-consent StoredFile relations are copied into `service_request_attachments`. Original columns remain for compatibility.
 
-All existing answer JSON, current step, type snapshots, user/organization links, chat identity, price, invoice references, payment proof, consent files, visit fields, comments, assignees, priority and original timestamps are preserved.
+## Ambiguous and unverified cases
 
-Existing `invoiceStoredFileId`, `paymentProofFileId`, `generatedConsentFileId` and `signedConsentFileId` values are copied to `service_request_attachments`; the original columns remain for compatibility.
+No real unmatched service type, orphan file, missing physical file, duplicate number, unknown source/status or invalid-answer row was observed.
 
-## Ambiguity and unsupported values
-
-- a legacy row without a matching service type receives a request number/source but no form version;
-- a missing user yields contact name `Клиент` and preserves messenger identity;
-- unknown legacy platform values map to source `legacy`;
-- unknown internal statuses map to customer status `received`;
-- no answer values are rewritten or discarded.
-
-## Missing files
-
-The migration links only existing `StoredFile` foreign keys. It does not inspect legacy filesystem paths or invent missing file records. Existing FileStorage backfill/runbooks remain authoritative for those paths.
+Synthetic unknown source/status and malformed-answer rows were preserved with safe fallback and remain visible to an operator. A future unmatched service type would retain its row and receive no form version, requiring manual review. The drill did not use production/historical databases and does not claim their counts or condition.
 
 ## Repeatable verification
 
@@ -48,6 +47,4 @@ SELECT "status", "customerStatus", count(*) FROM service_requests GROUP BY 1, 2 
 SELECT kind, count(*) FROM service_request_attachments GROUP BY kind ORDER BY kind;
 ```
 
-Expected invariant: no null/duplicate request numbers. Null form versions must be reviewed as unmatched service types, not silently rewritten.
-
-Automated verification runs all seven migrations against `learn_bot_bkv11_test`, repeats migration execution, executes integration tests, and confirms `schema:log` has no pending synchronization SQL. No production or historical database was opened, so no legacy count or ambiguous-row total was invented.
+The automated regression fixture now constructs a pre-BKV1-1 database from the first six migrations, applies the canonical migration and checks preservation, safe fallback, ATOL mapping, attachments and repeat execution without using any local user database.

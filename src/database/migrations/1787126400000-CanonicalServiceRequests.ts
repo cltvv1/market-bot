@@ -155,12 +155,14 @@ export class CanonicalServiceRequests1787126400000
         await queryRunner.query(`
             INSERT INTO "service_form_versions" ("definitionId", "version", "status", "schema", "handlerKey", "publishedAt")
             SELECT d."id", 1, 'published',
-                CASE WHEN t."flow" = 'fn_replacement' THEN
+                CASE WHEN t."code" = 'atol_consent' THEN
+                    '{"fields":[{"key":"city","type":"text","label":"Город","required":true,"maxLength":255},{"key":"clientName","type":"text","label":"Организация или ИП","required":true,"maxLength":255},{"key":"inn","type":"text","label":"ИНН","required":true,"maxLength":12},{"key":"representativeName","type":"text","label":"Представитель","required":true,"maxLength":255},{"key":"representativeBasis","type":"text","label":"Основание полномочий","required":true,"maxLength":500}],"maxAttachments":5}'::jsonb
+                WHEN t."flow" = 'fn_replacement' THEN
                     '{"fields":[{"key":"inn","type":"text","label":"ИНН","required":true,"maxLength":12},{"key":"cashRegisterIdentity","type":"text","label":"Касса или заводской номер","required":true,"maxLength":255},{"key":"fiscalDriveTerm","type":"select","label":"Срок ФН","required":true,"options":[{"value":"15","label":"15 месяцев"},{"value":"36","label":"36 месяцев"}]},{"key":"contactForCall","type":"phone","label":"Телефон для связи","required":true}],"maxAttachments":5}'::jsonb
                 ELSE
                     '{"fields":[{"key":"problemDescription","type":"textarea","label":"Описание задачи","required":true,"maxLength":10000},{"key":"contactForCall","type":"phone","label":"Телефон для связи","required":true}],"maxAttachments":5}'::jsonb
                 END,
-                t."flow", now()
+                CASE WHEN t."code" = 'atol_consent' THEN 'atol_consent' ELSE t."flow" END, now()
             FROM "service_form_definitions" d
             JOIN "service_types" t ON t."id" = d."serviceTypeId"
         `);
@@ -184,11 +186,17 @@ export class CanonicalServiceRequests1787126400000
                 "completedAt" = CASE WHEN r."status" = 'completed' THEN r."updatedAt" ELSE NULL END,
                 "closedAt" = CASE WHEN r."status" = 'closed' THEN r."updatedAt" ELSE NULL END,
                 "cancelledAt" = CASE WHEN r."status" = 'cancelled' THEN r."updatedAt" ELSE NULL END,
-                "contactSnapshot" = jsonb_strip_nulls(jsonb_build_object(
-                    'name', COALESCE((SELECT u."name" FROM "users" u WHERE u."id" = r."userId"), 'Клиент'),
-                    'messenger', jsonb_build_object('platform', r."platform", 'chatId', r."chatId"),
-                    'preferredChannel', r."platform"
-                ))
+                "contactSnapshot" = CASE
+                    WHEN r."platform" IN ('web','telegram','max') THEN
+                        jsonb_strip_nulls(jsonb_build_object(
+                            'name', COALESCE((SELECT u."name" FROM "users" u WHERE u."id" = r."userId"), 'Клиент'),
+                            'messenger', jsonb_build_object('platform', r."platform", 'chatId', r."chatId"),
+                            'preferredChannel', r."platform"
+                        ))
+                    ELSE jsonb_build_object(
+                        'name', COALESCE((SELECT u."name" FROM "users" u WHERE u."id" = r."userId"), 'Клиент')
+                    )
+                END
             FROM "service_form_definitions" d
             JOIN "service_form_versions" v ON v."definitionId" = d."id" AND v."status" = 'published'
             WHERE d."serviceTypeId" = r."serviceTypeId"
