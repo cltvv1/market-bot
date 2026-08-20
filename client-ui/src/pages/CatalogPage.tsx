@@ -1,267 +1,380 @@
-import { SlidersHorizontal, Search, X } from 'lucide-react';
+import { Info, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ProductCard } from '../components/ProductCard';
 import { Drawer, EmptyState, Skeleton } from '../components/ui';
 import { categories, products } from '../data/catalog';
+import styles from './CatalogPage.module.css';
+
+interface FilterState {
+    category: string;
+    selectedBrands: string[];
+    stockOnly: boolean;
+}
+
+const catalogBrands = [
+    ...new Set(products.map((product) => product.brand)),
+].sort((left, right) => left.localeCompare(right, 'ru'));
+
+const categoryCounts = new Map(
+    categories.map((category) => [
+        category.id,
+        products.filter((product) => product.categoryId === category.id).length,
+    ]),
+);
 
 function Filters({
-    category,
-    setCategory,
-    brands,
-    selectedBrands,
-    setSelectedBrands,
-    stockOnly,
-    setStockOnly,
+    value,
+    onChange,
 }: {
-    category: string;
-    setCategory: (value: string) => void;
-    brands: string[];
-    selectedBrands: string[];
-    setSelectedBrands: (value: string[]) => void;
-    stockOnly: boolean;
-    setStockOnly: (value: boolean) => void;
+    value: FilterState;
+    onChange: (value: FilterState) => void;
 }) {
+    const setCategory = (category: string) => onChange({ ...value, category });
     const toggleBrand = (brand: string) =>
-        setSelectedBrands(
-            selectedBrands.includes(brand)
-                ? selectedBrands.filter((item) => item !== brand)
-                : [...selectedBrands, brand],
-        );
+        onChange({
+            ...value,
+            selectedBrands: value.selectedBrands.includes(brand)
+                ? value.selectedBrands.filter((item) => item !== brand)
+                : [...value.selectedBrands, brand],
+        });
+
     return (
-        <div className="filters">
-            <div className="filter-group">
-                <h3>Категория</h3>
+        <div className={styles.filters}>
+            <fieldset className={styles.filterGroup}>
+                <legend>Категория</legend>
                 <button
-                    className={!category ? 'active' : ''}
+                    className={!value.category ? styles.activeCategory : ''}
+                    type="button"
                     onClick={() => setCategory('')}
                 >
                     Все товары <span>{products.length}</span>
                 </button>
-                {categories.map((item) => (
+                {categories.map((category) => (
                     <button
-                        className={category === item.id ? 'active' : ''}
-                        onClick={() => setCategory(item.id)}
-                        key={item.id}
+                        className={
+                            value.category === category.id
+                                ? styles.activeCategory
+                                : ''
+                        }
+                        type="button"
+                        onClick={() => setCategory(category.id)}
+                        key={category.id}
                     >
-                        {item.name}
-                        <span>
-                            {
-                                products.filter(
-                                    (product) => product.categoryId === item.id,
-                                ).length
-                            }
-                        </span>
+                        {category.name}
+                        <span>{categoryCounts.get(category.id)}</span>
                     </button>
                 ))}
-            </div>
-            <div className="filter-group">
-                <h3>Производитель</h3>
-                {brands.map((brand) => (
+            </fieldset>
+            <fieldset className={styles.filterGroup}>
+                <legend>Производитель</legend>
+                {catalogBrands.map((brand) => (
                     <label key={brand}>
                         <input
                             type="checkbox"
-                            checked={selectedBrands.includes(brand)}
+                            checked={value.selectedBrands.includes(brand)}
                             onChange={() => toggleBrand(brand)}
                         />
                         <span>{brand}</span>
                     </label>
                 ))}
-            </div>
-            <div className="filter-group">
+            </fieldset>
+            <fieldset className={styles.filterGroup}>
+                <legend>Наличие</legend>
                 <label>
                     <input
                         type="checkbox"
-                        checked={stockOnly}
-                        onChange={(event) => setStockOnly(event.target.checked)}
+                        checked={value.stockOnly}
+                        onChange={(event) =>
+                            onChange({
+                                ...value,
+                                stockOnly: event.target.checked,
+                            })
+                        }
                     />
                     <span>Только в наличии</span>
                 </label>
-            </div>
+            </fieldset>
         </div>
     );
 }
 
 export function CatalogPage() {
     const [params, setParams] = useSearchParams();
-    const [category, setCategory] = useState(params.get('category') || '');
     const [query, setQuery] = useState(params.get('q') || '');
     const [sort, setSort] = useState(params.get('sort') || 'popular');
-    const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
-    const [stockOnly, setStockOnly] = useState(false);
+    const [filters, setFilters] = useState<FilterState>({
+        category: params.get('category') || '',
+        selectedBrands: [],
+        stockOnly: false,
+    });
+    const [draftFilters, setDraftFilters] = useState<FilterState>(filters);
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+
     useEffect(() => {
         const timer = window.setTimeout(() => setLoading(false), 450);
         return () => window.clearTimeout(timer);
     }, []);
+
     useEffect(() => {
         const next = new URLSearchParams();
-        if (category) next.set('category', category);
+        if (filters.category) next.set('category', filters.category);
         if (query) next.set('q', query);
         if (sort !== 'popular') next.set('sort', sort);
         setParams(next, { replace: true });
-    }, [category, query, setParams, sort]);
-    const brands = useMemo(
-        () => [...new Set(products.map((item) => item.brand))].sort(),
-        [],
-    );
+    }, [filters.category, query, setParams, sort]);
+
     const filtered = useMemo(
         () =>
             products
                 .filter(
-                    (item) =>
-                        (!category || item.categoryId === category) &&
+                    (product) =>
+                        (!filters.category ||
+                            product.categoryId === filters.category) &&
                         (!query ||
-                            `${item.name} ${item.brand} ${item.sku}`
+                            `${product.name} ${product.brand} ${product.sku}`
                                 .toLowerCase()
                                 .includes(query.toLowerCase())) &&
-                        (!selectedBrands.length ||
-                            selectedBrands.includes(item.brand)) &&
-                        (!stockOnly || item.stock === 'in_stock'),
+                        (!filters.selectedBrands.length ||
+                            filters.selectedBrands.includes(product.brand)) &&
+                        (!filters.stockOnly || product.stock === 'in_stock'),
                 )
-                .sort((a, b) =>
+                .sort((left, right) =>
                     sort === 'price-asc'
-                        ? a.price - b.price
+                        ? left.price - right.price
                         : sort === 'price-desc'
-                          ? b.price - a.price
+                          ? right.price - left.price
                           : sort === 'name'
-                            ? a.name.localeCompare(b.name, 'ru')
-                            : Number(Boolean(b.popular)) -
-                              Number(Boolean(a.popular)),
+                            ? left.name.localeCompare(right.name, 'ru')
+                            : Number(Boolean(right.popular)) -
+                              Number(Boolean(left.popular)),
                 ),
-        [category, query, selectedBrands, sort, stockOnly],
+        [filters, query, sort],
     );
-    const reset = () => {
-        setCategory('');
+
+    const activeFilterCount =
+        Number(Boolean(filters.category)) +
+        filters.selectedBrands.length +
+        Number(filters.stockOnly);
+    const selectedCategory = categories.find(
+        (category) => category.id === filters.category,
+    );
+
+    const resetFilters = () => {
+        setFilters({ category: '', selectedBrands: [], stockOnly: false });
         setQuery('');
-        setSelectedBrands([]);
-        setStockOnly(false);
+    };
+    const openFilters = () => {
+        setDraftFilters(filters);
+        setFiltersOpen(true);
+    };
+    const applyFilters = () => {
+        setFilters(draftFilters);
+        setFiltersOpen(false);
     };
 
     return (
-        <div className="page container">
-            <Breadcrumbs items={[{ label: 'Каталог' }]} />
-            <header className="page-heading">
-                <div>
-                    <span className="eyebrow">24 позиции для демонстрации</span>
+        <div className={styles.page}>
+            <div className="container">
+                <Breadcrumbs items={[{ label: 'Каталог' }]} />
+                <header className={styles.heading}>
+                    <span>Оборудование для бизнеса</span>
                     <h1>Каталог оборудования</h1>
                     <p>
                         Кассовая техника, периферия и готовые комплекты с
                         настройкой.
                     </p>
+                </header>
+
+                <div className={styles.demoNotice} role="note">
+                    <Info aria-hidden="true" />
+                    <strong>{products.length} демонстрационные позиции</strong>
+                    <span>
+                        Цены и наличие могут отличаться от фактических. Итоговые
+                        условия подтверждает менеджер.
+                    </span>
                 </div>
-            </header>
-            <div className="catalog-toolbar">
-                <label className="catalog-search">
-                    <Search />
-                    <input
-                        value={query}
-                        onChange={(event) => setQuery(event.target.value)}
-                        placeholder="Название, бренд или артикул"
-                        aria-label="Поиск товаров"
-                    />
-                    {query && (
-                        <button
-                            onClick={() => setQuery('')}
-                            aria-label="Очистить поиск"
-                        >
-                            <X />
-                        </button>
-                    )}
-                </label>
-                <button
-                    className="button button--secondary mobile-filter"
-                    onClick={() => setFiltersOpen(true)}
-                >
-                    <SlidersHorizontal size={18} />
-                    Фильтры
-                </button>
-                <select
-                    value={sort}
-                    onChange={(event) => setSort(event.target.value)}
-                    aria-label="Сортировка"
-                >
-                    <option value="popular">Сначала популярные</option>
-                    <option value="price-asc">Сначала дешевле</option>
-                    <option value="price-desc">Сначала дороже</option>
-                    <option value="name">По названию</option>
-                </select>
-            </div>
-            <div className="catalog-layout">
-                <aside className="catalog-sidebar">
-                    <Filters
-                        {...{
-                            category,
-                            setCategory,
-                            brands,
-                            selectedBrands,
-                            setSelectedBrands,
-                            stockOnly,
-                            setStockOnly,
-                        }}
-                    />
-                </aside>
-                <section className="catalog-results">
-                    <div className="results-head">
-                        <span>
-                            Найдено: <strong>{filtered.length}</strong>
-                        </span>
-                        {(category ||
-                            query ||
-                            selectedBrands.length > 0 ||
-                            stockOnly) && (
-                            <button onClick={reset}>Сбросить фильтры</button>
-                        )}
-                    </div>
-                    {loading ? (
-                        <Skeleton count={6} />
-                    ) : filtered.length ? (
-                        <div className="product-grid product-grid--catalog">
-                            {filtered.map((item) => (
-                                <ProductCard product={item} key={item.id} />
-                            ))}
-                        </div>
-                    ) : (
-                        <EmptyState
-                            icon={<Search />}
-                            title="Ничего не найдено"
-                            text="Попробуйте изменить запрос или сбросить фильтры."
-                            action={
+
+                <div className={styles.toolbar}>
+                    <label className={styles.searchField}>
+                        <span>Поиск в каталоге</span>
+                        <div>
+                            <Search aria-hidden="true" />
+                            <input
+                                value={query}
+                                onChange={(event) =>
+                                    setQuery(event.target.value)
+                                }
+                                placeholder="Название, бренд или артикул"
+                            />
+                            {query ? (
                                 <button
-                                    className="button button--primary"
-                                    onClick={reset}
+                                    type="button"
+                                    onClick={() => setQuery('')}
+                                    aria-label="Очистить поиск"
                                 >
-                                    Сбросить фильтры
+                                    <X aria-hidden="true" />
                                 </button>
-                            }
-                        />
-                    )}
-                </section>
+                            ) : null}
+                        </div>
+                    </label>
+                    <button
+                        className={`button button--secondary ${styles.mobileFilterButton}`}
+                        type="button"
+                        onClick={openFilters}
+                    >
+                        <SlidersHorizontal size={18} aria-hidden="true" />
+                        Фильтры
+                        {activeFilterCount > 0 ? (
+                            <b>{activeFilterCount}</b>
+                        ) : null}
+                    </button>
+                    <label className={styles.sortField}>
+                        <span>Сортировка</span>
+                        <select
+                            value={sort}
+                            onChange={(event) => setSort(event.target.value)}
+                        >
+                            <option value="popular">Сначала популярные</option>
+                            <option value="price-asc">Сначала дешевле</option>
+                            <option value="price-desc">Сначала дороже</option>
+                            <option value="name">По названию</option>
+                        </select>
+                    </label>
+                </div>
+
+                {(query || activeFilterCount > 0) && (
+                    <div className={styles.activeFilters} aria-label="Фильтры">
+                        {query ? (
+                            <button type="button" onClick={() => setQuery('')}>
+                                Поиск: {query}{' '}
+                                <X size={14} aria-hidden="true" />
+                            </button>
+                        ) : null}
+                        {selectedCategory ? (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setFilters({ ...filters, category: '' })
+                                }
+                            >
+                                {selectedCategory.name}
+                                <X size={14} aria-hidden="true" />
+                            </button>
+                        ) : null}
+                        {filters.selectedBrands.map((brand) => (
+                            <button
+                                type="button"
+                                key={brand}
+                                onClick={() =>
+                                    setFilters({
+                                        ...filters,
+                                        selectedBrands:
+                                            filters.selectedBrands.filter(
+                                                (item) => item !== brand,
+                                            ),
+                                    })
+                                }
+                            >
+                                {brand} <X size={14} aria-hidden="true" />
+                            </button>
+                        ))}
+                        {filters.stockOnly ? (
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setFilters({ ...filters, stockOnly: false })
+                                }
+                            >
+                                В наличии <X size={14} aria-hidden="true" />
+                            </button>
+                        ) : null}
+                        <button
+                            className={styles.resetLink}
+                            type="button"
+                            onClick={resetFilters}
+                        >
+                            Сбросить все
+                        </button>
+                    </div>
+                )}
+
+                <div className={styles.catalogLayout}>
+                    <aside className={styles.sidebar} aria-label="Фильтры">
+                        <Filters value={filters} onChange={setFilters} />
+                    </aside>
+                    <section
+                        className={styles.results}
+                        aria-labelledby="catalog-results-title"
+                    >
+                        <div className={styles.resultsHead}>
+                            <h2 id="catalog-results-title">
+                                Товары <span>{filtered.length}</span>
+                            </h2>
+                        </div>
+                        {loading ? (
+                            <Skeleton count={6} />
+                        ) : filtered.length ? (
+                            <div className={styles.productGrid}>
+                                {filtered.map((product) => (
+                                    <ProductCard
+                                        product={product}
+                                        key={product.id}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <EmptyState
+                                icon={<Search aria-hidden="true" />}
+                                title="Ничего не найдено"
+                                text="Измените запрос или сбросьте фильтры."
+                                action={
+                                    <button
+                                        className="button button--primary"
+                                        type="button"
+                                        onClick={resetFilters}
+                                    >
+                                        Сбросить фильтры
+                                    </button>
+                                }
+                            />
+                        )}
+                    </section>
+                </div>
             </div>
+
             <Drawer
                 open={filtersOpen}
                 onClose={() => setFiltersOpen(false)}
                 title="Фильтры каталога"
             >
-                <Filters
-                    {...{
-                        category,
-                        setCategory,
-                        brands,
-                        selectedBrands,
-                        setSelectedBrands,
-                        stockOnly,
-                        setStockOnly,
-                    }}
-                />
-                <button
-                    className="button button--primary drawer-apply"
-                    onClick={() => setFiltersOpen(false)}
-                >
-                    Показать {filtered.length} товаров
-                </button>
+                <div className={styles.mobileFilters}>
+                    <Filters value={draftFilters} onChange={setDraftFilters} />
+                    <div className={styles.drawerActions}>
+                        <button
+                            className="button button--secondary"
+                            type="button"
+                            onClick={() =>
+                                setDraftFilters({
+                                    category: '',
+                                    selectedBrands: [],
+                                    stockOnly: false,
+                                })
+                            }
+                        >
+                            Сбросить
+                        </button>
+                        <button
+                            className="button button--primary"
+                            type="button"
+                            onClick={applyFilters}
+                        >
+                            Применить
+                        </button>
+                    </div>
+                </div>
             </Drawer>
         </div>
     );

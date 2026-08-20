@@ -11,6 +11,7 @@ import {
     Tags,
 } from 'lucide-react';
 import type { Product } from '../types';
+import styles from './ProductVisual.module.css';
 
 const icons = {
     'online-cash': ReceiptText,
@@ -36,11 +37,11 @@ export function ProductVisual({
         icons[product.categoryId as keyof typeof icons] || PackageCheck;
     return (
         <div
-            className={`product-visual product-visual--${product.imageTone} ${compact ? 'product-visual--compact' : ''}`}
+            className={`${styles.visual} ${styles[product.imageTone]} ${compact ? styles.compact : ''}`}
             role="img"
             aria-label={`${product.name}, демонстрационное изображение`}
         >
-            <div className="product-device">
+            <div className={styles.device}>
                 <Icon aria-hidden="true" strokeWidth={1.25} />
                 <span>{product.brand}</span>
             </div>

@@ -202,7 +202,11 @@ export function HomePage() {
                     </div>
                     <div className={`product-grid ${styles.productGrid}`}>
                         {popularProducts.map((product) => (
-                            <ProductCard product={product} key={product.id} />
+                            <ProductCard
+                                product={product}
+                                variant="compact"
+                                key={product.id}
+                            />
                         ))}
                     </div>
                 </div>
