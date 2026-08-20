@@ -1,12 +1,60 @@
 import { LoaderCircle, X } from 'lucide-react';
 import {
     useEffect,
+    useRef,
     type ButtonHTMLAttributes,
     type InputHTMLAttributes,
     type ReactNode,
     type SelectHTMLAttributes,
     type TextareaHTMLAttributes,
 } from 'react';
+
+function useDialogLifecycle(open: boolean, onClose: () => void) {
+    const dialogRef = useRef<HTMLElement>(null);
+
+    useEffect(() => {
+        if (!open) return;
+        const previouslyFocused = document.activeElement as HTMLElement | null;
+        const previousOverflow = document.body.style.overflow;
+        const dialog = dialogRef.current;
+        const focusableSelector =
+            'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                onClose();
+                return;
+            }
+            if (event.key !== 'Tab' || !dialog) return;
+            const focusable = Array.from(
+                dialog.querySelectorAll<HTMLElement>(focusableSelector),
+            );
+            if (focusable.length === 0) return;
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+
+        document.body.style.overflow = 'hidden';
+        window.addEventListener('keydown', onKeyDown);
+        window.requestAnimationFrame(() =>
+            dialog?.querySelector<HTMLElement>(focusableSelector)?.focus(),
+        );
+
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', onKeyDown);
+            previouslyFocused?.focus();
+        };
+    }, [onClose, open]);
+
+    return dialogRef;
+}
 
 export const money = (value: number) =>
     new Intl.NumberFormat('ru-RU', {
@@ -190,13 +238,7 @@ export function Modal({
     title: string;
     children: ReactNode;
 }) {
-    useEffect(() => {
-        if (!open) return;
-        const onKeyDown = (event: KeyboardEvent) =>
-            event.key === 'Escape' && onClose();
-        window.addEventListener('keydown', onKeyDown);
-        return () => window.removeEventListener('keydown', onKeyDown);
-    }, [onClose, open]);
+    const dialogRef = useDialogLifecycle(open, onClose);
     if (!open) return null;
     return (
         <div
@@ -205,6 +247,7 @@ export function Modal({
             onMouseDown={onClose}
         >
             <section
+                ref={dialogRef}
                 className="modal"
                 role="dialog"
                 aria-modal="true"
@@ -238,6 +281,7 @@ export function Drawer({
     title: string;
     children: ReactNode;
 }) {
+    const dialogRef = useDialogLifecycle(open, onClose);
     if (!open) return null;
     return (
         <div
@@ -246,6 +290,7 @@ export function Drawer({
             onMouseDown={onClose}
         >
             <aside
+                ref={dialogRef}
                 className="drawer"
                 role="dialog"
                 aria-modal="true"

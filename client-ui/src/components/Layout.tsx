@@ -8,8 +8,9 @@ import {
     MapPin,
     ArrowUpRight,
     PhoneCall,
+    Clock3,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
     Link,
     NavLink,
@@ -20,6 +21,7 @@ import {
 import { company } from '../data/company';
 import { useCart } from '../context/CartContext';
 import { useCallbackRequest } from '../context/CallbackContext';
+import styles from './Layout.module.css';
 
 const nav = [
     { to: '/catalog', label: 'Каталог' },
@@ -38,6 +40,7 @@ export function Layout() {
     const { openCallback } = useCallbackRequest();
     const location = useLocation();
     const navigate = useNavigate();
+    const menuButtonRef = useRef<HTMLButtonElement>(null);
     useEffect(() => {
         setMenuOpen(false);
         if (location.hash) {
@@ -50,6 +53,21 @@ export function Layout() {
         }
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, [location.hash, location.pathname]);
+    useEffect(() => {
+        if (!menuOpen) return;
+        const previousOverflow = document.body.style.overflow;
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape') return;
+            setMenuOpen(false);
+            menuButtonRef.current?.focus();
+        };
+        document.body.style.overflow = 'hidden';
+        window.addEventListener('keydown', onKeyDown);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            window.removeEventListener('keydown', onKeyDown);
+        };
+    }, [menuOpen]);
     useEffect(() => {
         const titles: Record<string, string> = {
             '/': 'VITMA MARKET — кассовое оборудование и сервис',
@@ -81,29 +99,33 @@ export function Layout() {
     };
 
     return (
-        <div className="app-shell">
+        <div className={styles.shell}>
             <a className="skip-link" href="#main">
                 Перейти к содержимому
             </a>
-            <header className="site-header">
-                <div className="topline">
-                    <div className="container">
+            <header className={styles.header}>
+                <div className={styles.utility}>
+                    <div className={`container ${styles.utilityInner}`}>
                         <span>Кассовое оборудование и сервис для бизнеса</span>
-                        <div>
-                            <a href={company.phoneHref}>{company.phone}</a>
-                            <span>{company.schedule.split(',')[0]}</span>
-                            <button
-                                type="button"
-                                onClick={() => openCallback()}
-                            >
-                                Заказать звонок
-                            </button>
+                        <div className={styles.utilityLinks}>
+                            <span>
+                                <MapPin size={14} aria-hidden="true" />
+                                Красноярск
+                            </span>
+                            <a href={company.phoneHref}>
+                                <Phone size={14} aria-hidden="true" />
+                                {company.phone}
+                            </a>
+                            <span className={styles.schedule}>
+                                <Clock3 size={14} aria-hidden="true" />
+                                {company.schedule.split(',')[0]}
+                            </span>
                         </div>
                     </div>
                 </div>
-                <div className="header-main container">
+                <div className={`container ${styles.brandRow}`}>
                     <Link
-                        className="logo"
+                        className={styles.logo}
                         to="/"
                         aria-label="VITMA MARKET — главная"
                     >
@@ -113,7 +135,7 @@ export function Layout() {
                         />
                     </Link>
                     <form
-                        className="header-search"
+                        className={styles.search}
                         role="search"
                         onSubmit={submitSearch}
                     >
@@ -127,45 +149,67 @@ export function Layout() {
                         <button type="submit">Найти</button>
                     </form>
                     <Link
-                        className="cart-link"
+                        className={styles.cart}
                         to="/cart"
                         aria-label={`Корзина, товаров: ${count}`}
                     >
                         <ShoppingCart />
                         <span>Корзина</span>
-                        {count > 0 && <b>{count}</b>}
+                        {count > 0 && (
+                            <b className={styles.cartCount}>{count}</b>
+                        )}
                     </Link>
                     <button
-                        className="menu-toggle"
+                        ref={menuButtonRef}
+                        className={styles.menuToggle}
                         onClick={() => setMenuOpen((value) => !value)}
                         aria-expanded={menuOpen}
-                        aria-label="Открыть меню"
+                        aria-controls="site-navigation"
+                        aria-label={menuOpen ? 'Закрыть меню' : 'Открыть меню'}
                     >
                         {menuOpen ? <X /> : <Menu />}
                     </button>
                 </div>
+                {menuOpen && (
+                    <button
+                        className={styles.backdrop}
+                        type="button"
+                        aria-label="Закрыть меню"
+                        onClick={() => setMenuOpen(false)}
+                    />
+                )}
                 <nav
-                    className={`main-nav ${menuOpen ? 'main-nav--open' : ''}`}
+                    id="site-navigation"
+                    className={`${styles.nav} ${menuOpen ? styles.navOpen : ''}`}
                     aria-label="Основная навигация"
                 >
-                    <div className="container">
+                    <div className={`container ${styles.navInner}`}>
                         {nav.map((item) => (
-                            <NavLink key={item.to} to={item.to}>
+                            <NavLink
+                                className={({ isActive }) =>
+                                    `${styles.navLink} ${isActive ? styles.navLinkActive : ''}`
+                                }
+                                key={item.to}
+                                to={item.to}
+                            >
                                 {item.label}
                             </NavLink>
                         ))}
-                        <NavLink className="service-cta" to="/service/request">
+                        <NavLink
+                            className={styles.serviceCta}
+                            to="/service/request"
+                        >
                             Оставить заявку <ArrowUpRight size={16} />
                         </NavLink>
                     </div>
                 </nav>
             </header>
-            <main id="main">
+            <main className={styles.main} id="main">
                 <Outlet />
             </main>
-            <footer className="site-footer">
-                <div className="container footer-grid">
-                    <div className="footer-brand">
+            <footer className={styles.footer}>
+                <div className={`container ${styles.footerGrid}`}>
+                    <div className={styles.footerBrand}>
                         <img
                             src="/site/assets/vitmamarket-logo.png"
                             alt="VITMA MARKET"
@@ -175,7 +219,7 @@ export function Layout() {
                             бизнеса в одном месте.
                         </p>
                     </div>
-                    <div>
+                    <div className={styles.footerColumn}>
                         <h2>Покупателям</h2>
                         <Link to="/catalog">Каталог</Link>
                         <Link to="/solutions">Автоматизация</Link>
@@ -183,7 +227,7 @@ export function Layout() {
                         <Link to="/warranty">Гарантия и возврат</Link>
                         <Link to="/cart">Корзина</Link>
                     </div>
-                    <div>
+                    <div className={styles.footerColumn}>
                         <h2>Сервис</h2>
                         <Link to="/service">Направления сервиса</Link>
                         <Link to="/service/request">Оставить заявку</Link>
@@ -191,7 +235,7 @@ export function Layout() {
                         <Link to="/service/status">Проверить статус</Link>
                         <Link to="/contacts">Контакты</Link>
                     </div>
-                    <div className="footer-contacts">
+                    <div className={styles.footerColumn}>
                         <h2>Связаться</h2>
                         <a href={company.phoneHref}>
                             <Phone size={17} />
@@ -207,21 +251,21 @@ export function Layout() {
                         </span>
                     </div>
                 </div>
-                <div className="container footer-bottom">
+                <div className={`container ${styles.footerBottom}`}>
                     <span>© 2026 VITMA MARKET</span>
                     <span>
                         {company.legalName} · ИНН {company.inn}
                     </span>
                     <Link to="/privacy">Политика обработки данных</Link>
                 </div>
-                <div className="container footer-disclaimer">
+                <div className={`container ${styles.disclaimer}`}>
                     Информация о товарах и ценах носит ознакомительный характер
                     и не является публичной офертой. Итоговую стоимость и
                     наличие подтверждает менеджер.
                 </div>
             </footer>
             <button
-                className="callback-fab"
+                className={styles.callback}
                 type="button"
                 onClick={() => openCallback()}
                 aria-label="Заказать обратный звонок"
@@ -230,7 +274,7 @@ export function Layout() {
                 <span>Нужна консультация</span>
             </button>
             <div
-                className={`toast ${notice ? 'toast--visible' : ''}`}
+                className={`${styles.toast} ${notice ? styles.toastVisible : ''}`}
                 role="status"
             >
                 {notice}
