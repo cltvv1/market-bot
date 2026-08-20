@@ -411,6 +411,29 @@
 }
 
 @media (max-width: 700px) {
+    .hero {
+        padding-bottom: var(--space-5);
+    }
+
+    .heroGrid {
+        gap: var(--space-4);
+        margin-top: var(--space-3);
+    }
+
+    .heroCopy {
+        padding-top: var(--space-2);
+    }
+
+    .heroCopy h1 {
+        margin-top: var(--space-2);
+        font-size: var(--font-size-hero);
+    }
+
+    .heroCopy > p {
+        margin-top: var(--space-3);
+        font-size: var(--font-size-body);
+    }
+
     .serviceGrid,
     .usefulGrid {
         grid-template-columns: 1fr;
@@ -431,11 +454,21 @@
 
     .heroActions {
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: var(--space-4);
+    }
+
+    .heroActions > a:first-child {
+        grid-column: 1 / -1;
     }
 
     .heroMedia {
-        aspect-ratio: 4 / 3;
+        aspect-ratio: 16 / 9;
+    }
+
+    .serviceFacts {
+        gap: var(--space-3);
+        padding: var(--space-4);
     }
 
     .nextStepInner nav {

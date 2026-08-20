@@ -40,7 +40,9 @@ try {
         path: path.join(outputDir, 'home-desktop.png'),
         fullPage: true,
     });
-    await desktop.locator('.callback-fab').click();
+    await desktop
+        .getByRole('button', { name: 'Заказать обратный звонок' })
+        .click();
     await desktop.locator('[role="dialog"]').waitFor();
     await desktop
         .locator('[role="dialog"]')
@@ -51,7 +53,7 @@ try {
         waitUntil: 'networkidle',
     });
     await desktop.locator('.search-results').waitFor();
-    if ((await desktop.locator('.product-card').count()) === 0)
+    if ((await desktop.getByRole('button', { name: /Добавить/ }).count()) === 0)
         throw new Error('Global search returned no product results');
 
     await desktop.goto(`${baseUrl}/site/solutions`, {
@@ -64,16 +66,35 @@ try {
     await desktop.goto(`${baseUrl}/site/catalog`, {
         waitUntil: 'networkidle',
     });
-    await desktop.locator('.product-card').first().waitFor();
-    if ((await desktop.locator('.product-card').count()) < 20)
+    await desktop.getByRole('article').first().waitFor();
+    if ((await desktop.getByRole('article').count()) < 20)
         throw new Error('Catalog has fewer than 20 products');
+    await desktop.screenshot({
+        path: path.join(outputDir, 'catalog-desktop.png'),
+        fullPage: true,
+    });
     await desktop
-        .locator('.product-card')
+        .getByRole('article')
         .first()
         .getByRole('button', { name: /Добавить/ })
         .click();
-    await desktop.locator('.cart-link').click();
+    await desktop
+        .getByRole('link', { name: /Корзина, товаров:/ })
+        .click();
     await desktop.locator('.cart-item').first().waitFor();
+
+    await desktop.goto(`${baseUrl}/site/service`, {
+        waitUntil: 'networkidle',
+    });
+    await desktop
+        .getByRole('heading', {
+            name: 'Сервисный центр для кассового оборудования',
+        })
+        .waitFor();
+    await desktop.screenshot({
+        path: path.join(outputDir, 'service-desktop.png'),
+        fullPage: true,
+    });
 
     await desktop.goto(`${baseUrl}/site/service/request`, {
         waitUntil: 'networkidle',
@@ -112,10 +133,27 @@ try {
         deviceScaleFactor: 1,
     });
     await attachDiagnostics(mobile);
+    await mobile.goto(`${baseUrl}/site/`, {
+        waitUntil: 'networkidle',
+    });
+    await mobile.screenshot({
+        path: path.join(outputDir, 'home-390.png'),
+        fullPage: true,
+    });
+    const menuButton = mobile.locator(
+        'button[aria-controls="site-navigation"]',
+    );
+    await menuButton.click();
+    if ((await menuButton.getAttribute('aria-expanded')) !== 'true')
+        throw new Error('Mobile menu did not open');
+    await menuButton.press('Escape');
+    if ((await menuButton.getAttribute('aria-expanded')) !== 'false')
+        throw new Error('Mobile menu did not close with Escape');
+
     await mobile.goto(`${baseUrl}/site/catalog`, {
         waitUntil: 'networkidle',
     });
-    await mobile.locator('.product-card').first().waitFor();
+    await mobile.getByRole('article').first().waitFor();
     const overflow = await mobile.evaluate(
         () =>
             document.documentElement.scrollWidth >
@@ -123,8 +161,42 @@ try {
     );
     if (overflow)
         throw new Error('Horizontal overflow detected on mobile catalog');
+    await mobile.getByRole('button', { name: 'Фильтры', exact: true }).click();
+    const filtersDialog = mobile.getByRole('dialog', {
+        name: 'Фильтры каталога',
+    });
+    await filtersDialog.waitFor();
+    await filtersDialog.getByLabel('1С').check();
     await mobile.screenshot({
-        path: path.join(outputDir, 'catalog-mobile.png'),
+        path: path.join(outputDir, 'catalog-390-filters.png'),
+        fullPage: false,
+    });
+    await filtersDialog.getByRole('button', { name: 'Применить' }).click();
+    await mobile
+        .getByRole('button', { name: '1С', exact: true })
+        .waitFor();
+    await mobile.getByLabel('Поиск в каталоге').fill('нет-такого-товара');
+    await mobile.getByRole('heading', { name: 'Ничего не найдено' }).waitFor();
+    await mobile.getByRole('button', { name: 'Сбросить фильтры' }).click();
+    await mobile.getByRole('article').first().waitFor();
+
+    await mobile.goto(`${baseUrl}/site/service`, {
+        waitUntil: 'networkidle',
+    });
+    await mobile
+        .getByRole('heading', {
+            name: 'Сервисный центр для кассового оборудования',
+        })
+        .waitFor();
+    const serviceOverflow = await mobile.evaluate(
+        () =>
+            document.documentElement.scrollWidth >
+            document.documentElement.clientWidth,
+    );
+    if (serviceOverflow)
+        throw new Error('Horizontal overflow detected on mobile service page');
+    await mobile.screenshot({
+        path: path.join(outputDir, 'service-390.png'),
         fullPage: true,
     });
 

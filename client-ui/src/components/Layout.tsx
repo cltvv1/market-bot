@@ -160,6 +160,15 @@ export function Layout() {
                         )}
                     </Link>
                     <button
+                        className={styles.headerCallback}
+                        type="button"
+                        onClick={() => openCallback()}
+                        aria-label="Заказать обратный звонок"
+                    >
+                        <PhoneCall aria-hidden="true" />
+                        <span>Консультация</span>
+                    </button>
+                    <button
                         ref={menuButtonRef}
                         className={styles.menuToggle}
                         onClick={() => setMenuOpen((value) => !value)}
@@ -264,15 +273,6 @@ export function Layout() {
                     наличие подтверждает менеджер.
                 </div>
             </footer>
-            <button
-                className={styles.callback}
-                type="button"
-                onClick={() => openCallback()}
-                aria-label="Заказать обратный звонок"
-            >
-                <PhoneCall />
-                <span>Нужна консультация</span>
-            </button>
             <div
                 className={`${styles.toast} ${notice ? styles.toastVisible : ''}`}
                 role="status"

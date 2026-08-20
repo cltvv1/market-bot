@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { ServiceDirection } from '../types';
+import styles from './ServiceCard.module.css';
 
 const icons = {
     ReceiptText,
@@ -32,8 +33,8 @@ const icons = {
 export function ServiceCard({ service }: { service: ServiceDirection }) {
     const Icon = icons[service.icon as keyof typeof icons] || Wrench;
     return (
-        <article className="service-card">
-            <div className="service-card__icon">
+        <article className={styles.card}>
+            <div className={styles.icon}>
                 <Icon aria-hidden="true" />
             </div>
             <div>

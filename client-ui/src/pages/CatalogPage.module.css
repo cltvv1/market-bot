@@ -135,7 +135,7 @@
     background: var(--color-surface);
 }
 
-.mobileFilterButton {
+.toolbar .mobileFilterButton {
     display: none;
 }
 
@@ -333,7 +333,7 @@
         grid-template-columns: minmax(240px, 1fr) auto minmax(200px, 240px);
     }
 
-    .mobileFilterButton {
+    .toolbar .mobileFilterButton {
         display: inline-flex;
     }
 
@@ -375,7 +375,7 @@
         grid-column: 1 / -1;
     }
 
-    .mobileFilterButton {
+    .toolbar .mobileFilterButton {
         width: 100%;
     }
 
@@ -394,7 +394,7 @@
     }
 
     .toolbar > label,
-    .mobileFilterButton {
+    .toolbar .mobileFilterButton {
         font-size: var(--font-size-xs);
     }
 
