@@ -2,114 +2,183 @@ import {
     ArrowRight,
     BadgeCheck,
     Building2,
-    Clock3,
-    Headphones,
-    PackageCheck,
-    ShieldCheck,
-    Store,
-    Coffee,
-    Warehouse,
-    BriefcaseBusiness,
-    Truck,
+    ClipboardCheck,
+    MapPin,
+    MonitorCog,
+    PackageSearch,
+    ReceiptText,
+    RefreshCw,
+    ShoppingCart,
     Wrench,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { brands } from '../data/company';
-import { categories, products } from '../data/catalog';
-import { serviceDirections } from '../data/services';
 import { ProductCard } from '../components/ProductCard';
 import { ServiceCard } from '../components/ServiceCard';
-import { businessSolutions } from '../data/solutions';
-import { useCallbackRequest } from '../context/CallbackContext';
+import { products } from '../data/catalog';
+import { serviceDirections } from '../data/services';
+import styles from './HomePage.module.css';
 
-const solutionIcons = {
-    store: Store,
-    cafe: Coffee,
-    warehouse: Warehouse,
-    services: BriefcaseBusiness,
-};
+const tasks = [
+    {
+        title: 'Купить оборудование',
+        text: 'Кассы, сканеры, POS-системы и готовые комплекты.',
+        to: '/catalog',
+        icon: ShoppingCart,
+    },
+    {
+        title: 'Зарегистрировать ККТ',
+        text: 'Заполнить действующую анкету регистрации кассы.',
+        to: '/cash-registration',
+        icon: ReceiptText,
+    },
+    {
+        title: 'Заменить ФН',
+        text: 'Создать заявку на замену фискального накопителя.',
+        to: '/service/request?type=fn_replacement',
+        icon: RefreshCw,
+    },
+    {
+        title: 'Настроить кассу',
+        text: 'Запросить удалённую диагностику или настройку ККТ.',
+        to: '/service/request?type=kkt_remote_work',
+        icon: MonitorCog,
+    },
+    {
+        title: 'Проверить статус',
+        text: 'Посмотреть текущее состояние сервисной заявки.',
+        to: '/service/status',
+        icon: ClipboardCheck,
+    },
+    {
+        title: 'Оставить заявку',
+        text: 'Описать задачу, чтобы оператор предложил решение.',
+        to: '/service/request',
+        icon: Wrench,
+    },
+] as const;
+
+const supportLinks = [
+    {
+        title: 'Мои организации',
+        text: 'Кассы, обращения и доступы представителей.',
+        to: '/organizations',
+        icon: Building2,
+    },
+    {
+        title: 'Доставка и оплата',
+        text: 'Условия получения оборудования и расчётов.',
+        to: '/delivery',
+        icon: PackageSearch,
+    },
+    {
+        title: 'Контакты сервиса',
+        text: 'Адрес, режим работы и способы связи.',
+        to: '/contacts',
+        icon: MapPin,
+    },
+] as const;
+
+const popularProducts = products
+    .filter((product) => product.popular)
+    .slice(0, 4);
 
 export function HomePage() {
-    const { openCallback } = useCallbackRequest();
-
     return (
         <>
-            <section className="home-hero">
-                <div className="container home-hero__content">
-                    <div className="hero-signature" aria-label="Направления">
-                        <span>Магазин</span>
-                        <i />
-                        <span>Сервис</span>
-                        <i />
-                        <span>Автоматизация</span>
-                    </div>
-                    <span className="eyebrow">VITMA MARKET · Красноярск</span>
-                    <h1>
-                        Кассовая техника и сервис, на которые можно опереться
-                    </h1>
-                    <p>
-                        Подбираем оборудование, запускаем торговые точки и
-                        поддерживаем кассы после покупки — без разрыва между
-                        поставщиком и сервисом.
-                    </p>
-                    <div className="hero-actions">
-                        <Link className="button button--primary" to="/catalog">
-                            Перейти в каталог <ArrowRight size={18} />
-                        </Link>
-                        <Link
-                            className="button button--light"
-                            to="/service/request"
-                        >
-                            Оставить сервисную заявку <Wrench size={18} />
-                        </Link>
-                    </div>
-                    <div className="hero-facts">
-                        <span>
-                            <BadgeCheck />
-                            Работаем по 54-ФЗ
+            <section className={styles.hero}>
+                <div className={`container ${styles.heroGrid}`}>
+                    <div className={styles.heroCopy}>
+                        <span className={styles.eyebrow}>
+                            VITMA MARKET · Красноярск
                         </span>
+                        <h1>Кассовая техника и сервис для бизнеса</h1>
+                        <p>
+                            Подбираем оборудование, запускаем торговые точки и
+                            поддерживаем кассы после покупки одной командой.
+                        </p>
+                        <div className={styles.heroActions}>
+                            <Link className="button button--dark" to="/catalog">
+                                Перейти в каталог
+                                <ArrowRight size={18} aria-hidden="true" />
+                            </Link>
+                            <Link
+                                className="button button--secondary"
+                                to="/service/request"
+                            >
+                                Оставить заявку
+                            </Link>
+                        </div>
+                    </div>
+                    <div className={styles.heroMedia}>
+                        <img
+                            src="/site/assets/hero-service.png"
+                            alt="Кассовое оборудование в сервисном центре VITMA MARKET"
+                            width="960"
+                            height="640"
+                        />
+                    </div>
+                </div>
+            </section>
+
+            <section
+                className={styles.trustStrip}
+                aria-label="Основные направления работы"
+            >
+                <div className={`container ${styles.trustGrid}`}>
+                    <div>
+                        <BadgeCheck aria-hidden="true" />
                         <span>
-                            <Clock3 />
-                            Ответ сервиса от 15 минут
+                            <strong>Работа с ККТ</strong>
+                            Регистрация и сервис по 54-ФЗ
                         </span>
+                    </div>
+                    <div>
+                        <Wrench aria-hidden="true" />
                         <span>
-                            <Building2 />
-                            Для ИП и организаций
+                            <strong>Свой сервис</strong>
+                            Настройка, диагностика и ремонт
+                        </span>
+                    </div>
+                    <div>
+                        <MonitorCog aria-hidden="true" />
+                        <span>
+                            <strong>Два формата</strong>
+                            Удалённая помощь и выезд
+                        </span>
+                    </div>
+                    <div>
+                        <Building2 aria-hidden="true" />
+                        <span>
+                            <strong>Для бизнеса</strong>
+                            Работаем с ИП и организациями
                         </span>
                     </div>
                 </div>
             </section>
 
-            <section className="section solution-picker">
+            <section className={styles.section}>
                 <div className="container">
-                    <div className="section-heading">
+                    <div className={styles.heading}>
                         <div>
-                            <span className="eyebrow">По типу бизнеса</span>
-                            <h2>
-                                Начните с задачи, а не с модели оборудования
-                            </h2>
-                            <p>
-                                Покажем подходящий комплект и список работ для
-                                вашего формата.
-                            </p>
+                            <h2>Что вы хотите сделать?</h2>
+                            <p>Выберите задачу, чтобы сразу перейти к ней.</p>
                         </div>
-                        <Link to="/solutions">
-                            Все решения <ArrowRight size={17} />
-                        </Link>
                     </div>
-                    <div className="solution-picker__grid">
-                        {businessSolutions.map((solution) => {
-                            const Icon = solutionIcons[solution.icon];
+                    <div className={styles.taskGrid}>
+                        {tasks.map((task) => {
+                            const Icon = task.icon;
                             return (
-                                <Link
-                                    key={solution.id}
-                                    to={`/solutions#${solution.id}`}
-                                >
-                                    <Icon />
-                                    <span>{solution.audience}</span>
-                                    <h3>{solution.title}</h3>
-                                    <p>{solution.description}</p>
-                                    <ArrowRight />
+                                <Link key={task.title} to={task.to}>
+                                    <Icon aria-hidden="true" />
+                                    <span>
+                                        <strong>{task.title}</strong>
+                                        <small>{task.text}</small>
+                                    </span>
+                                    <ArrowRight
+                                        className={styles.cardArrow}
+                                        size={17}
+                                        aria-hidden="true"
+                                    />
                                 </Link>
                             );
                         })}
@@ -117,237 +186,72 @@ export function HomePage() {
                 </div>
             </section>
 
-            <section className="section section--tight">
+            <section className={`${styles.section} ${styles.mutedSection}`}>
                 <div className="container">
-                    <div className="section-heading">
+                    <div className={styles.heading}>
                         <div>
-                            <span className="eyebrow">Оборудование</span>
-                            <h2>Соберём рабочее место под ваш бизнес</h2>
-                        </div>
-                        <Link to="/catalog">
-                            Весь каталог <ArrowRight size={17} />
-                        </Link>
-                    </div>
-                    <div className="category-grid">
-                        {categories.slice(0, 8).map((category, index) => (
-                            <Link
-                                className={`category-card category-card--${index % 4}`}
-                                to={`/catalog?category=${category.id}`}
-                                key={category.id}
-                            >
-                                <span>0{index + 1}</span>
-                                <h3>{category.name}</h3>
-                                <p>{category.description}</p>
-                                <ArrowRight />
-                            </Link>
-                        ))}
-                    </div>
-                </div>
-            </section>
-
-            <section className="consultation-band">
-                <div className="container">
-                    <div>
-                        <span className="eyebrow">Поможем определиться</span>
-                        <h2>Не знаете, какая касса или услуга нужна?</h2>
-                        <p>
-                            Опишите задачу специалисту. Уточним требования и
-                            предложим следующий шаг без обязательства покупать.
-                        </p>
-                    </div>
-                    <button
-                        className="button button--primary"
-                        type="button"
-                        onClick={() => openCallback('Подбор оборудования')}
-                    >
-                        Заказать консультацию <ArrowRight size={18} />
-                    </button>
-                </div>
-            </section>
-
-            <section className="section section--soft">
-                <div className="container">
-                    <div className="section-heading">
-                        <div>
-                            <span className="eyebrow">Выбор клиентов</span>
                             <h2>Популярное оборудование</h2>
+                            <p>
+                                Демонстрационные позиции из текущего каталога.
+                            </p>
                         </div>
                         <Link to="/catalog?sort=popular">
-                            Смотреть всё <ArrowRight size={17} />
+                            Смотреть каталог
+                            <ArrowRight size={17} aria-hidden="true" />
                         </Link>
                     </div>
-                    <div className="product-grid">
-                        {products
-                            .filter((item) => item.popular)
-                            .slice(0, 4)
-                            .map((item) => (
-                                <ProductCard product={item} key={item.id} />
-                            ))}
-                    </div>
-                </div>
-            </section>
-
-            <section className="section">
-                <div className="container split-intro">
-                    <div className="split-intro__copy">
-                        <span className="eyebrow">Сервисный центр</span>
-                        <h2>Не просто продаём кассы. Отвечаем за их работу.</h2>
-                        <p>
-                            Инженеры VITMA MARKET работают с кассами, ОФД,
-                            маркировкой и учётными системами. Заявка сразу
-                            попадает в операторскую админку, а вы получаете
-                            понятный статус и ответственного специалиста.
-                        </p>
-                        <Link className="button button--dark" to="/service">
-                            Все услуги <ArrowRight size={18} />
-                        </Link>
-                    </div>
-                    <div className="service-feature">
-                        <img
-                            src="/site/assets/service-engineer.png"
-                            alt="Специалист сервисного центра настраивает кассовое оборудование"
-                        />
-                        <div>
-                            <strong>От 15 минут</strong>
-                            <span>до первого ответа по заявке</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="service-grid service-grid--home">
-                    {serviceDirections.slice(0, 6).map((service) => (
-                        <ServiceCard key={service.id} service={service} />
-                    ))}
-                </div>
-            </section>
-
-            <section className="section section--graphite">
-                <div className="container">
-                    <div className="section-heading section-heading--light">
-                        <div>
-                            <span className="eyebrow">Почему мы</span>
-                            <h2>Один партнёр на всём пути</h2>
-                        </div>
-                    </div>
-                    <div className="advantage-grid">
-                        <article>
-                            <PackageCheck />
-                            <h3>Подбор без переплаты</h3>
-                            <p>
-                                Смотрим на нагрузку и задачи, а не продаём самую
-                                дорогую модель.
-                            </p>
-                        </article>
-                        <article>
-                            <Wrench />
-                            <h3>Свой сервисный центр</h3>
-                            <p>
-                                Настройка, ремонт и сопровождение остаются
-                                внутри одной команды.
-                            </p>
-                        </article>
-                        <article>
-                            <Truck />
-                            <h3>Доставка и запуск</h3>
-                            <p>
-                                Привезём, подключим и обучим сотрудников работе
-                                с оборудованием.
-                            </p>
-                        </article>
-                        <article>
-                            <ShieldCheck />
-                            <h3>Официальная гарантия</h3>
-                            <p>
-                                Работаем с производителями и оформляем все
-                                документы для бизнеса.
-                            </p>
-                        </article>
-                    </div>
-                </div>
-            </section>
-
-            <section className="section">
-                <div className="container">
-                    <div className="section-heading">
-                        <div>
-                            <span className="eyebrow">Простой процесс</span>
-                            <h2>Как мы работаем</h2>
-                        </div>
-                    </div>
-                    <ol className="steps">
-                        <li>
-                            <span>01</span>
-                            <div>
-                                <h3>Разбираемся в задаче</h3>
-                                <p>
-                                    Уточняем формат бизнеса, нагрузку и уже
-                                    используемые системы.
-                                </p>
-                            </div>
-                        </li>
-                        <li>
-                            <span>02</span>
-                            <div>
-                                <h3>Предлагаем решение</h3>
-                                <p>
-                                    Формируем понятную комплектацию, смету и
-                                    сроки запуска.
-                                </p>
-                            </div>
-                        </li>
-                        <li>
-                            <span>03</span>
-                            <div>
-                                <h3>Поставляем и настраиваем</h3>
-                                <p>
-                                    Регистрируем кассу, подключаем ОФД и
-                                    интегрируем ПО.
-                                </p>
-                            </div>
-                        </li>
-                        <li>
-                            <span>04</span>
-                            <div>
-                                <h3>Остаёмся на связи</h3>
-                                <p>
-                                    Поддерживаем оборудование и заранее
-                                    напоминаем о важных сроках.
-                                </p>
-                            </div>
-                        </li>
-                    </ol>
-                </div>
-            </section>
-
-            <section className="section section--soft">
-                <div className="container brand-strip">
-                    <span>Работаем с ведущими производителями</span>
-                    <div>
-                        {brands.map((brand) => (
-                            <strong key={brand}>{brand}</strong>
+                    <div className={`product-grid ${styles.productGrid}`}>
+                        {popularProducts.map((product) => (
+                            <ProductCard product={product} key={product.id} />
                         ))}
                     </div>
                 </div>
             </section>
-            <section className="cta-band">
+
+            <section className={styles.section}>
                 <div className="container">
-                    <div>
-                        <span className="eyebrow">Есть задача?</span>
-                        <h2>Подберём оборудование или подключим специалиста</h2>
-                    </div>
-                    <div>
-                        <a
-                            className="button button--light"
-                            href="tel:+73912050505"
-                        >
-                            <Headphones size={18} />
-                            Позвонить
-                        </a>
-                        <Link
-                            className="button button--primary"
-                            to="/service/request"
-                        >
-                            Оставить заявку <ArrowRight size={18} />
+                    <div className={styles.heading}>
+                        <div>
+                            <h2>Сервисные услуги</h2>
+                            <p>
+                                Действующие сценарии заявок, доступные на сайте.
+                            </p>
+                        </div>
+                        <Link to="/service">
+                            Все о сервисе
+                            <ArrowRight size={17} aria-hidden="true" />
                         </Link>
+                    </div>
+                    <div className={styles.serviceGrid}>
+                        {serviceDirections.map((service) => (
+                            <ServiceCard key={service.id} service={service} />
+                        ))}
+                    </div>
+                </div>
+            </section>
+
+            <section className={`${styles.section} ${styles.supportSection}`}>
+                <div className="container">
+                    <div className={styles.heading}>
+                        <div>
+                            <h2>Поддержка и информация</h2>
+                            <p>Только действующие разделы клиентского сайта.</p>
+                        </div>
+                    </div>
+                    <div className={styles.supportGrid}>
+                        {supportLinks.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <Link key={item.title} to={item.to}>
+                                    <Icon aria-hidden="true" />
+                                    <span>
+                                        <strong>{item.title}</strong>
+                                        <small>{item.text}</small>
+                                    </span>
+                                    <ArrowRight size={17} aria-hidden="true" />
+                                </Link>
+                            );
+                        })}
                     </div>
                 </div>
             </section>
