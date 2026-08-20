@@ -1,42 +1,98 @@
 import {
     ArrowRight,
+    Building2,
     CheckCircle2,
+    ClipboardCheck,
     Clock3,
-    Headphones,
+    FileCheck2,
     MapPin,
     MonitorCog,
-    ShieldCheck,
+    ReceiptText,
+    RefreshCw,
+    Settings2,
+    Wrench,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Breadcrumbs } from '../components/Breadcrumbs';
-import { ServiceCard } from '../components/ServiceCard';
+import { company } from '../data/company';
 import { serviceDirections } from '../data/services';
 import { servicePackages } from '../data/solutions';
+import styles from './ServicePage.module.css';
+
+const serviceIcons = {
+    fn_replacement: RefreshCw,
+    firmware_update: Settings2,
+    kkt_remote_work: MonitorCog,
+};
+
+const serviceEntries = [
+    {
+        id: 'registration',
+        title: 'Регистрация ККТ',
+        description: 'Заполнить действующую анкету регистрации кассы.',
+        to: '/cash-registration',
+        icon: ReceiptText,
+    },
+    ...serviceDirections.map((service) => ({
+        id: service.id,
+        title: service.title,
+        description: service.description,
+        to: `/service/request?type=${service.id}`,
+        icon: serviceIcons[service.id as keyof typeof serviceIcons] || Wrench,
+    })),
+    {
+        id: 'other',
+        title: 'Другая сервисная задача',
+        description:
+            'Опишите проблему, и оператор выберет нужного специалиста.',
+        to: '/service/request',
+        icon: Wrench,
+    },
+];
+
+const usefulLinks = [
+    {
+        title: 'Статус заявки',
+        text: 'Проверить текущее состояние обращения.',
+        to: '/service/status',
+        icon: ClipboardCheck,
+    },
+    {
+        title: 'Мои организации',
+        text: 'Посмотреть связанные кассы и историю обращений.',
+        to: '/organizations',
+        icon: Building2,
+    },
+    {
+        title: 'Контакты',
+        text: 'Адрес, телефон и режим работы сервисного центра.',
+        to: '/contacts',
+        icon: MapPin,
+    },
+] as const;
 
 export function ServicePage() {
     return (
         <>
-            <section className="service-hero">
+            <section className={styles.hero}>
                 <div className="container">
                     <Breadcrumbs items={[{ label: 'Сервисный центр' }]} />
-                    <div className="service-hero__grid">
-                        <div>
-                            <span className="eyebrow">Сервис VITMA MARKET</span>
-                            <h1>
-                                Вернём оборудование в работу и предупредим
-                                следующий сбой
-                            </h1>
+                    <div className={styles.heroGrid}>
+                        <div className={styles.heroCopy}>
+                            <span>Сервис VITMA MARKET</span>
+                            <h1>Сервисный центр для кассового оборудования</h1>
                             <p>
-                                Кассы, ОФД, маркировка, товароучёт и периферия.
-                                Принимаем разовые обращения и ведём постоянное
-                                сопровождение организаций.
+                                Регистрация ККТ, замена ФН, настройка и
+                                диагностика. Разовые обращения и сопровождение
+                                организаций в одной системе.
                             </p>
-                            <div className="hero-actions">
+                            <div className={styles.heroActions}>
                                 <Link
                                     className="button button--primary"
                                     to="/service/request"
                                 >
-                                    Оставить заявку <ArrowRight />
+                                    Оставить заявку
+                                    <ArrowRight size={18} aria-hidden="true" />
                                 </Link>
                                 <Link
                                     className="button button--secondary"
@@ -48,163 +104,165 @@ export function ServicePage() {
                                     className="button button--secondary"
                                     to="/cash-registration"
                                 >
-                                    Анкета регистрации ККТ
+                                    Регистрация ККТ
                                 </Link>
                             </div>
                         </div>
-                        <div className="service-hero__panel">
-                            <strong>15 минут</strong>
-                            <span>среднее время первого ответа</span>
-                            <hr />
-                            <p>
-                                <Clock3 /> Пн–Пт, 09:00–18:00
-                            </p>
-                            <p>
-                                <MapPin /> Выезд по Красноярску
-                            </p>
-                            <p>
-                                <MonitorCog /> Удалённая поддержка по России
-                            </p>
+                        <div className={styles.heroMedia}>
+                            <img
+                                src="/site/assets/service-engineer.png"
+                                alt="Специалист VITMA MARKET обслуживает кассовое оборудование"
+                                width="800"
+                                height="600"
+                            />
                         </div>
+                        <aside
+                            className={styles.serviceFacts}
+                            aria-label="Режим работы сервиса"
+                        >
+                            <div>
+                                <Clock3 aria-hidden="true" />
+                                <span>
+                                    <strong>Режим работы</strong>
+                                    {company.schedule}
+                                </span>
+                            </div>
+                            <div>
+                                <MapPin aria-hidden="true" />
+                                <span>
+                                    <strong>Сервисный центр</strong>
+                                    {company.address}
+                                </span>
+                            </div>
+                            <div>
+                                <MonitorCog aria-hidden="true" />
+                                <span>
+                                    <strong>Удалённо и на месте</strong>
+                                    Формат уточняется по задаче
+                                </span>
+                            </div>
+                        </aside>
                     </div>
                 </div>
             </section>
-            <section className="section section--soft">
+
+            <section className={styles.section}>
                 <div className="container">
-                    <div className="section-heading">
-                        <div>
-                            <span className="eyebrow">Формат работы</span>
-                            <h2>
-                                От одной задачи до постоянного сопровождения
-                            </h2>
-                            <p>
-                                Начать можно с разового обращения. Договор и
-                                организация в системе нужны только для
-                                регулярного обслуживания.
-                            </p>
-                        </div>
+                    <div className={styles.heading}>
+                        <h2>Выберите нужную услугу</h2>
+                        <p>
+                            Начните с подходящего сценария или оставьте
+                            универсальную заявку.
+                        </p>
                     </div>
-                    <div className="service-packages">
+                    <div className={styles.serviceGrid}>
+                        {serviceEntries.map((service) => {
+                            const Icon = service.icon;
+                            return (
+                                <Link key={service.id} to={service.to}>
+                                    <Icon aria-hidden="true" />
+                                    <span>
+                                        <strong>{service.title}</strong>
+                                        <small>{service.description}</small>
+                                    </span>
+                                    <ArrowRight size={17} aria-hidden="true" />
+                                </Link>
+                            );
+                        })}
+                    </div>
+                </div>
+            </section>
+
+            <section className={`${styles.section} ${styles.mutedSection}`}>
+                <div className="container">
+                    <div className={styles.heading}>
+                        <h2>Какой формат вам нужен?</h2>
+                        <p>
+                            Это способ описать задачу, а не отдельный продукт
+                            или новый тип заявки.
+                        </p>
+                    </div>
+                    <div className={styles.packageGrid}>
                         {servicePackages.map((item, index) => (
-                            <article
-                                className={
-                                    index === 1
-                                        ? 'service-package service-package--featured'
-                                        : 'service-package'
-                                }
-                                key={item.id}
-                            >
-                                <span>{item.label}</span>
-                                <h3>{item.title}</h3>
+                            <article key={item.id}>
+                                <div className={styles.packageTitle}>
+                                    <span>
+                                        {String(index + 1).padStart(2, '0')}
+                                    </span>
+                                    <div>
+                                        <small>{item.label}</small>
+                                        <h3>{item.title}</h3>
+                                    </div>
+                                </div>
                                 <p>{item.description}</p>
                                 <ul>
                                     {item.features.map((feature) => (
                                         <li key={feature}>
-                                            <CheckCircle2 /> {feature}
+                                            <CheckCircle2 aria-hidden="true" />
+                                            {feature}
                                         </li>
                                     ))}
                                 </ul>
-                                <Link
-                                    className={
-                                        index === 1
-                                            ? 'button button--primary'
-                                            : 'button button--secondary'
-                                    }
-                                    to={`/service/request?package=${item.id}`}
-                                >
-                                    Выбрать формат <ArrowRight size={17} />
-                                </Link>
                             </article>
                         ))}
                     </div>
                 </div>
             </section>
-            <section className="section">
-                <div className="container">
-                    <div className="section-heading">
-                        <div>
-                            <span className="eyebrow">Направления работ</span>
-                            <h2>Решаем задачи вокруг кассы целиком</h2>
-                            <p>
-                                Если не знаете, какой пункт выбрать, используйте
-                                «Другая проблема» — оператор сам назначит
-                                нужного специалиста.
-                            </p>
-                        </div>
+
+            <section className={styles.nextStep}>
+                <div className={`container ${styles.nextStepInner}`}>
+                    <div>
+                        <FileCheck2 aria-hidden="true" />
+                        <span>
+                            <strong>Не уверены, с чего начать?</strong>
+                            Опишите задачу, оператор уточнит детали и предложит
+                            следующий шаг.
+                        </span>
                     </div>
-                    <div className="service-grid">
-                        {serviceDirections.map((service) => (
-                            <ServiceCard service={service} key={service.id} />
-                        ))}
-                    </div>
+                    <nav aria-label="Действия по сервису">
+                        <Link
+                            className="button button--primary"
+                            to="/service/request"
+                        >
+                            Оставить заявку
+                            <ArrowRight size={17} aria-hidden="true" />
+                        </Link>
+                        <Link
+                            className="button button--secondary"
+                            to="/service/status"
+                        >
+                            Проверить статус
+                        </Link>
+                        <Link
+                            className="button button--secondary"
+                            to="/cash-registration"
+                        >
+                            Регистрация ККТ
+                        </Link>
+                    </nav>
                 </div>
             </section>
-            <section className="section section--soft">
+
+            <section className={`${styles.section} ${styles.usefulSection}`}>
                 <div className="container">
-                    <div className="section-heading">
-                        <div>
-                            <span className="eyebrow">Порядок работы</span>
-                            <h2>Что произойдёт после заявки</h2>
-                        </div>
+                    <div className={styles.heading}>
+                        <h2>Рабочие разделы</h2>
+                        <p>Информация и функции, уже доступные клиентам.</p>
                     </div>
-                    <div className="service-process">
-                        <article>
-                            <span>01</span>
-                            <h3>Оператор проверит данные</h3>
-                            <p>
-                                Уточнит детали и назначит профильного
-                                специалиста.
-                            </p>
-                        </article>
-                        <article>
-                            <span>02</span>
-                            <h3>Проведём диагностику</h3>
-                            <p>
-                                Удалённо, на выезде или в нашем сервисном
-                                центре.
-                            </p>
-                        </article>
-                        <article>
-                            <span>03</span>
-                            <h3>Согласуем решение</h3>
-                            <p>
-                                Назовём стоимость и срок до начала платных
-                                работ.
-                            </p>
-                        </article>
-                        <article>
-                            <span>04</span>
-                            <h3>Закроем заявку</h3>
-                            <p>
-                                Проверим результат и зафиксируем историю
-                                обслуживания.
-                            </p>
-                        </article>
-                    </div>
-                </div>
-            </section>
-            <section className="section">
-                <div className="container service-trust">
-                    <div>
-                        <Headphones />
-                        <h3>Живой специалист</h3>
-                        <p>Без бесконечного голосового меню и переадресаций.</p>
-                    </div>
-                    <div>
-                        <ShieldCheck />
-                        <h3>Гарантия на работы</h3>
-                        <p>
-                            Фиксируем результат и остаёмся на связи после
-                            ремонта.
-                        </p>
-                    </div>
-                    <div>
-                        <CheckCircle2 />
-                        <h3>Понятный статус</h3>
-                        <p>
-                            Вы всегда знаете, кто работает над заявкой и что
-                            дальше.
-                        </p>
+                    <div className={styles.usefulGrid}>
+                        {usefulLinks.map((item) => {
+                            const Icon = item.icon;
+                            return (
+                                <Link key={item.title} to={item.to}>
+                                    <Icon aria-hidden="true" />
+                                    <span>
+                                        <strong>{item.title}</strong>
+                                        <small>{item.text}</small>
+                                    </span>
+                                    <ArrowRight size={17} aria-hidden="true" />
+                                </Link>
+                            );
+                        })}
                     </div>
                 </div>
             </section>
