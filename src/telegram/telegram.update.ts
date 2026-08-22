@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import { Context, Markup } from 'telegraf';
 import { Optional } from '@nestjs/common';
 import { removeKeyboard } from 'telegraf/markup';
@@ -114,7 +113,7 @@ export class TelegramUpdate {
         if (mode === 'TICKET') {
             await this.clientWorkflow.submitTicketMedia(
                 this.toClientIdentity(ctx),
-                media,
+                await this.materializeTicketMedia(media),
             );
             await this.ctxService.set(chatId, { mode: 'IDLE' });
             await ctx.reply(
@@ -219,7 +218,7 @@ export class TelegramUpdate {
             if (activeTicket?.text) {
                 await this.clientWorkflow.submitTicketMedia(
                     this.toClientIdentity(ctx),
-                    media,
+                    await this.materializeTicketMedia(media),
                 );
                 await ctx.reply(
                     'Вложение добавлено к вашему открытому вопросу.',
@@ -246,7 +245,7 @@ export class TelegramUpdate {
         await this.ticketService.addMediaMessage(
             conversation.ticket.id,
             'operator',
-            media,
+            await this.materializeTicketMedia(media),
             chatId,
             'bot',
         );
@@ -441,7 +440,7 @@ export class TelegramUpdate {
             regId,
         );
         if (!admin) return;
-        const reg = await this.regService.getRegistrationById(regId);
+        const reg = await this.regService.getRegistrationById(Number(regId));
 
         if (!reg) {
             await this.adminAccess.recordInvalid(
@@ -472,10 +471,13 @@ export class TelegramUpdate {
             mainMenuButton(),
         );
 
-        if (reg.pdfPath) {
+        if (reg.pdfFileId) {
+            const { file, stream } = await this.filesService.open(
+                reg.pdfFileId,
+            );
             await ctx.replyWithDocument({
-                source: fs.createReadStream(reg.pdfPath),
-                filename: `registration_${reg.id}.pdf`,
+                source: stream,
+                filename: file.originalName || `registration_${reg.id}.pdf`,
             });
             return;
         }
@@ -501,7 +503,7 @@ export class TelegramUpdate {
             regId,
         );
         if (!admin) return;
-        const reg = await this.regService.getRegistrationById(regId);
+        const reg = await this.regService.getRegistrationById(Number(regId));
 
         if (!reg) {
             await this.adminAccess.recordInvalid(
@@ -1011,11 +1013,6 @@ export class TelegramUpdate {
                 source: opened.stream,
                 filename: opened.file.originalName || 'atol_consent.pdf',
             });
-        } else if (result.filePath && fs.existsSync(result.filePath)) {
-            await ctx.replyWithDocument({
-                source: fs.createReadStream(result.filePath),
-                filename: 'atol_consent.pdf',
-            });
         }
 
         await ctx.reply(
@@ -1040,6 +1037,16 @@ export class TelegramUpdate {
             throw new Error(`Failed to download media: ${response.status}`);
         }
         return Buffer.from(await response.arrayBuffer());
+    }
+
+    private async materializeTicketMedia(media: TicketMediaInput) {
+        return {
+            ...media,
+            buffer: await this.downloadMediaBuffer(media),
+            fileId: undefined,
+            fileUniqueId: undefined,
+            externalUrl: undefined,
+        };
     }
 
     private async replyServiceRequestStep(

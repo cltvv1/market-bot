@@ -16,8 +16,7 @@ import { RegistrationRequirementEntity } from './registration-requirement.entity
 export type RegistrationEvidenceKind =
     | 'customer_photo'
     | 'customer_document'
-    | 'internal_registry'
-    | 'legacy_photo';
+    | 'internal_registry';
 export type RegistrationEvidenceVisibility = 'customer' | 'staff' | 'engineer';
 export type RegistrationEvidenceActor = 'customer' | 'staff' | 'system';
 
@@ -26,7 +25,7 @@ export type RegistrationEvidenceActor = 'customer' | 'staff' | 'system';
 @Index('IDX_registration_evidence_registration', ['registrationId'])
 @Check(
     'CK_registration_evidence_kind',
-    `"kind" IN ('customer_photo','customer_document','internal_registry','legacy_photo')`,
+    `"kind" IN ('customer_photo','customer_document','internal_registry')`,
 )
 @Check(
     'CK_registration_evidence_visibility',

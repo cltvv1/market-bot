@@ -28,7 +28,6 @@ env:
   TEST_DB_USER: vitma_ci
   TEST_DB_PASS: vitma_ci_password
   SERVE_BUILT_UI: 'false'
-  ENABLE_LEGACY_UI: 'false'
 
 jobs:
   quality:

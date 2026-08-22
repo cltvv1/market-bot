@@ -47,7 +47,6 @@
     "migration:test:show": "npm run typeorm -- migration:show -d src/database/test-data-source.ts",
     "schema:test:log": "npm run typeorm -- schema:log -d src/database/test-data-source.ts",
     "admin:create": "node -r ts-node/register -r tsconfig-paths/register scripts/admin-create.ts",
-    "files:backfill": "node scripts/files-backfill.mjs",
     "backup:create": "node scripts/backup.mjs create --offline-confirm",
     "backup:verify": "node scripts/backup.mjs verify",
     "backup:restore": "node scripts/backup.mjs restore",

@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import { Readable } from 'node:stream';
 import {
     Inject,
@@ -640,15 +639,6 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                 {
                     source: opened.stream,
                     filename: opened.file.originalName || 'atol_consent.pdf',
-                },
-                { platform: 'max' },
-            );
-        } else if (result.filePath && fs.existsSync(result.filePath)) {
-            await this.messengerService.sendDocument(
-                chatId,
-                {
-                    source: fs.createReadStream(result.filePath),
-                    filename: 'atol_consent.pdf',
                 },
                 { platform: 'max' },
             );

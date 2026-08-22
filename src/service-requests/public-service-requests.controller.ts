@@ -13,7 +13,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { RateLimit } from 'src/security/rate-limit';
-import { CanonicalServiceRequestsService } from './canonical-service-requests.service';
+import { ServiceRequestsService } from './service-requests.service';
 import {
     PublicServiceRequestAttachmentParamDto,
     PublicServiceRequestTokenParamDto,
@@ -23,7 +23,7 @@ import {
 @Controller('api/public/service-requests')
 @ApiTags('service-requests-public')
 export class PublicServiceRequestsController {
-    constructor(private readonly requests: CanonicalServiceRequestsService) {}
+    constructor(private readonly requests: ServiceRequestsService) {}
 
     @Get(':token')
     @ApiOperation({

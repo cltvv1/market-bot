@@ -1,4 +1,3 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
     BadRequestException,
@@ -23,7 +22,6 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminService } from './admin.service';
-import { adminPageHtml } from './admin.page';
 import { AdminAuthService } from './admin-auth.service';
 import {
     CurrentAdmin,
@@ -51,7 +49,6 @@ import {
     AssignEngineerDto,
     CustomerContextQueryDto,
     EquipmentKitDto,
-    InvoiceReferenceDto,
     LinkEquipmentKitDto,
     OptionalMediaTextDto,
     OrganizationAccessListQueryDto,
@@ -78,7 +75,7 @@ import { AuditService } from 'src/audit/audit.service';
 import { UiServingService } from 'src/ui/ui-serving.service';
 import { OrganizationAccessService } from 'src/organizations/organization-access.service';
 import { OrganizationAccessAdminResponseDto } from 'src/organizations/dto/organization-api.dto';
-import { CanonicalServiceRequestsService } from 'src/service-requests/canonical-service-requests.service';
+import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { RegistrationReadinessService } from 'src/registrations/registration-readiness.service';
 import { RegistrationsService } from 'src/registrations/registrations.service';
 import {
@@ -107,7 +104,7 @@ export class AdminController {
         private readonly auditService: AuditService,
         private readonly uiServing: UiServingService,
         private readonly organizationAccessService: OrganizationAccessService,
-        private readonly canonicalServiceRequests: CanonicalServiceRequestsService,
+        private readonly serviceRequests: ServiceRequestsService,
         private readonly registrationReadiness: RegistrationReadinessService,
         private readonly registrationsService: RegistrationsService,
     ) {}
@@ -117,7 +114,7 @@ export class AdminController {
     @Header('Content-Type', 'text/html; charset=utf-8')
     @Header('Cache-Control', 'no-store')
     getPage() {
-        return this.uiServing.getEntryHtml('admin', adminPageHtml);
+        return this.uiServing.getEntryHtml('admin');
     }
 
     @Get('admin.js')
@@ -436,10 +433,7 @@ export class AdminController {
         @CurrentAdmin() admin: AdminPrincipal,
         @Body() body: AdminCreateServiceRequestDto,
     ) {
-        const result = await this.canonicalServiceRequests.createManual(
-            admin.id,
-            body,
-        );
+        const result = await this.serviceRequests.createManual(admin.id, body);
         await this.recordStaffAction(
             admin,
             'service_request.manual.create',
@@ -457,7 +451,7 @@ export class AdminController {
         @Param() params: PositiveIdParamDto,
         @Body() body: AdminServiceRequestMessageDto,
     ) {
-        const result = await this.canonicalServiceRequests.addStaffMessage(
+        const result = await this.serviceRequests.addStaffMessage(
             admin.id,
             Number(params.id),
             body.text,
@@ -496,7 +490,7 @@ export class AdminController {
             });
             throw new ForbiddenException('Insufficient permissions');
         }
-        const result = await this.canonicalServiceRequests.transitionByStaff(
+        const result = await this.serviceRequests.transitionByStaff(
             admin.id,
             Number(params.id),
             body.status,
@@ -536,7 +530,7 @@ export class AdminController {
         const result = await this.adminService.assignEngineer(
             Number(params.id),
             body.assignedEngineerId,
-            admin.displayName,
+            admin.id,
         );
         await this.recordStaffAction(
             admin,
@@ -558,28 +552,6 @@ export class AdminController {
     @RequirePermissions('organizations.read')
     getCustomerCard(@Query() query: CustomerContextQueryDto) {
         return this.adminService.getCustomerCard(query);
-    }
-
-    @Post('api/service-requests/:id/invoice')
-    @RequirePermissions('serviceRequests.invoice')
-    async attachServiceRequestInvoice(
-        @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
-        @Body() body: InvoiceReferenceDto,
-    ) {
-        const result = await this.adminService.attachServiceRequestInvoice(
-            Number(params.id),
-            body.invoiceFileId,
-            body.invoiceFileName,
-            admin.displayName,
-        );
-        await this.recordStaffAction(
-            admin,
-            'service_request.invoice.attach',
-            'service_request',
-            params.id,
-        );
-        return result;
     }
 
     @Post('api/service-requests/:id/invoice-file')
@@ -604,10 +576,8 @@ export class AdminController {
         });
         const result = await this.adminService.attachServiceRequestInvoice(
             Number(params.id),
-            storedFile.objectKey,
-            storedFile.originalName,
-            admin.displayName,
             storedFile.id,
+            admin.id,
         );
         await this.recordStaffAction(
             admin,
@@ -628,19 +598,12 @@ export class AdminController {
         const details = await this.adminService.getServiceRequest(
             Number(params.id),
         );
-        if (details.request.invoiceStoredFileId) {
-            return this.sendStoredFile(
-                response,
-                details.request.invoiceStoredFileId,
-            );
-        }
-        const invoicePath = details.request.invoiceFileId;
-        if (!invoicePath || !fs.existsSync(invoicePath)) {
+        if (!details.request.invoiceStoredFileId) {
             throw new BadRequestException('Invoice PDF not found');
         }
-        return response.download(
-            invoicePath,
-            details.request.invoiceFileName || `invoice_${params.id}.pdf`,
+        return this.sendStoredFile(
+            response,
+            details.request.invoiceStoredFileId,
         );
     }
 
@@ -653,45 +616,13 @@ export class AdminController {
         const details = await this.adminService.getServiceRequest(
             Number(params.id),
         );
-        if (details.request.signedConsentFileId) {
-            return this.sendStoredFile(
-                response,
-                details.request.signedConsentFileId,
-            );
-        }
-        const answers = details.request.answers || {};
-        const filePath =
-            typeof answers.signedConsentPath === 'string'
-                ? answers.signedConsentPath
-                : '';
-        const fileName =
-            typeof answers.signedConsentName === 'string'
-                ? answers.signedConsentName
-                : `signed_consent_${params.id}`;
-        if (!filePath || !fs.existsSync(filePath)) {
+        if (!details.request.signedConsentFileId) {
             throw new BadRequestException('Signed consent file not found');
         }
-        return response.download(filePath, fileName);
-    }
-
-    @Post('api/service-requests/:id/payment-received')
-    @RequirePermissions('serviceRequests.payment')
-    async markServiceRequestPaymentReceived(
-        @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
-    ) {
-        const result =
-            await this.adminService.markServiceRequestPaymentReceived(
-                Number(params.id),
-                admin.displayName,
-            );
-        await this.recordStaffAction(
-            admin,
-            'service_request.payment.confirm',
-            'service_request',
-            params.id,
+        return this.sendStoredFile(
+            response,
+            details.request.signedConsentFileId,
         );
-        return result;
     }
 
     @Get('api/service-requests/:id/payment-proof')
@@ -734,11 +665,10 @@ export class AdminController {
             admin,
             Number(id),
         );
-        const { file, stream } =
-            await this.canonicalServiceRequests.openAdminAttachment(
-                Number(id),
-                Number(attachmentId),
-            );
+        const { file, stream } = await this.serviceRequests.openAdminAttachment(
+            Number(id),
+            Number(attachmentId),
+        );
         response.setHeader('Content-Type', file.mimeType);
         response.setHeader(
             'Content-Disposition',
@@ -759,49 +689,11 @@ export class AdminController {
             body.visitAddress,
             body.visitTime,
             body.operatorComment,
-            admin.displayName,
+            admin.id,
         );
         await this.recordStaffAction(
             admin,
             'service_request.visit.schedule',
-            'service_request',
-            params.id,
-        );
-        return result;
-    }
-
-    @Post('api/service-requests/:id/complete')
-    @RequirePermissions('serviceRequests.close')
-    async completeServiceRequest(
-        @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
-    ) {
-        const result = await this.adminService.completeServiceRequest(
-            Number(params.id),
-            admin.displayName,
-        );
-        await this.recordStaffAction(
-            admin,
-            'service_request.complete',
-            'service_request',
-            params.id,
-        );
-        return result;
-    }
-
-    @Post('api/service-requests/:id/cancel')
-    @RequirePermissions('serviceRequests.close')
-    async cancelServiceRequest(
-        @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
-    ) {
-        const result = await this.adminService.cancelServiceRequest(
-            Number(params.id),
-            admin.displayName,
-        );
-        await this.recordStaffAction(
-            admin,
-            'service_request.cancel',
             'service_request',
             params.id,
         );
@@ -819,7 +711,7 @@ export class AdminController {
             await this.adminService.updateServiceRequestOperatorState(
                 Number(params.id),
                 body,
-                admin.displayName,
+                admin.id,
             );
         await this.recordStaffAction(
             admin,
@@ -828,7 +720,6 @@ export class AdminController {
             params.id,
             {
                 priority: body.priority,
-                executorAssigned: body.executorName !== undefined,
             },
         );
         return result;
@@ -959,25 +850,6 @@ export class AdminController {
     @RequirePermissions('tickets.read')
     getTicket(@Param() params: PositiveIdParamDto) {
         return this.adminService.getTicket(Number(params.id));
-    }
-
-    @Post('api/registrations/:id/process')
-    @RequirePermissions('registrations.update')
-    async processRegistration(
-        @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
-    ) {
-        const result = await this.registrationReadiness.handoff(
-            Number(params.id),
-            admin.id,
-        );
-        await this.recordStaffAction(
-            admin,
-            'registration.process',
-            'registration',
-            params.id,
-        );
-        return result;
     }
 
     @Post('api/registrations/:id/request-data')
@@ -1263,16 +1135,10 @@ export class AdminController {
         const data = await this.adminService.getTicketMessage(
             Number(params.id),
         );
-        if (data?.storedFileId) {
-            return this.sendStoredFile(response, data.storedFileId);
-        }
-        if (!data?.localPath || !fs.existsSync(data.localPath)) {
+        if (!data?.storedFileId) {
             throw new BadRequestException('File not found');
         }
-        return response.download(
-            data.localPath,
-            data.fileName || `ticket_message_${params.id}`,
-        );
+        return this.sendStoredFile(response, data.storedFileId);
     }
 
     @Post('api/tickets/:id/close')
@@ -1305,53 +1171,17 @@ export class AdminController {
             admin,
             Number(params.id),
         );
-        if (registration?.pdfFileId) {
-            await this.recordStaffAction(
-                admin,
-                'registration.pdf.download',
-                'registration',
-                params.id,
-                { storedFileId: registration.pdfFileId },
-            );
-            return this.sendStoredFile(response, registration.pdfFileId);
-        }
-        if (!registration?.pdfPath || !fs.existsSync(registration.pdfPath)) {
+        if (!registration?.pdfFileId) {
             throw new BadRequestException('PDF not found');
         }
-        return response.download(
-            registration.pdfPath,
-            `registration_${registration.id}.pdf`,
-        );
-    }
-
-    @Get('api/registrations/:id/equipment-photo')
-    @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
-    async getRegistrationEquipmentPhoto(
-        @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
-        @Res() response: Response,
-    ) {
-        const registration = await this.adminService.getRegistrationForAdmin(
+        await this.recordStaffAction(
             admin,
-            Number(params.id),
+            'registration.pdf.download',
+            'registration',
+            params.id,
+            { storedFileId: registration.pdfFileId },
         );
-        if (registration?.equipmentPhotoFileId) {
-            return this.sendStoredFile(
-                response,
-                registration.equipmentPhotoFileId,
-            );
-        }
-        if (
-            !registration?.equipmentPhotoPath ||
-            !fs.existsSync(registration.equipmentPhotoPath)
-        ) {
-            throw new BadRequestException('Equipment photo not found');
-        }
-        return response.download(
-            registration.equipmentPhotoPath,
-            registration.equipmentPhotoName ||
-                `registration_${registration.id}_equipment_photo`,
-        );
+        return this.sendStoredFile(response, registration.pdfFileId);
     }
 
     @Get('*path')

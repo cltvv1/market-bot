@@ -37,8 +37,7 @@ export type ServiceRequestSource =
     | 'max'
     | 'admin'
     | 'phone'
-    | 'integration'
-    | 'legacy';
+    | 'integration';
 export type ServiceRequestCustomerStatus =
     | 'received'
     | 'clarification_required'
@@ -88,18 +87,17 @@ export class ServiceRequestEntity {
     @Column()
     serviceTypeTitle: string;
 
-    @Column({ type: 'integer', nullable: true })
-    formVersionId: number | null;
+    @Column({ type: 'integer' })
+    formVersionId: number;
 
     @ManyToOne(() => ServiceFormVersionEntity, {
-        nullable: true,
         onDelete: 'RESTRICT',
     })
     @JoinColumn({
         name: 'formVersionId',
         foreignKeyConstraintName: 'FK_service_requests_form_version',
     })
-    formVersion: ServiceFormVersionEntity | null;
+    formVersion: ServiceFormVersionEntity;
 
     @Column({ nullable: true })
     userId: number;
@@ -123,7 +121,7 @@ export class ServiceRequestEntity {
     @Column({ type: 'varchar', default: 'web' })
     platform: UserPlatform;
 
-    @Column({ type: 'varchar', default: 'legacy' })
+    @Column({ type: 'varchar' })
     source: ServiceRequestSource;
 
     @Column({ type: 'text' })
@@ -155,12 +153,6 @@ export class ServiceRequestEntity {
 
     @Column({ type: 'integer', nullable: true })
     calculatedPrice: number | null;
-
-    @Column({ type: 'varchar', nullable: true })
-    invoiceFileId: string | null;
-
-    @Column({ type: 'varchar', nullable: true })
-    invoiceFileName: string | null;
 
     @Column({ type: 'integer', nullable: true })
     invoiceStoredFileId: number | null;
@@ -211,9 +203,6 @@ export class ServiceRequestEntity {
     @Column({ type: 'text', nullable: true })
     operatorComment: string | null;
 
-    @Column({ type: 'varchar', nullable: true })
-    responsibleOperatorId: string | null;
-
     @Column({ type: 'integer', nullable: true })
     responsibleOperatorStaffId: number | null;
 
@@ -223,9 +212,6 @@ export class ServiceRequestEntity {
         foreignKeyConstraintName: 'FK_service_requests_responsible_staff',
     })
     responsibleOperatorStaff: AdminUserEntity | null;
-
-    @Column({ type: 'varchar', nullable: true })
-    executorName: string | null;
 
     @Column({ type: 'integer', nullable: true })
     assignedEngineerId: number | null;

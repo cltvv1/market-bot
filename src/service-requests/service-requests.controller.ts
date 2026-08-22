@@ -15,18 +15,12 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import {
-    ClientContextDto,
-    ClientIdParamDto,
-    ServiceRequestAnswerDto,
-    ServiceRequestStartDto,
-} from 'src/client/dto/client-api.dto';
+import { ClientIdParamDto } from 'src/client/dto/client-api.dto';
 import { CurrentWebSession } from 'src/web-session/web-session.decorators';
 import { WebSessionGuard } from 'src/web-session/web-session.guard';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import { ServiceRequestsService } from './service-requests.service';
 import { RateLimit } from 'src/security/rate-limit';
-import { CanonicalServiceRequestsService } from './canonical-service-requests.service';
 import {
     CreateServiceRequestDraftDto,
     ServiceRequestMessageDto,
@@ -41,7 +35,6 @@ import {
 export class ServiceRequestsController {
     constructor(
         private readonly serviceRequestsService: ServiceRequestsService,
-        private readonly canonicalRequests: CanonicalServiceRequestsService,
     ) {}
 
     @Get('types')
@@ -50,7 +43,7 @@ export class ServiceRequestsController {
     })
     @RateLimit('public-read', 120, 60)
     getTypes() {
-        return this.canonicalRequests.getTypesWithForms();
+        return this.serviceRequestsService.getTypesWithForms();
     }
 
     @Get()
@@ -59,7 +52,7 @@ export class ServiceRequestsController {
     })
     @RateLimit('public-sensitive-read', 60, 60)
     getClientRequests(@CurrentWebSession() session: WebSessionPrincipal) {
-        return this.canonicalRequests.listForWeb(session);
+        return this.serviceRequestsService.listForWeb(session);
     }
 
     @Post('drafts')
@@ -71,7 +64,7 @@ export class ServiceRequestsController {
         @CurrentWebSession() session: WebSessionPrincipal,
         @Body() body: CreateServiceRequestDraftDto,
     ) {
-        return this.canonicalRequests.createWebDraft(session, body);
+        return this.serviceRequestsService.createWebDraft(session, body);
     }
 
     @Patch('drafts/:id')
@@ -82,7 +75,7 @@ export class ServiceRequestsController {
         @Param() params: ClientIdParamDto,
         @Body() body: UpdateServiceRequestDraftDto,
     ) {
-        return this.canonicalRequests.updateWebDraft(
+        return this.serviceRequestsService.updateWebDraft(
             session,
             Number(params.id),
             body.answers,
@@ -98,7 +91,7 @@ export class ServiceRequestsController {
         @Param() params: ClientIdParamDto,
         @Body() body: SubmitServiceRequestDto,
     ) {
-        return this.canonicalRequests.submitWebDraft(
+        return this.serviceRequestsService.submitWebDraft(
             session,
             Number(params.id),
             body.expectedVersion,
@@ -117,7 +110,7 @@ export class ServiceRequestsController {
         file?: { buffer: Buffer; originalname?: string; mimetype?: string },
     ) {
         if (!file) throw new BadRequestException('Attachment file is required');
-        return this.canonicalRequests.addWebAttachment(
+        return this.serviceRequestsService.addWebAttachment(
             session,
             Number(params.id),
             {
@@ -136,7 +129,7 @@ export class ServiceRequestsController {
         @Param('id') id: string,
         @Param('attachmentId') attachmentId: string,
     ) {
-        return this.canonicalRequests.removeWebAttachment(
+        return this.serviceRequestsService.removeWebAttachment(
             session,
             Number(id),
             Number(attachmentId),
@@ -152,7 +145,10 @@ export class ServiceRequestsController {
         @CurrentWebSession() session: WebSessionPrincipal,
         @Param() params: ClientIdParamDto,
     ) {
-        return this.canonicalRequests.getForWeb(session, Number(params.id));
+        return this.serviceRequestsService.getForWeb(
+            session,
+            Number(params.id),
+        );
     }
 
     @Post(':id/messages')
@@ -163,7 +159,7 @@ export class ServiceRequestsController {
         @Param() params: ClientIdParamDto,
         @Body() body: ServiceRequestMessageDto,
     ) {
-        return this.canonicalRequests.addCustomerMessage(
+        return this.serviceRequestsService.addCustomerMessage(
             session,
             Number(params.id),
             body.text,
@@ -181,7 +177,7 @@ export class ServiceRequestsController {
         file?: { buffer: Buffer; originalname?: string; mimetype?: string },
     ) {
         if (!file) throw new BadRequestException('Attachment file is required');
-        return this.canonicalRequests.addCustomerMessageAttachment(
+        return this.serviceRequestsService.addCustomerMessageAttachment(
             session,
             Number(params.id),
             {
@@ -202,7 +198,7 @@ export class ServiceRequestsController {
         @Res() response: Response,
     ) {
         const { file, stream } =
-            await this.canonicalRequests.openCustomerAttachment(
+            await this.serviceRequestsService.openCustomerAttachment(
                 session,
                 Number(id),
                 Number(attachmentId),
@@ -213,56 +209,5 @@ export class ServiceRequestsController {
             `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName || 'file')}`,
         );
         stream.pipe(response);
-    }
-
-    @Post('start')
-    @RateLimit('public-form', 30, 600)
-    start(
-        @CurrentWebSession() session: WebSessionPrincipal,
-        @Body() body: ServiceRequestStartDto,
-    ) {
-        return this.serviceRequestsService.start(
-            this.identity(session, body),
-            body.serviceTypeCode,
-        );
-    }
-
-    @Post(':id/answers')
-    @RateLimit('public-form', 30, 600)
-    answer(
-        @CurrentWebSession() session: WebSessionPrincipal,
-        @Param() params: ClientIdParamDto,
-        @Body() body: ServiceRequestAnswerDto,
-    ) {
-        return this.serviceRequestsService.answer(
-            this.identity(session, body),
-            Number(params.id),
-            body.value,
-        );
-    }
-
-    @Post(':id/confirm-price')
-    @RateLimit('public-form', 30, 600)
-    confirmPrice(
-        @CurrentWebSession() session: WebSessionPrincipal,
-        @Param() params: ClientIdParamDto,
-        @Body() body: ClientContextDto,
-    ) {
-        return this.serviceRequestsService.confirmPrice(
-            this.identity(session, body),
-            Number(params.id),
-        );
-    }
-
-    private identity(
-        session: WebSessionPrincipal,
-        body?: ClientContextDto,
-    ) {
-        return {
-            platform: 'web' as const,
-            chatId: session.chatId,
-            name: body?.name,
-            organizationId: body?.organizationId,
-        };
     }
 }

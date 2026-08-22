@@ -103,9 +103,9 @@ export class ClientWorkflowService {
                             status: 'not_found',
                             message: 'Registration request was not found.',
                         };
-                    const filePath =
+                    const pdf =
                         await this.registrationsService.finishReg(skipped);
-                    await this.notifyAdminsAboutRegistration(skipped, filePath);
+                    await this.notifyAdminsAboutRegistration(skipped, pdf);
                     return {
                         status: 'completed',
                         message: 'Registration request completed.',
@@ -148,9 +148,8 @@ export class ClientWorkflowService {
             };
         }
 
-        const filePath =
-            await this.registrationsService.finishReg(registration);
-        await this.notifyAdminsAboutRegistration(registration, filePath);
+        const pdf = await this.registrationsService.finishReg(registration);
+        await this.notifyAdminsAboutRegistration(registration, pdf);
 
         return {
             status: 'completed',
@@ -260,9 +259,8 @@ export class ClientWorkflowService {
             };
         }
 
-        const filePath =
-            await this.registrationsService.finishReg(registration);
-        await this.notifyAdminsAboutRegistration(registration, filePath);
+        const pdf = await this.registrationsService.finishReg(registration);
+        await this.notifyAdminsAboutRegistration(registration, pdf);
 
         return {
             status: 'completed',
@@ -329,12 +327,12 @@ export class ClientWorkflowService {
 
     private async notifyAdminsAboutRegistration(
         registration: RegistrationRequestEntity,
-        filePath: string,
+        pdf: Buffer,
     ) {
         try {
             await this.registrationsService.notifyAdminsAboutNewReg(
                 registration,
-                filePath,
+                pdf,
             );
         } catch (error) {
             this.logger.error(
@@ -571,9 +569,6 @@ export class ClientWorkflowService {
                     : 'ATOL consent draft created.',
             nextField: result.nextStep?.label,
             data: result.request,
-            filePath: result.request.answers?.generatedPdfPath
-                ? String(result.request.answers.generatedPdfPath)
-                : undefined,
             fileId: result.request.generatedConsentFileId ?? undefined,
         };
     }
@@ -601,9 +596,6 @@ export class ClientWorkflowService {
                 : 'ATOL consent PDF generated.',
             nextField: result.nextStep?.label,
             data: result.request,
-            filePath: result.request.answers?.generatedPdfPath
-                ? String(result.request.answers.generatedPdfPath)
-                : undefined,
             fileId: result.request.generatedConsentFileId ?? undefined,
         };
     }

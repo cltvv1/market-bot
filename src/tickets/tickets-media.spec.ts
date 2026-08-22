@@ -59,7 +59,6 @@ describe('TicketsService media persistence', () => {
         expect(saved).toMatchObject({
             ticketId: 8,
             storedFileId: 44,
-            externalUrl: null,
         });
         expect(JSON.stringify(saved)).not.toContain('token=');
     });

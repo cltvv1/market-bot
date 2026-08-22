@@ -91,20 +91,6 @@ export class RegistrationFormDto extends ClientContextDto {
     values: Partial<Record<RegistrationField, string>>;
 }
 
-export class ServiceRequestStartDto extends ClientContextDto {
-    @IsString()
-    @Transform(trim)
-    @Matches(/^[a-z0-9_]{2,80}$/)
-    serviceTypeCode: string;
-}
-
-export class ServiceRequestAnswerDto extends ClientContextDto {
-    @IsString()
-    @Transform(trim)
-    @MaxLength(10_000)
-    value: string;
-}
-
 export class TicketMessageDto extends ClientContextDto {
     @IsString()
     @Transform(trim)

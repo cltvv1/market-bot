@@ -1,12 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import * as path from 'node:path';
 import { Readable } from 'node:stream';
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+    BadRequestException,
+    Inject,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { StoredFileEntity } from './entities/stored-file.entity';
 import { assertFilePolicy, FILE_POLICIES } from './file-policies';
-import { FILE_STORAGE_PORT, type FilePurpose, type FileStoragePort } from './file-storage.types';
+import {
+    FILE_STORAGE_PORT,
+    type FilePurpose,
+    type FileStoragePort,
+} from './file-storage.types';
 
 @Injectable()
 export class FilesService {
@@ -40,50 +49,33 @@ export class FilesService {
             String(now.getUTCMonth() + 1).padStart(2, '0'),
             randomUUID(),
         ].join('/');
-        const stored = await this.storage.write(objectKey, Readable.from(input.buffer), policy.maxBytes);
+        const stored = await this.storage.write(
+            objectKey,
+            Readable.from(input.buffer),
+            policy.maxBytes,
+        );
         try {
-            return await this.files.save(this.files.create({
-                provider: 'local',
-                objectKey: stored.objectKey,
-                originalName: this.safeOriginalName(input.originalName),
-                mimeType: mime,
-                sizeBytes: String(stored.sizeBytes),
-                sha256: stored.sha256,
-                status: 'active',
-                createdByStaffId: input.createdByStaffId ?? null,
-                createdByCustomerId: input.createdByCustomerId ?? null,
-                metadata: { purpose: input.purpose, ...(input.metadata ?? {}) },
-            }));
+            return await this.files.save(
+                this.files.create({
+                    provider: 'local',
+                    objectKey: stored.objectKey,
+                    originalName: this.safeOriginalName(input.originalName),
+                    mimeType: mime,
+                    sizeBytes: String(stored.sizeBytes),
+                    sha256: stored.sha256,
+                    status: 'active',
+                    createdByStaffId: input.createdByStaffId ?? null,
+                    createdByCustomerId: input.createdByCustomerId ?? null,
+                    metadata: {
+                        purpose: input.purpose,
+                        ...(input.metadata ?? {}),
+                    },
+                }),
+            );
         } catch (error) {
             await this.storage.remove(objectKey);
             throw error;
         }
-    }
-
-    async registerLegacy(input: {
-        objectKey: string;
-        originalName?: string;
-        mimeType: string;
-        sizeBytes: number;
-        sha256: string;
-        status?: 'active' | 'missing';
-        metadata?: Record<string, unknown>;
-    }) {
-        this.storage.resolveObjectKey(input.objectKey);
-        const existing = await this.files.findOne({ where: { provider: 'local', objectKey: input.objectKey } });
-        if (existing) return existing;
-        return this.files.save(this.files.create({
-            provider: 'local',
-            objectKey: input.objectKey.replaceAll('\\', '/'),
-            originalName: this.safeOriginalName(input.originalName),
-            mimeType: input.mimeType,
-            sizeBytes: String(input.sizeBytes),
-            sha256: input.sha256,
-            status: input.status ?? 'active',
-            createdByStaffId: null,
-            createdByCustomerId: null,
-            metadata: { legacy: true, ...(input.metadata ?? {}) },
-        }));
     }
 
     async get(id: number) {
@@ -94,7 +86,10 @@ export class FilesService {
 
     async open(id: number) {
         const file = await this.get(id);
-        if (file.status !== 'active' || !(await this.storage.exists(file.objectKey))) {
+        if (
+            file.status !== 'active' ||
+            !(await this.storage.exists(file.objectKey))
+        ) {
             if (file.status === 'active') {
                 file.status = 'missing';
                 await this.files.save(file);
@@ -120,7 +115,9 @@ export class FilesService {
     }
 
     private safeOriginalName(value?: string) {
-        const name = path.basename((value || 'file').replaceAll('\0', '')).trim();
+        const name = path
+            .basename((value || 'file').replaceAll('\0', ''))
+            .trim();
         if (!name) throw new BadRequestException('Invalid original filename');
         return name.slice(0, 255);
     }

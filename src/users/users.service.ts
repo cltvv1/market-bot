@@ -12,7 +12,7 @@ export class UsersService {
         private readonly usersRepo: Repository<UserEntity>,
         @InjectRepository(UserChannelEntity)
         private readonly channelsRepo: Repository<UserChannelEntity>,
-    ) { }
+    ) {}
 
     async getOrCreateOrUpdate(
         chatId: string,
@@ -20,7 +20,9 @@ export class UsersService {
         username?: string,
         platform: UserPlatform = 'telegram',
     ) {
-        let user = await this.usersRepo.findOne({ where: { chatId, platform } });
+        let user = await this.usersRepo.findOne({
+            where: { chatId, platform },
+        });
 
         const now = new Date();
 
@@ -71,7 +73,10 @@ export class UsersService {
         });
     }
 
-    async getUserIdByChannel(externalId: string, platform: UserPlatform = 'telegram') {
+    async getUserIdByChannel(
+        externalId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
         const channel = await this.getChannel(externalId, platform);
         return channel?.userId ?? null;
     }
@@ -80,69 +85,82 @@ export class UsersService {
         return this.usersRepo.findOne({ where: { chatId, platform } });
     }
 
-    async isAdmin(chatId: string, platform: UserPlatform = 'telegram') {
-        const user = await this.getByChatId(chatId, platform);
-        return user?.isAdmin === true;
-    }
-
-    async isOperator(chatId: string, platform: UserPlatform = 'telegram') {
-        const user = await this.getByChatId(chatId, platform);
-        return user?.isOperator === true;
-    }
-
-    async update(chatId: string, partial: Partial<UserEntity>, platform: UserPlatform = 'telegram') {
+    async update(
+        chatId: string,
+        partial: Partial<UserEntity>,
+        platform: UserPlatform = 'telegram',
+    ) {
         await this.usersRepo.update({ chatId, platform }, partial);
         return this.getByChatId(chatId, platform);
     }
 
-    async setTalkingTo(operatorChatId: string, clientChatId: string, platform: UserPlatform = 'telegram') {
-        await this.usersRepo.update({ chatId: operatorChatId, platform }, { talkingTo: clientChatId });
-        await this.usersRepo.update({ chatId: clientChatId, platform }, { talkingTo: operatorChatId });
+    async setTalkingTo(
+        operatorChatId: string,
+        clientChatId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
+        await this.usersRepo.update(
+            { chatId: operatorChatId, platform },
+            { talkingTo: clientChatId },
+        );
+        await this.usersRepo.update(
+            { chatId: clientChatId, platform },
+            { talkingTo: operatorChatId },
+        );
     }
 
-    async getTalkingTo(operatorId: string, platform: UserPlatform = 'telegram') {
+    async getTalkingTo(
+        operatorId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
         const user = await this.getByChatId(operatorId, platform);
         return user?.talkingTo || null;
     }
 
-    async findOperatorByClient(clientId: string, platform: UserPlatform = 'telegram') {
+    async findOperatorByClient(
+        clientId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
         return this.usersRepo.findOne({
             where: { talkingTo: clientId, platform },
         });
     }
 
-    async startDialog(operatorId: string, clientId: string, platform: UserPlatform = 'telegram') {
+    async startDialog(
+        operatorId: string,
+        clientId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
         await this.setTalkingTo(operatorId, clientId, platform);
     }
 
-    async stopDialog(operatorId: string, clientId: string, platform: UserPlatform = 'telegram') {
-        await this.usersRepo.update({ chatId: operatorId, platform }, { talkingTo: null });
-        await this.usersRepo.update({ chatId: clientId, platform }, { talkingTo: null });
+    async stopDialog(
+        operatorId: string,
+        clientId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
+        await this.usersRepo.update(
+            { chatId: operatorId, platform },
+            { talkingTo: null },
+        );
+        await this.usersRepo.update(
+            { chatId: clientId, platform },
+            { talkingTo: null },
+        );
     }
 
-    async getOperators(platform?: UserPlatform) {
-        return this.usersRepo.find({
-            where: {
-                isOperator: true,
-                ...(platform ? { platform } : {}),
-            },
-        });
-    }
-
-    async getAdmins(platform?: UserPlatform) {
-        return this.usersRepo.find({
-            where: {
-                isAdmin: true,
-                ...(platform ? { platform } : {}),
-            },
-        });
-    }
-
-    async isAlreadyTalking(chatId: string, platform: UserPlatform = 'telegram') {
+    async isAlreadyTalking(
+        chatId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
         return !!(await this.getByChatId(chatId, platform))?.talkingTo;
     }
 
-    async isTalking(initChatId: string, talkingToChatId: string, platform: UserPlatform = 'telegram') {
+    async isTalking(
+        initChatId: string,
+        talkingToChatId: string,
+        platform: UserPlatform = 'telegram',
+    ) {
         const user = await this.getByChatId(initChatId, platform);
         return user?.talkingTo === talkingToChatId;
     }
@@ -155,7 +173,9 @@ export class UsersService {
         username?: string,
         now = new Date(),
     ) {
-        let channel = await this.channelsRepo.findOne({ where: { externalId, platform } });
+        let channel = await this.channelsRepo.findOne({
+            where: { externalId, platform },
+        });
 
         if (!channel) {
             channel = this.channelsRepo.create({

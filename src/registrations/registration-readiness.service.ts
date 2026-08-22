@@ -933,7 +933,6 @@ export class RegistrationReadinessService {
                 engineerId ?? registration.assignedEngineerId;
             registration.handedOffAt = new Date();
             registration.status = 'processed';
-            registration.isProcessed = true;
             await manager.save(registration);
             await this.audit.record(
                 {
