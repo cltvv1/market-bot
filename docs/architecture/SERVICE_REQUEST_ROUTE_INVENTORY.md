@@ -1,56 +1,72 @@
 # Service request route inventory
 
-## Duplicate public routes before E0-14
+Current as of the pre-production baseline on 2026-08-22.
 
-Each row below was registered twice with the same URL, guard, rate limit, DTO,
-and service call.
+`ServiceRequestsController` is the only owner of authenticated customer HTTP
+routes. `PublicServiceRequestsController` owns bearer-token status access.
+`AdminController` owns staff operations. All three call the same public
+`ServiceRequestsService`; no controller contains an alternate persistence path.
 
-| Method | URL | Handler 1 | Handler 2 |
-|---|---|---|---|
-| GET | `/api/client/service-requests/types` | `ServiceRequestsController.getTypes` | `ClientApiController.getServiceTypes` |
-| GET | `/api/client/service-requests` | `ServiceRequestsController.getClientRequests` | `ClientApiController.getServiceRequests` |
-| POST | `/api/client/service-requests/start` | `ServiceRequestsController.start` | `ClientApiController.startServiceRequest` |
-| POST | `/api/client/service-requests/:id/answers` | `ServiceRequestsController.answer` | `ClientApiController.submitServiceRequestAnswer` |
-| POST | `/api/client/service-requests/:id/confirm-price` | `ServiceRequestsController.confirmPrice` | `ClientApiController.confirmServiceRequestPrice` |
+## Customer routes
 
-## Canonical public routes after E0-14
+| Method | URL | Purpose |
+|---|---|---|
+| `GET` | `/api/client/service-requests/types` | Active types and published form versions |
+| `GET` | `/api/client/service-requests` | Requests owned by the web session |
+| `POST` | `/api/client/service-requests/drafts` | Create or resume a server-side draft |
+| `PATCH` | `/api/client/service-requests/drafts/:id` | Update structured answers with optimistic version |
+| `POST` | `/api/client/service-requests/drafts/:id/submit` | Validate and idempotently submit |
+| `POST` | `/api/client/service-requests/drafts/:id/attachments` | Add a validated draft attachment |
+| `DELETE` | `/api/client/service-requests/drafts/:id/attachments/:attachmentId` | Remove a draft attachment |
+| `GET` | `/api/client/service-requests/:id` | Read an owned request |
+| `POST` | `/api/client/service-requests/:id/messages` | Add a customer message |
+| `POST` | `/api/client/service-requests/:id/messages/attachments` | Add a message attachment |
+| `GET` | `/api/client/service-requests/:id/attachments/:attachmentId` | Download an owned customer-visible attachment |
 
-`ServiceRequestsController` is the canonical HTTP owner because its controller
-prefix, tag, guard, DTO mapping, and dependency are all specific to this domain.
-`ClientApiController` remains the owner of client registration, ticket, and
-client-profile routes. `ServiceRequestsService` remains shared application
-logic; no business behavior moved into a controller.
+## Public-token routes
 
-| Method | URL | Canonical handler | Authentication | Rate bucket |
-|---|---|---|---|---|
-| GET | `/api/client/service-requests/types` | `getTypes` | web session | `public-read` |
-| GET | `/api/client/service-requests` | `getClientRequests` | web session | `public-sensitive-read` |
-| POST | `/api/client/service-requests/start` | `start` | web session | `public-form` |
-| POST | `/api/client/service-requests/:id/answers` | `answer` | web session | `public-form` |
-| POST | `/api/client/service-requests/:id/confirm-price` | `confirmPrice` | web session | `public-form` |
+| Method | URL | Purpose |
+|---|---|---|
+| `GET` | `/api/public/service-requests/:token` | Customer-safe status |
+| `POST` | `/api/public/service-requests/:token/messages` | Customer reply |
+| `POST` | `/api/public/service-requests/:token/messages/attachments` | Customer attachment |
+| `GET` | `/api/public/service-requests/:token/attachments/:attachmentId` | Customer-visible download |
+
+The display request number is not accepted as a token.
 
 ## Admin routes
 
-These routes have a distinct `/admin/api` prefix and RBAC permissions, so they
-were never duplicates of the public client routes.
-
 | Method | URL |
 |---|---|
-| GET | `/admin/api/service-requests` |
-| GET | `/admin/api/service-requests/:id` |
-| POST | `/admin/api/service-requests/:id/assign-engineer` |
-| POST | `/admin/api/service-requests/:id/invoice` |
-| POST | `/admin/api/service-requests/:id/invoice-file` |
-| GET | `/admin/api/service-requests/:id/invoice` |
-| GET | `/admin/api/service-requests/:id/signed-consent` |
-| POST | `/admin/api/service-requests/:id/payment-received` |
-| POST | `/admin/api/service-requests/:id/schedule` |
-| POST | `/admin/api/service-requests/:id/complete` |
-| POST | `/admin/api/service-requests/:id/cancel` |
-| POST | `/admin/api/service-requests/:id/operator-state` |
+| `GET` | `/admin/api/service-requests` |
+| `GET` | `/admin/api/service-requests/:id` |
+| `POST` | `/admin/api/service-requests/manual` |
+| `POST` | `/admin/api/service-requests/:id/messages` |
+| `POST` | `/admin/api/service-requests/:id/transition` |
+| `POST` | `/admin/api/service-requests/:id/assign-engineer` |
+| `POST` | `/admin/api/service-requests/:id/invoice-file` |
+| `GET` | `/admin/api/service-requests/:id/invoice` |
+| `GET` | `/admin/api/service-requests/:id/signed-consent` |
+| `GET` | `/admin/api/service-requests/:id/payment-proof` |
+| `GET` | `/admin/api/service-requests/:id/attachments/:attachmentId` |
+| `POST` | `/admin/api/service-requests/:id/schedule` |
+| `POST` | `/admin/api/service-requests/:id/operator-state` |
 
-`test/service-request-routes.integration-spec.ts` discovers registered
-controllers from Nest `ModulesContainer`, combines controller and method
-metadata, and rejects repeated service-request `method + path` pairs. It also
-asserts that all five public contracts are owned by
-`ServiceRequestsController`.
+## Removed pre-production routes
+
+The following routes had only discarded development consumers and intentionally
+return normal `404`; no alias or redirect exists.
+
+| Method | Removed URL | Current replacement |
+|---|---|---|
+| `POST` | `/api/client/service-requests/start` | `POST .../drafts` |
+| `POST` | `/api/client/service-requests/:id/answers` | `PATCH .../drafts/:id` |
+| `POST` | `/api/client/service-requests/:id/confirm-price` | `POST .../drafts/:id/submit` |
+| `POST` | `/admin/api/service-requests/:id/invoice` | `POST .../invoice-file` |
+| `POST` | `/admin/api/service-requests/:id/payment-received` | `POST .../transition` with `paid` |
+| `POST` | `/admin/api/service-requests/:id/complete` | `POST .../transition` with `completed` |
+| `POST` | `/admin/api/service-requests/:id/cancel` | `POST .../transition` with `cancelled` |
+
+`test/service-request-routes.integration-spec.ts` discovers Nest controller
+metadata, rejects duplicate `method + path` ownership and asserts that every
+removed contract above is absent.

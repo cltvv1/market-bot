@@ -110,7 +110,7 @@ Stage 0: completed and verified in hosted CI and hosted backup restore drill.
 Known non-blocking debt:
 
 - the reviewed lint ratchet remains in `scripts/lint-baseline.json`; the hosted
-  quality job rejects regressions without rewriting legacy modules;
+  quality job rejects regressions without rewriting unrelated modules;
 - the previous Jest open-handle warning was removed by explicitly stopping the
   mocked Telegram adapter during route-inventory teardown;
 - the Linux client production build reports a 677.57 kB Vite chunk, above the

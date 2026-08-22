@@ -1,60 +1,34 @@
 # VITMA MARKET
 
-## Backend v1: KKT registration readiness
-
-BKV1-2 unifies web, Telegram, MAX and admin KKT registration around one
-server-side checklist. Initial submission no longer requires a photo; KKT, FN
-and OFD data must be provided and verified before engineer handoff or final
-PDF generation. See
-[`docs/backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md`](docs/backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md)
-and the
-[`synthetic backfill report`](docs/backend-v1/BKV1_2_BACKFILL_REPORT.md).
-
-## Phase 0 quality foundation
-
-The final phase-zero package adds reproducible GitHub Actions checks, unique
-service-request HTTP ownership, and explicit React/legacy UI modes. Start with
-`docs/quality/CI_GUIDE.md`,
-`docs/architecture/SERVICE_REQUEST_ROUTE_INVENTORY.md`, and
-`docs/architecture/UI_SERVING_MODES.md`.
-
-Development uses Vite by default; Nest no longer silently falls back to legacy
-HTML. Set `SERVE_BUILT_UI=true` only after `npm run build`. Production requires
-the built admin and client React assets.
-
-## E0-08, E0-10 and E0-12
-
-Business uploads now use `FileStoragePort`; audit events are available to superadmins; PostgreSQL and `storage/` are backed up as one offline set.
-
-```powershell
-npm run migration:run
-npm run files:backfill -- --dry-run
-npm run files:backfill
-npm run backup:create
-npm run backup:verify -- --backup C:\path\to\backup-set
-npm run backup:restore -- --backup C:\path\to\backup-set --target-db vitma_restore --target-storage C:\temp\vitma-storage
-npm run backup:drill
-```
-
-Stop the application before backup creation. Current limits are 12 MB for images, 20 MB for documents, 30 MB for audio, 80 MB for video, 15 MB for invoices/generated PDFs and 20 MB for signed documents. Details: `docs/files/FILE_STORAGE_GUIDE.md`, `docs/audit/AUDIT_LOG_GUIDE.md`, `docs/backup/BACKUP_FORMAT.md`.
-
-Единый проект клиентского сайта, операторской админки и ботов VITMA MARKET.
+Единый pre-production проект клиентского сайта, операторской админки,
+Telegram/MAX-ботов и NestJS backend для VITMA MARKET.
 
 ## Состав проекта
 
-- `src/` — NestJS API, Telegram/MAX-боты, бизнес-логика заявок и раздача production frontend.
-- `client-ui/` — клиентский сайт на React, TypeScript, Vite и React Router.
-- `admin-ui/` — операторская админка на React, TypeScript и Vite.
-- PostgreSQL — пользователи, организации, регистрации, вопросы и сервисные заявки.
+- `src/` - NestJS modular monolith, API, общая бизнес-логика и адаптеры Telegram/MAX;
+- `client-ui/` - клиентский React/TypeScript/Vite сайт;
+- `admin-ui/` - React/TypeScript/Vite админка;
+- PostgreSQL - единая база всех runtime-модулей;
+- `storage/` - локальная реализация `FileStoragePort` для development;
+- `src/database/migrations/` - одна чистая pre-production baseline migration.
+
+Каноническая baseline зафиксирована в
+[`docs/architecture/preproduction-baseline.md`](docs/architecture/preproduction-baseline.md).
+Система не поддерживает отброшенные development-форматы, старые маршруты или
+историческую цепочку migrations.
 
 ## Требования
 
-- Node.js 22+
-- npm 10 or 11
-- Docker Desktop
-- заполненный `.env` в корне проекта на основе `.env.example`
+- Node.js 22.20.x;
+- npm 10 или 11;
+- Docker Desktop;
+- `.env` в корне на основе `.env.example`.
 
-## Первый запуск
+`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` и `DB_PASS` обязательны.
+`synchronize` всегда выключен. Локальный `.env`, `storage/`, `backups/`, dumps
+и archives игнорируются Git.
+
+## Первый запуск с пустой БД
 
 ```powershell
 npm ci
@@ -63,107 +37,75 @@ npm run migration:run
 npm run start:dev:all
 ```
 
-`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` и `DB_PASS` обязательны. Приложение не использует значения БД по умолчанию и всегда запускается с `synchronize: false`. Для локального запуска без polling и внешних обращений к Telegram установите `BOT_POLLING_ENABLED=false` и используйте только фиктивный или отдельный тестовый `BOT_TOKEN`; MAX отключается пустым `MAX_BOT_TOKEN`.
+Первый запуск Nest bootstrap создаёт текущие типы услуг и одну опубликованную
+версию каждой активной формы. Старые данные и версии форм не импортируются.
+
+Для безопасного локального запуска без внешних вызовов используйте отдельный
+фиктивный Telegram token, `BOT_POLLING_ENABLED=false` и пустой
+`MAX_BOT_TOKEN`. Не используйте реальные provider credentials в тестах.
 
 После запуска доступны:
 
-- клиентский сайт с hot reload: `http://localhost:5174/site/`
-- встроенная production-сборка сайта: `http://localhost:3000/site`
-- админка с hot reload: `http://localhost:5173/admin/`
-- встроенная админка: `http://localhost:3000/admin`
-- Swagger в development/test: `http://localhost:3000/api/docs`
+- клиентский Vite UI: `http://localhost:5174/site/`;
+- админский Vite UI: `http://localhost:5173/admin/`;
+- Nest API: `http://localhost:3000`;
+- Swagger в development/test: `http://localhost:3000/api/docs`;
+- health: `http://localhost:3000/health/live` и `/health/ready`.
 
-На Windows с сертификатами Минцифры backend запускается командой `start:dev:system-ca`, она уже входит в `start:dev:all`.
+После `npm run build` Nest может раздавать обе React-сборки при
+`SERVE_BUILT_UI=true`. Отдельного static/HTML UI и fallback-режима нет.
 
 ## Первый superadmin
 
-Приложение не создаёт сотрудника автоматически и не принимает статический или query-токен. Первый superadmin создаётся только явной командой:
+Приложение не создаёт сотрудника автоматически и не принимает статический
+admin token. Создайте первую учётную запись явно:
 
 ```powershell
 npm run admin:create
 ```
 
-Команда интерактивно запрашивает логин, отображаемое имя и скрытый пароль. Пароль должен содержать 12-128 символов, не менее трёх групп символов и не включать логин. Для защищённого non-interactive окружения поддерживаются `ADMIN_CREATE_LOGIN`, `ADMIN_CREATE_DISPLAY_NAME` и `ADMIN_CREATE_PASSWORD`; эти значения не следует сохранять в `.env`.
+Роли хранятся только в `admin_user_roles`: `operator`, `engineer`,
+`sales_manager`, `superadmin`. Один сотрудник может иметь несколько ролей.
 
-Один сотрудник может иметь несколько ролей: `operator`, `engineer`, `sales_manager`, `superadmin`. Управление сотрудниками, ролями, паролями, активностью и сессиями доступно superadmin во вкладке «Сотрудники». Старое поле `admin_users.role` временно сохранено только для обратной совместимости.
+## Канонические процессы
 
-## Сессии и HTTP-защита
+### Доступ к организациям
 
-- админка использует server-side сессию в HttpOnly cookie с `SameSite=Strict`, TTL и отзывом;
-- клиентский браузер получает отдельную анонимную server-side сессию в HttpOnly cookie с `SameSite=Lax`;
-- браузер больше не выбирает `platform/chatId` и не использует UUID из `localStorage` как credential;
-- mutation-запросы админки защищены same-origin проверкой;
-- глобальная DTO-валидация отклоняет неизвестные top-level поля;
-- ошибки API имеют единый формат с `requestId`;
-- Helmet, раздельные rate limits и ограничения HTTP body включаются централизованно;
-- `/health/live` проверяет процесс, `/health/ready` — PostgreSQL и наличие ожидаемой migration;
-- в production CORS разрешает только `CORS_ORIGINS`, Swagger по умолчанию выключен;
+Ввод ИНН создаёт `pending` access request. Только `operator` или `superadmin`
+может одобрить запрос, после чего появляется active membership с ролью
+`representative`. Знание ИНН само по себе не даёт доступ к организации.
 
-## Доступ к организациям
+### Сервисные заявки
 
-Ввод ИНН больше не создаёт активного владельца. Клиентский endpoint создаёт `pending`-запрос, а оператор рассматривает его во вкладке «Доступ к организациям». Только approve создаёт `active representative`; до этого кассы, ФН, ОФД и история организации недоступны. Миграция и API описаны в `docs/backend-v1/BKV1_0_ORGANIZATION_ACCESS.md`.
+Web, Telegram, MAX, admin и integrations используют один публичный
+`ServiceRequestsService` и одну `service_requests` модель. Web работает через
+server-side draft, структурированные answers, вложения и idempotent submit.
+Публичный статус защищён непредсказуемым token; номер заявки не является
+credential.
 
-- включённый в production Swagger требует действующую admin-сессию.
+### Регистрация ККТ
 
-`Secure` для cookie включается автоматически при `NODE_ENV=production`. TLS должен завершаться на приложении или доверенном reverse proxy; `TRUST_PROXY` задаётся только в соответствии с реальной схемой deployment.
+`RegistrationRequestEntity` дополняется checklist из `kkt_serial`,
+`fiscal_drive_serial` и `ofd_code`. Клиентские значения получают состояние
+`provided`, но не `verified`. Final PDF и engineer handoff разрешаются backend
+только при readiness `ready`. Код ОФД маскируется и не передаётся через URL,
+callback или AuditEvent.
 
-Базовые лимиты одного процесса:
+### Файлы
 
-| Bucket                  | Лимит                   |
-| ----------------------- | ----------------------- |
-| `admin-login`           | 10 запросов / 60 секунд |
-| `web-session-create`    | 20 / 60 секунд          |
-| `public-form`           | 30 / 600 секунд         |
-| `public-message`        | 60 / 600 секунд         |
-| `public-sensitive-read` | 60 / 60 секунд          |
-| `public-read`           | 120 / 60 секунд         |
-
-Лимит переопределяется переменными `RATE_LIMIT_<BUCKET>_LIMIT` и `RATE_LIMIT_<BUCKET>_WINDOW_SECONDS`, где дефисы заменяются подчёркиваниями. In-memory limiter подходит для одного экземпляра; распределённый лимитер понадобится только при горизонтальном масштабировании.
-
-## Сборка
-
-```powershell
-npm run build
-```
-
-Команда последовательно собирает `admin-ui`, `client-ui` и NestJS. После сборки Nest раздаёт клиентский SPA по всем маршрутам `/site/*`.
-
-## Данные клиентского сайта
-
-Каталог, готовые решения по типу бизнеса, корзина и оформление заказов находятся в типизированных модулях `client-ui/src/data` и `client-ui/src/services`. Глобальный поиск по `/site/search` объединяет товары и сервисные направления. Корзина пока сохраняется в `localStorage`.
-
-Сервисная форма по умолчанию использует реальный API, общий каталог `service_types` и тот же workflow, что Telegram и MAX. Созданные заявки сохраняются в PostgreSQL и отображаются в админке. Mock-режим можно включить только явно:
-
-```env
-VITE_USE_REAL_SERVICE_API=false
-```
-
-Для полноценной production-интеграции ещё потребуются backend-модели товаров, заказов и общих вложений сервисной заявки.
-
-## Полезные команды
-
-```powershell
-npm run start:dev:all      # API + админка + клиентский сайт
-npm run start:site         # только клиентский Vite frontend
-npm run build:site         # TypeScript-проверка и сборка клиентского сайта
-npm run test               # unit-тесты Nest
-npm run test:characterization # pure/unit characterization tests
-npm run test:e2e           # e2e-тесты Nest
-npm run test:integration   # clean test DB + migrations + API/characterization
-npm run db:backup          # резервная копия PostgreSQL
-npm run start:bridge:atol  # read-only ATOL Connect bridge
-npm run start:bridge:pofd  # read-only Platforma OFD bridge
-npm run sync:integrations  # запустить обе синхронизации вручную
-```
-
-Настройка внешних синхронизаций описана в
-[`docs/integrations/INTEGRATION_RUNBOOK.md`](docs/integrations/INTEGRATION_RUNBOOK.md).
-
-Демонстрационные контакты и реквизиты вынесены в `client-ui/src/data/company.ts` и должны быть заменены перед публикацией.
+Runtime хранит только ссылки на `StoredFile`; прямых filesystem path полей и
+fallback-выдачи нет. Допустимые типы и размеры описаны в
+[`docs/files/FILE_STORAGE_GUIDE.md`](docs/files/FILE_STORAGE_GUIDE.md).
 
 ## Миграции PostgreSQL
 
-Схема изменяется только TypeORM migrations из `src/database/migrations`:
+Схема создаётся одной migration:
+
+```text
+InitialPreproductionBaseline1787388476982
+```
+
+Команды:
 
 ```powershell
 npm run migration:show
@@ -174,20 +116,14 @@ npm run migration:generate
 npm run schema:log
 ```
 
-Для миграции с собственным осмысленным именем используйте CLI напрямую:
-
-```powershell
-npm run typeorm -- migration:create src/database/migrations/AddExample
-npm run typeorm -- migration:generate src/database/migrations/AddExample -d src/database/data-source.ts
-```
-
-Сгенерированную миграцию нужно проверить вручную до запуска. Initial migration создаёт 18 актуальных entity-таблиц и `typeorm_migrations`; старые таблицы `bids` и `bid_fields`, найденные только в локальной тестовой БД, в clean baseline не входят.
-
-`InitialSchema.down()` удаляет всю созданную baseline-схему. `migration:revert` для initial migration разрешён только на disposable development/test DB без ценных данных и не должен запускаться на сохранённой старой `db`.
+`migration:revert` baseline допустим только на disposable development/test DB.
+Существующие БД со старой историей не обновляются этой baseline: поскольку
+production deployment не было, development окружение пересоздаётся с нуля.
 
 ## Отдельная test DB
 
-Integration tests обязаны использовать отдельную БД, имя которой оканчивается на `_test` и не совпадает с `DB_NAME`:
+Имя integration DB обязательно оканчивается на `_test` и не совпадает с
+`DB_NAME`:
 
 ```powershell
 $env:TEST_DB_NAME = "vitma_test"
@@ -198,33 +134,60 @@ npm run schema:test:log
 npm run test:integration
 ```
 
-`test:integration` пересоздаёт только указанную `*_test` БД, применяет migrations и запускает characterization suite. По умолчанию test DB использует сервер и учётные данные `DB_*`; их можно переопределить через `TEST_DB_HOST`, `TEST_DB_PORT`, `TEST_DB_USER` и `TEST_DB_PASS`.
-
-Текущая история:
-
-1. `InitialSchema1785067383157` — clean baseline.
-2. `SecurityFoundation1785079000000` — роли сотрудников, поля отзыва сессий, анонимные web-сессии и назначение инженера.
-3. `FileStorageAndAudit1785085000000` — управляемое файловое хранилище и append-only журнал административных действий.
-4. `ServiceRequestPaymentProof1785226500000` — подтверждающие оплату файлы сервисных заявок.
-5. `IntegrationFoundation1786953600000` — нормализованный импорт внешних наблюдений.
-6. `OrganizationAccessRequests1787040000000` — заявки представителей организаций и подтверждаемое членство.
-7. `CanonicalServiceRequests1787126400000` — единая модель сервисных заявок, версии форм, сообщения и вложения.
-
-`SecurityFoundation.down()` удаляет security foundation и предназначен только для disposable test/development DB. На БД с ценными данными его выполнять нельзя.
+`test:integration` удаляет и создаёт только явно заданную `*_test` БД, применяет
+baseline migration и запускает PostgreSQL integration suite.
 
 ## Backup и restore
 
-Текущий DB-only backup:
+Координированный backup включает PostgreSQL и текущий `storage/`:
 
 ```powershell
-npm run db:backup
-npm run db:restore -- -DumpPath "backups\example.dump" -Force
+npm run backup:create
+npm run backup:verify -- --backup C:\path\to\backup-set
+npm run backup:restore -- --backup C:\path\to\backup-set --target-db vitma_restore_test --target-storage C:\temp\vitma-restore-storage
+npm run backup:drill
 ```
 
-Перед initial migration дополнительно создана одноразовая страховочная копия в `backups/preflight-20260726_184939`: PostgreSQL dump, архив текущего `storage`, manifest размеров/SHA-256 и результат restore drill. Это не завершает E0-12: повторяемая система backup/restore БД и файлов будет добавлена после FileStorage foundation E0-08.
+Перед `backup:create` приложение должно быть остановлено. Restore требует
+отдельные БД и storage path. Формат и drill описаны в
+[`docs/backup/BACKUP_FORMAT.md`](docs/backup/BACKUP_FORMAT.md).
 
-## Канонические сервисные заявки
+## Проверки
 
-Web, Telegram, MAX, админка и интеграции используют общий агрегат `ServiceRequest`. Web-клиент создаёт server-side draft, сохраняет структурированные ответы и вложения, затем идемпотентно отправляет заявку. Номер заявки служит только для отображения; публичный просмотр защищён отдельным bearer token, хеш которого хранится в БД.
+```powershell
+npm run config:check
+npm run lint:baseline
+npm test -- --runInBand
+npm run test:integration
+npm run test:e2e -- --runInBand
+npm run build
+npm run ci:offline-smoke
+```
 
-Описание модели, API, статусов и ограничений: [`docs/backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md`](docs/backend-v1/BKV1_1_CANONICAL_SERVICE_REQUESTS.md). Правила backfill и запросы проверки: [`docs/backend-v1/BKV1_1_BACKFILL_REPORT.md`](docs/backend-v1/BKV1_1_BACKFILL_REPORT.md).
+Сводные CI-команды:
+
+```powershell
+npm run ci:quality
+npm run ci:database
+npm run ci:build
+```
+
+## Клиентский магазин
+
+Каталог, корзина и checkout пока являются демонстрационными типизированными
+frontend-модулями; часть состояния хранится в `localStorage`. Этот demo-scope
+сохранён намеренно, но требует отдельного Catalog + Orders
+backend package. Онлайн-эквайринг в ближайший обязательный scope не входит.
+
+## Интеграции
+
+ATOL/Platforma OFD bridge запускаются отдельно и не входят в обычный bootstrap:
+
+```powershell
+npm run start:bridge:atol
+npm run start:bridge:pofd
+npm run sync:integrations
+```
+
+Контракты и ограничения находятся в `docs/integrations/`. Реальные provider
+credentials и внешние вызовы не используются в CI.
