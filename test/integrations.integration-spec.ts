@@ -15,6 +15,9 @@ import { ServiceRequestEntity } from '../src/service-requests/entities/service-r
 import { AdminUserEntity } from '../src/admin/entities/admin-user.entity';
 import { IntegrationErrorEntity } from '../src/integrations/entities/integration-error.entity';
 import { IntegrationExclusionEntity } from '../src/integrations/entities/integration-exclusion.entity';
+import { ServiceFormService } from '../src/service-requests/service-form.service';
+import { ServiceFormDefinitionEntity } from '../src/service-requests/entities/service-form-definition.entity';
+import { ServiceFormVersionEntity } from '../src/service-requests/entities/service-form-version.entity';
 
 describe('external integrations on migrated PostgreSQL', () => {
     let dataSource: DataSource;
@@ -335,17 +338,25 @@ describe('external integrations on migrated PostgreSQL', () => {
                 isActive: true,
                 settings: null,
             });
+        const formVersion = await new ServiceFormService(
+            dataSource.getRepository(ServiceFormDefinitionEntity),
+            dataSource.getRepository(ServiceFormVersionEntity),
+        ).getPublishedForType(serviceType);
         const request = await dataSource
             .getRepository(ServiceRequestEntity)
             .save({
+                requestNumber: 'SR-20260822-INTEGRATION01',
                 serviceTypeId: serviceType.id,
                 serviceTypeCode: serviceType.code,
                 serviceTypeTitle: serviceType.title,
+                formVersionId: formVersion.id,
                 userId: null,
                 organizationId: opportunity.organizationId,
                 platform: 'web',
+                source: 'integration',
                 chatId: `opportunity:${opportunity.id}`,
                 status: 'review_required',
+                customerStatus: 'received',
                 currentStep: 4,
                 answers: {},
                 priority: 'high',
@@ -354,7 +365,6 @@ describe('external integrations on migrated PostgreSQL', () => {
             login: 'integration-operator',
             displayName: 'Оператор',
             passwordHash: 'test',
-            role: 'operator',
         });
         serviceRequests.createFromOpportunity.mockResolvedValue(request);
         serviceRequests.getRequest.mockResolvedValue(request);

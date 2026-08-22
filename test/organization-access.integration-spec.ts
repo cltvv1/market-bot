@@ -409,13 +409,38 @@ describe('organization access approval', () => {
             .post('/api/client/organizations/link-by-inn')
             .send({ inn: '2460000000' })
             .expect(201);
+        await client.get('/api/client/service-requests/types').expect(200);
         const service = await client
-            .post('/api/client/service-requests/start')
+            .post('/api/client/service-requests/drafts')
             .send({
                 serviceTypeCode: 'firmware_update',
+                contactSnapshot: {
+                    name: 'Test representative',
+                    phone: '+7 (999) 123-45-67',
+                    preferredChannel: 'phone',
+                },
+                answers: {
+                    clientType: 'individual',
+                    contactName: 'Test representative',
+                    phone: '+7 (999) 123-45-67',
+                    city: 'Krasnoyarsk',
+                    equipmentType: 'Касса',
+                    equipmentModel: 'ATOL 30F',
+                    urgency: 'normal',
+                    helpFormat: 'remote',
+                    description:
+                        'Service request without organization membership.',
+                    consent: true,
+                },
             })
             .expect(201);
-        expect(service.body.request.organizationId).toBeNull();
+        expect(
+            (
+                await dataSource
+                    .getRepository('service_requests')
+                    .findOneByOrFail({ id: service.body.id })
+            ).organizationId,
+        ).toBeNull();
         expect(
             await dataSource.getRepository('organization_members').count(),
         ).toBe(0);

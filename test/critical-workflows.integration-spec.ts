@@ -1,9 +1,8 @@
 import type { DataSource } from 'typeorm';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import testDataSource from '../src/database/test-data-source';
+import { AdminUserEntity } from '../src/admin/entities/admin-user.entity';
 import { AdminNotificationsService } from '../src/admin/admin-notifications.service';
+import { CashRegisterEntity } from '../src/assets/entities/cash-register.entity';
 import { CustomerActivityService } from '../src/customer-activity/customer-activity.service';
 import { CustomerActivityEntity } from '../src/customer-activity/entities/customer-activity.entity';
 import type { MessengerService } from '../src/messenger/messenger.types';
@@ -13,10 +12,17 @@ import { OrganizationsService } from '../src/organizations/organizations.service
 import { PdfGeneratorService } from '../src/pdf/pdf.service';
 import { RegistrationFieldEntity } from '../src/registrations/entities/registration-field.entity';
 import { RegistrationRequestEntity } from '../src/registrations/entities/registration.entity';
+import { RegistrationReadinessService } from '../src/registrations/registration-readiness.service';
 import { RegistrationsService } from '../src/registrations/registrations.service';
+import { ServiceFormDefinitionEntity } from '../src/service-requests/entities/service-form-definition.entity';
+import { ServiceFormVersionEntity } from '../src/service-requests/entities/service-form-version.entity';
+import { ServiceRequestAttachmentEntity } from '../src/service-requests/entities/service-request-attachment.entity';
 import { ServiceRequestEventEntity } from '../src/service-requests/entities/service-request-event.entity';
+import { ServiceRequestMessageEntity } from '../src/service-requests/entities/service-request-message.entity';
 import { ServiceRequestEntity } from '../src/service-requests/entities/service-request.entity';
 import { ServiceTypeEntity } from '../src/service-requests/entities/service-type.entity';
+import { ServiceFormService } from '../src/service-requests/service-form.service';
+import { ServiceRequestChannelWorkflowService } from '../src/service-requests/service-request-channel-workflow.service';
 import { ServiceRequestsService } from '../src/service-requests/service-requests.service';
 import { TicketMessageEntity } from '../src/tickets/entities/ticket-message.entity';
 import { TicketEntity } from '../src/tickets/entities/ticket.entity';
@@ -25,6 +31,7 @@ import { UserChannelEntity } from '../src/users/entities/user-channel.entity';
 import { UserEntity } from '../src/users/entities/user.entity';
 import { UsersService } from '../src/users/users.service';
 import { StoredFileEntity } from '../src/files/entities/stored-file.entity';
+import { FilesService } from '../src/files/files.service';
 import { AuditService } from '../src/audit/audit.service';
 import { AuditEventEntity } from '../src/audit/entities/audit-event.entity';
 
@@ -40,7 +47,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     let registrationsService: RegistrationsService;
     let ticketsService: TicketsService;
     let serviceRequestsService: ServiceRequestsService;
-    let consentTempPath: string;
+    let storedFileSequence = 0;
 
     const messenger: jest.Mocked<MessengerService> = {
         sendMessage: jest.fn().mockResolvedValue(undefined),
@@ -54,13 +61,17 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     const pdf = {
         generateRegistrationPdf: jest
             .fn()
-            .mockResolvedValue('virtual/registration.pdf'),
-        generateAtolConsentPdf: jest.fn(),
+            .mockResolvedValue(Buffer.from('%PDF-registration')),
+        generateAtolConsentPdf: jest
+            .fn()
+            .mockResolvedValue(Buffer.from('%PDF-atol-consent')),
     };
     const saveStoredFile = jest.fn(
         (_input: {
             purpose: string;
             buffer: Buffer;
+            originalName?: string;
+            mimeType?: string;
             metadata?: Record<string, unknown>;
         }): Promise<{ id: number }> =>
             Promise.reject(new Error(`not configured: ${_input.purpose}`)),
@@ -69,11 +80,10 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         saveBuffer: saveStoredFile,
         logicalDelete: jest.fn().mockResolvedValue(undefined),
     };
-    const temporaryFiles = {
-        remove: jest.fn().mockImplementation(async (filePath: string) => {
-            await fs.promises.rm(filePath, { force: true });
-            return true;
-        }),
+    const readiness = {
+        initialize: jest.fn().mockResolvedValue(undefined),
+        details: jest.fn(),
+        handoff: jest.fn(),
     };
 
     beforeAll(async () => {
@@ -101,23 +111,13 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         );
 
         jest.clearAllMocks();
-        consentTempPath = path.join(
-            os.tmpdir(),
-            `atol-consent-${Date.now()}.pdf`,
-        );
-        pdf.generateAtolConsentPdf.mockImplementation(async () => {
-            await fs.promises.writeFile(
-                consentTempPath,
-                Buffer.from('%PDF- test'),
-            );
-            return consentTempPath;
-        });
+        storedFileSequence = 0;
         saveStoredFile.mockImplementation((input) =>
             dataSource.getRepository(StoredFileEntity).save({
                 provider: 'local',
-                objectKey: `atol-consent/test/${Date.now()}`,
-                originalName: 'atol-consent.pdf',
-                mimeType: 'application/pdf',
+                objectKey: `characterization/${++storedFileSequence}/file.pdf`,
+                originalName: input.originalName ?? 'document.pdf',
+                mimeType: input.mimeType ?? 'application/pdf',
                 sizeBytes: String(input.buffer.length),
                 sha256: 'a'.repeat(64),
                 status: 'active',
@@ -135,8 +135,25 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             usersService,
             new AuditService(dataSource.getRepository(AuditEventEntity)),
         );
+        const auditService = new AuditService(
+            dataSource.getRepository(AuditEventEntity),
+        );
         const activityService = new CustomerActivityService(
             dataSource.getRepository(CustomerActivityEntity),
+        );
+        const formService = new ServiceFormService(
+            dataSource.getRepository(ServiceFormDefinitionEntity),
+            dataSource.getRepository(ServiceFormVersionEntity),
+        );
+        readiness.details.mockImplementation(
+            async (registrationId: number) => ({
+                registration: await dataSource
+                    .getRepository(RegistrationRequestEntity)
+                    .findOneByOrFail({ id: registrationId }),
+                requirements: [],
+                evidence: [],
+                dataRequests: [],
+            }),
         );
 
         registrationsService = new RegistrationsService(
@@ -145,6 +162,8 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             pdf as unknown as PdfGeneratorService,
             usersService,
             notifications as unknown as AdminNotificationsService,
+            files as unknown as FilesService,
+            readiness as unknown as RegistrationReadinessService,
         );
         ticketsService = new TicketsService(
             dataSource.getRepository(TicketEntity),
@@ -152,8 +171,9 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             usersService,
             messenger,
             notifications as unknown as AdminNotificationsService,
+            files as unknown as FilesService,
         );
-        serviceRequestsService = new ServiceRequestsService(
+        const channelWorkflow = new ServiceRequestChannelWorkflowService(
             dataSource.getRepository(ServiceTypeEntity),
             dataSource.getRepository(ServiceRequestEntity),
             dataSource.getRepository(ServiceRequestEventEntity),
@@ -162,9 +182,26 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             activityService,
             notifications as unknown as AdminNotificationsService,
             pdf as unknown as PdfGeneratorService,
-            temporaryFiles as never,
             messenger,
-            files as never,
+            files as unknown as FilesService,
+            formService,
+            dataSource.getRepository(ServiceRequestAttachmentEntity),
+        );
+        serviceRequestsService = new ServiceRequestsService(
+            dataSource.getRepository(ServiceTypeEntity),
+            dataSource.getRepository(ServiceRequestEntity),
+            dataSource.getRepository(ServiceRequestEventEntity),
+            dataSource.getRepository(ServiceRequestAttachmentEntity),
+            dataSource.getRepository(ServiceRequestMessageEntity),
+            dataSource.getRepository(CashRegisterEntity),
+            formService,
+            organizationsService,
+            files as unknown as FilesService,
+            auditService,
+            notifications as unknown as AdminNotificationsService,
+            dataSource,
+            messenger,
+            channelWorkflow,
         );
     });
 
@@ -207,17 +244,28 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         });
         expect(await registrationsService.isCompleted(withPhone!)).toBe(true);
 
-        const pdfPath = await registrationsService.finishReg(withPhone!);
+        const generatedPdf = await registrationsService.finishReg(withPhone!);
         const persisted = await dataSource
             .getRepository(RegistrationRequestEntity)
             .findOneByOrFail({ id: created.id });
 
-        expect(pdfPath).toBe('virtual/registration.pdf');
+        expect(generatedPdf).toEqual(Buffer.from('%PDF-registration'));
         expect(persisted).toMatchObject({
-            isFilled: true,
-            pdfPath: 'virtual/registration.pdf',
+            status: 'new',
             orgName: 'ООО Тест',
         });
+        expect(typeof persisted.pdfFileId).toBe('number');
+        expect(files.saveBuffer).toHaveBeenCalledWith(
+            expect.objectContaining({
+                purpose: 'generated-pdf',
+                buffer: Buffer.from('%PDF-registration'),
+                metadata: {
+                    registrationId: created.id,
+                    draft: true,
+                    final: false,
+                },
+            }),
+        );
         expect(pdf.generateRegistrationPdf).toHaveBeenCalledTimes(1);
     });
 
@@ -320,7 +368,41 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         ).toContain(started.request.id);
     });
 
+    it.each(['telegram', 'max'] as const)(
+        'creates a canonical service request for %s',
+        async (platform) => {
+            const identity = {
+                platform,
+                chatId: `${platform}-canonical-client`,
+                name: `${platform} client`,
+            };
+            const started = await serviceRequestsService.start(
+                identity,
+                'kkt_remote_work',
+            );
+            const persisted = await dataSource
+                .getRepository(ServiceRequestEntity)
+                .findOneByOrFail({ id: started.request.id });
+
+            expect(persisted).toMatchObject({
+                platform,
+                source: platform,
+                status: 'draft',
+                customerStatus: 'received',
+                chatId: identity.chatId,
+            });
+            expect(persisted.formVersionId).toEqual(expect.any(Number));
+            expect(persisted.requestNumber).toMatch(/^SR-\d{8}-[A-F0-9]{8}$/);
+            expect(messenger.sendMessage.mock.calls).toHaveLength(0);
+        },
+    );
+
     it('keeps FN price confirmation and invoice/payment/visit transitions', async () => {
+        const operator = await dataSource.getRepository(AdminUserEntity).save({
+            login: 'workflow-operator',
+            displayName: 'Workflow operator',
+            passwordHash: 'test-only',
+        });
         const started = await serviceRequestsService.start(
             testIdentity,
             'fn_replacement',
@@ -357,18 +439,24 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         );
         expect(notifications.notify).toHaveBeenCalledTimes(1);
 
+        const invoice = await files.saveBuffer({
+            purpose: 'invoice',
+            buffer: Buffer.from('%PDF-invoice'),
+            originalName: 'invoice.pdf',
+            mimeType: 'application/pdf',
+        });
         const invoiced = await serviceRequestsService.attachInvoice(
             started.request.id,
-            'virtual/invoice.pdf',
-            'invoice.pdf',
-            'operator-1',
+            invoice.id,
+            operator.id,
         );
         expect(invoiced.request.status).toBe('waiting_payment');
 
         await expect(
-            serviceRequestsService.markPaymentReceived(
+            serviceRequestsService.transitionByStaff(
+                operator.id,
                 started.request.id,
-                'operator-1',
+                'paid',
             ),
         ).rejects.toThrow('Payment proof must be attached');
 
@@ -383,9 +471,10 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         expect(paymentProof?.request.status).toBe('waiting_payment');
         expect(typeof paymentProof?.request.paymentProofFileId).toBe('number');
 
-        const paid = await serviceRequestsService.markPaymentReceived(
+        const paid = await serviceRequestsService.transitionByStaff(
+            operator.id,
             started.request.id,
-            'operator-1',
+            'paid',
         );
         expect(paid.request.status).toBe('paid');
 
@@ -394,13 +483,14 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             'Красноярск, ул. Тестовая, 1',
             '2026-08-01T10:00:00.000Z',
             'Позвонить заранее',
-            'operator-1',
+            operator.id,
         );
         expect(scheduled.request.status).toBe('scheduled');
 
-        const completed = await serviceRequestsService.complete(
+        const completed = await serviceRequestsService.transitionByStaff(
+            operator.id,
             started.request.id,
-            'operator-1',
+            'completed',
         );
         expect(completed.request.status).toBe('completed');
         expect(completed.events.map((event) => event.type)).toEqual(
@@ -410,15 +500,14 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
                 'price_confirmed',
                 'invoice_attached',
                 'payment_proof_attached',
-                'payment_received',
+                'status_changed',
                 'visit_scheduled',
-                'completed',
             ]),
         );
         expect(messenger.sendMessage.mock.calls).toHaveLength(0);
     });
 
-    it('stores the ATOL consent PDF and cleans up its temporary file', async () => {
+    it('stores the generated ATOL consent PDF through FileStorage', async () => {
         const started =
             await serviceRequestsService.startAtolConsent(testIdentity);
         for (const answer of [
@@ -444,7 +533,6 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             inn: '2460000000',
             representativeName: 'Иванова Ивана Ивановича',
             representativeBasis: 'Устава',
-            generatedPdfPath: null,
         });
         expect(typeof persisted?.generatedConsentFileId).toBe('number');
         expect(files.saveBuffer).toHaveBeenCalledWith(
@@ -456,15 +544,14 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         expect(Buffer.isBuffer(saveStoredFile.mock.calls[0][0].buffer)).toBe(
             true,
         );
-        expect(temporaryFiles.remove).toHaveBeenCalledWith(consentTempPath);
-        await expect(fs.promises.stat(consentTempPath)).rejects.toMatchObject({
-            code: 'ENOENT',
-        });
+        expect(saveStoredFile.mock.calls[0][0].buffer).toEqual(
+            Buffer.from('%PDF-atol-consent'),
+        );
         expect(pdf.generateAtolConsentPdf).toHaveBeenCalledTimes(1);
         expect(messenger.sendMessage.mock.calls).toHaveLength(0);
     });
 
-    it('cleans up an ATOL temporary file when storage fails', async () => {
+    it('does not persist a generated consent reference when storage fails', async () => {
         files.saveBuffer.mockRejectedValueOnce(
             new Error('storage unavailable'),
         );
@@ -492,10 +579,18 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             }
         }
 
-        expect(temporaryFiles.remove).toHaveBeenCalledWith(consentTempPath);
-        await expect(fs.promises.stat(consentTempPath)).rejects.toMatchObject({
-            code: 'ENOENT',
-        });
+        const request = await dataSource
+            .getRepository(ServiceRequestEntity)
+            .findOneByOrFail({
+                chatId: testIdentity.chatId,
+                serviceTypeCode: 'atol_consent',
+            });
+        expect(request.generatedConsentFileId).toBeNull();
+        expect(
+            await dataSource
+                .getRepository(ServiceRequestAttachmentEntity)
+                .countBy({ serviceRequestId: request.id }),
+        ).toBe(0);
     });
 
     it('logically deletes the generated consent file when a draft is cancelled', async () => {
@@ -513,10 +608,10 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             );
         }
 
-        const generated =
-            await serviceRequestsService.getLatestAtolConsentDraft(
-                testIdentity,
-            );
+        const generated = await serviceRequestsService.getLatestDraftForClient(
+            testIdentity,
+            ['atol_consent'],
+        );
         await serviceRequestsService.cancelAtolConsentDraft(testIdentity);
 
         expect(files.logicalDelete).toHaveBeenCalledWith(

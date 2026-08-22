@@ -84,10 +84,22 @@ describe('service-request HTTP route ownership', () => {
         jest.spyOn(telegramBot, 'stop').mockImplementation(() => undefined);
 
         try {
-            const routes = discoverRoutes(
+            const allRoutes = discoverRoutes(
                 testingModule.get(ModulesContainer),
-            ).filter((route) => route.path.includes('/service-requests'));
+            );
+            const routes = allRoutes.filter((route) =>
+                route.path.includes('/service-requests'),
+            );
             const byMethodAndPath = new Map<string, RouteRegistration[]>();
+            const allByMethodAndPath = new Map<string, RouteRegistration[]>();
+
+            for (const route of allRoutes) {
+                const key = `${route.method} ${route.path}`;
+                allByMethodAndPath.set(key, [
+                    ...(allByMethodAndPath.get(key) ?? []),
+                    route,
+                ]);
+            }
 
             for (const route of routes) {
                 const key = `${route.method} ${route.path}`;
@@ -105,9 +117,6 @@ describe('service-request HTTP route ownership', () => {
             for (const key of [
                 'GET /api/client/service-requests/types',
                 'GET /api/client/service-requests',
-                'POST /api/client/service-requests/start',
-                'POST /api/client/service-requests/:id/answers',
-                'POST /api/client/service-requests/:id/confirm-price',
                 'POST /api/client/service-requests/drafts',
                 'PATCH /api/client/service-requests/drafts/:id',
                 'POST /api/client/service-requests/drafts/:id/submit',
@@ -119,6 +128,19 @@ describe('service-request HTTP route ownership', () => {
                         controller: 'ServiceRequestsController',
                     }),
                 ]);
+            }
+            for (const removedRoute of [
+                'POST /api/client/service-requests/start',
+                'POST /api/client/service-requests/:id/answers',
+                'POST /api/client/service-requests/:id/confirm-price',
+                'POST /admin/api/service-requests/:id/invoice',
+                'POST /admin/api/service-requests/:id/payment-received',
+                'POST /admin/api/service-requests/:id/complete',
+                'POST /admin/api/service-requests/:id/cancel',
+                'POST /admin/api/registrations/:id/process',
+                'GET /admin/api/registrations/:id/equipment-photo',
+            ]) {
+                expect(allByMethodAndPath.has(removedRoute)).toBe(false);
             }
             expect(
                 byMethodAndPath.get('GET /api/public/service-requests/:token'),

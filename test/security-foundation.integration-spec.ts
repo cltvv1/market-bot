@@ -65,9 +65,7 @@ describe('security foundation API contracts', () => {
 
     async function createStaff(
         login: string,
-        roles: Array<
-            'operator' | 'engineer' | 'sales_manager' | 'superadmin'
-        >,
+        roles: Array<'operator' | 'engineer' | 'sales_manager' | 'superadmin'>,
     ) {
         return auth.createStaff({
             login,
@@ -95,6 +93,49 @@ describe('security foundation API contracts', () => {
             .send({})
             .expect(201);
         return { agent, response };
+    }
+
+    const completeServiceRequest = () => ({
+        serviceTypeCode: 'firmware_update',
+        contactSnapshot: {
+            name: 'Security test client',
+            phone: '+7 (999) 123-45-67',
+            preferredChannel: 'phone',
+        },
+        answers: {
+            clientType: 'individual',
+            contactName: 'Security test client',
+            phone: '+7 (999) 123-45-67',
+            city: 'Krasnoyarsk',
+            equipmentType: 'Касса',
+            equipmentModel: 'ATOL 30F',
+            urgency: 'normal',
+            helpFormat: 'remote',
+            description: 'Characterization request for access isolation.',
+            consent: true,
+        },
+    });
+
+    async function submitServiceRequest(
+        browser: Awaited<ReturnType<typeof createBrowserSession>>,
+        idempotencyKey: string,
+    ) {
+        await browser.agent
+            .get('/api/client/service-requests/types')
+            .expect(200);
+        const draft = await browser.agent
+            .post('/api/client/service-requests/drafts')
+            .send(completeServiceRequest())
+            .expect(201);
+        const draftBody = draft.body as { id: number; version: number };
+        const submitted = await browser.agent
+            .post(`/api/client/service-requests/drafts/${draftBody.id}/submit`)
+            .send({
+                expectedVersion: draftBody.version,
+                idempotencyKey,
+            })
+            .expect(201);
+        return submitted.body.request as { id: number };
     }
 
     it('does not create or accept known fallback admin credentials', async () => {
@@ -128,10 +169,12 @@ describe('security foundation API contracts', () => {
     it('expires, logs out, revokes and disables admin sessions', async () => {
         const staff = await createStaff('operator-one', ['operator']);
         const first = await login('operator-one');
-        await dataSource.getRepository(AdminSessionEntity).update(
-            { userId: staff.id },
-            { expiresAt: new Date(Date.now() - 1_000) },
-        );
+        await dataSource
+            .getRepository(AdminSessionEntity)
+            .update(
+                { userId: staff.id },
+                { expiresAt: new Date(Date.now() - 1_000) },
+            );
         await first.agent.get('/admin/api/me').expect(401);
 
         const second = await login('operator-one');
@@ -260,8 +303,7 @@ describe('security foundation API contracts', () => {
             .attach(
                 'file',
                 Buffer.from([
-                    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46,
-                    0x49, 0x46,
+                    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46,
                 ]),
                 { filename: 'photo.jpg', contentType: 'image/jpeg' },
             )
@@ -299,19 +341,17 @@ describe('security foundation API contracts', () => {
         await createStaff('engineer-two', ['engineer']);
         const browserA = await createBrowserSession();
         const browserB = await createBrowserSession();
-        const first = await browserA.agent
-            .post('/api/client/service-requests/start')
-            .send({ serviceTypeCode: 'kkt_remote_work' })
-            .expect(201);
-        const second = await browserB.agent
-            .post('/api/client/service-requests/start')
-            .send({ serviceTypeCode: 'kkt_remote_work' })
-            .expect(201);
+        const first = await submitServiceRequest(
+            browserA,
+            'security-engineer-request-0001',
+        );
+        const second = await submitServiceRequest(
+            browserB,
+            'security-engineer-request-0002',
+        );
         const root = await login('root-user');
         await root.agent
-            .post(
-                `/admin/api/service-requests/${first.body.request.id}/assign-engineer`,
-            )
+            .post(`/admin/api/service-requests/${first.id}/assign-engineer`)
             .set('Origin', ORIGIN)
             .send({ assignedEngineerId: engineer.id })
             .expect(201);
@@ -321,10 +361,10 @@ describe('security foundation API contracts', () => {
             .get('/admin/api/service-requests?status=all')
             .expect(200);
         expect(list.body.map((item: { id: number }) => item.id)).toEqual([
-            first.body.request.id,
+            first.id,
         ]);
         await engineerSession.agent
-            .get(`/admin/api/service-requests/${second.body.request.id}`)
+            .get(`/admin/api/service-requests/${second.id}`)
             .expect(400);
         await engineerSession.agent.get('/admin/api/organizations').expect(403);
     });
@@ -332,10 +372,10 @@ describe('security foundation API contracts', () => {
     it('isolates independent browser sessions and ignores client-selected identity', async () => {
         const browserA = await createBrowserSession();
         const browserB = await createBrowserSession();
-        const created = await browserA.agent
-            .post('/api/client/service-requests/start')
-            .send({ serviceTypeCode: 'kkt_remote_work' })
-            .expect(201);
+        const created = await submitServiceRequest(
+            browserA,
+            'security-session-request-0001',
+        );
         const ticket = await browserA.agent
             .post('/api/client/tickets/open')
             .send({})
@@ -351,15 +391,13 @@ describe('security foundation API contracts', () => {
         expect(foreign.body).toHaveLength(0);
 
         await browserB.agent
-            .post(
-                `/api/client/service-requests/${created.body.request.id}/answers`,
-            )
+            .post(`/api/client/service-requests/${created.id}/answers`)
             .send({ value: 'Попытка доступа' })
             .expect(404);
         const tampered = await browserB.agent
-            .post('/api/client/service-requests/start')
+            .post('/api/client/service-requests/drafts')
             .send({
-                serviceTypeCode: 'kkt_remote_work',
+                ...completeServiceRequest(),
                 platform: 'telegram',
                 chatId: '123',
             })
@@ -367,9 +405,7 @@ describe('security foundation API contracts', () => {
         expect(tampered.body.code).toBe('VALIDATION_ERROR');
 
         await browserB.agent
-            .post(
-                `/api/client/tickets/${ticket.body.data.id}/messages`,
-            )
+            .post(`/api/client/tickets/${ticket.body.data.id}/messages`)
             .send({ text: 'Попытка доступа к чужому диалогу' })
             .expect(400);
     });
@@ -398,7 +434,10 @@ describe('security foundation API contracts', () => {
             .post('/api/client/registrations/start')
             .send({})
             .expect(201);
-        await browser.agent.post('/api/client/tickets/open').send({}).expect(201);
+        await browser.agent
+            .post('/api/client/tickets/open')
+            .send({})
+            .expect(201);
         expect(
             await dataSource.getRepository('registration_requests').count(),
         ).toBe(1);

@@ -1,5 +1,5 @@
 {
-  "generatedFrom": "reviewed E0-13 legacy baseline",
+  "generatedFrom": "reviewed E0-13 Stage 0 baseline",
   "errors": 2634,
   "warnings": 21,
   "files": {
@@ -288,9 +288,6 @@
       "error:prettier/prettier": 4
     },
     "src/site/site.module.ts": {
-      "error:prettier/prettier": 1
-    },
-    "src/site/site.page.ts": {
       "error:prettier/prettier": 1
     },
     "src/telegram/handlers/idle/idle-text.handler.ts": {

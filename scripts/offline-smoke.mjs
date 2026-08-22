@@ -1,6 +1,12 @@
+import 'dotenv/config';
 import { pbkdf2Sync } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import pg from 'pg';
+
+const testDatabase = process.env.TEST_DB_NAME?.trim();
+if (!testDatabase) {
+    throw new Error('TEST_DB_NAME is required for offline smoke');
+}
 
 const port = Number(process.env.OFFLINE_SMOKE_PORT || 3210);
 const baseUrl = `http://127.0.0.1:${port}`;
@@ -15,7 +21,6 @@ const child = spawn(process.execPath, ['dist/src/main.js'], {
         BOT_POLLING_ENABLED: 'false',
         MAX_BOT_TOKEN: '',
         SERVE_BUILT_UI: 'true',
-        ENABLE_LEGACY_UI: 'false',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -99,7 +104,7 @@ async function ensureSmokeAdmin() {
     const database = new pg.Client({
         host: process.env.TEST_DB_HOST || process.env.DB_HOST,
         port: Number(process.env.TEST_DB_PORT || process.env.DB_PORT),
-        database: process.env.TEST_DB_NAME,
+        database: testDatabase,
         user: process.env.TEST_DB_USER || process.env.DB_USER,
         password: process.env.TEST_DB_PASS || process.env.DB_PASS,
     });
@@ -107,8 +112,8 @@ async function ensureSmokeAdmin() {
     try {
         const admin = (
             await database.query(
-                `INSERT INTO admin_users (login, "displayName", "passwordHash", role, "isActive")
-                 VALUES ($1, 'CI Smoke Admin', $2, 'admin', true)
+                `INSERT INTO admin_users (login, "displayName", "passwordHash", "isActive")
+                 VALUES ($1, 'CI Smoke Admin', $2, true)
                  ON CONFLICT (login) DO UPDATE
                  SET "passwordHash" = EXCLUDED."passwordHash", "isActive" = true
                  RETURNING id`,
