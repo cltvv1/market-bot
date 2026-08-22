@@ -287,9 +287,12 @@ Final local results:
 - lint ratchet: passed; no new violations, existing debt 932 errors/10 warnings.
 
 GitHub Actions passed `Quality`, `Production builds`, and
-`PostgreSQL, tests, and offline smoke` on implementation head `577219e`; the
-GitGuardian check also passed. The report-only final commit is required to pass
-the same hosted checks before the PR is considered ready for review.
+`PostgreSQL, tests, and offline smoke` on implementation head `577219e` and
+again on the report-only final head `e59c8bc`; the GitGuardian check also
+passed. The final PR run was
+[32565416411](https://github.com/cltvv1/market-bot/actions/runs/32565416411)
+and the matching push run was
+[32565414452](https://github.com/cltvv1/market-bot/actions/runs/32565414452).
 
 The first e2e invocation exposed that `setup-e2e.ts` inherited local messenger
 tokens and attempted Telegram/MAX polling. It sent no business message, failed
@@ -350,5 +353,5 @@ Items deliberately kept for future packages:
 **PASS — active legacy behavior and legacy data model were removed.**
 
 The clean database, canonical flows, zero schema drift, absent discarded
-tables/routes, hosted implementation CI and temporary-backup deletion were all
-proved. The final docs-only commit remains subject to the same hosted PR gate.
+tables/routes, hosted CI for the final report head and temporary-backup deletion
+were all proved.

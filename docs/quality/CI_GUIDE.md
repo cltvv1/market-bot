@@ -40,7 +40,7 @@ $env:DB_USER = "user"
 $env:DB_PASS = "pass"
 $env:TEST_DB_HOST = "localhost"
 $env:TEST_DB_PORT = "5432"
-$env:TEST_DB_NAME = "vitma_e0_test"
+$env:TEST_DB_NAME = "vitma_test"
 $env:TEST_DB_USER = "user"
 $env:TEST_DB_PASS = "pass"
 $env:FILE_STORAGE_ROOT = "$env:TEMP\vitma-ci-storage"
@@ -134,17 +134,21 @@ Known non-blocking debt:
 
 ## How to inspect a duplicate route in code
 
-For `POST /api/client/service-requests/start`:
+For `POST /api/client/service-requests/drafts`:
 
 1. Controller prefix and method decorator:
+   `ServiceRequestsController.createDraft` in
    `src/service-requests/service-requests.controller.ts`.
-2. Authentication: controller-level `WebSessionGuard`.
-3. Input contract: `ServiceRequestStartDto` in
-   `src/client/dto/client-api.dto.ts`.
-4. Application call: `ServiceRequestsService.start`.
+2. Authentication: the controller has a class-level `@UseGuards(WebSessionGuard)`.
+3. Input contract: `CreateServiceRequestDraftDto` in
+   `src/service-requests/dto/canonical-service-request.dto.ts`.
+4. Application call: `ServiceRequestsService.createWebDraft`.
 5. Ownership regression:
-   `test/service-request-routes.integration-spec.ts` reads Nest route metadata.
-6. Frontend caller: `client-ui/src/services/client.ts`.
+   `test/service-request-routes.integration-spec.ts` reads Nest route metadata
+   and asserts that this method/path is owned exactly once by
+   `ServiceRequestsController`.
+6. Frontend caller: `serviceRequestService.create` in
+   `client-ui/src/services/client.ts`.
 
 The same traversal works for every endpoint: URL decorator, guard, DTO, service,
 route inventory test, then caller.
