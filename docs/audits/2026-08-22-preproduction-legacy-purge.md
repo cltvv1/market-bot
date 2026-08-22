@@ -11,8 +11,8 @@ replaced by one reviewed initial migration.
 The clean contract was proved locally with fresh development/test databases,
 bootstrap and health checks, repeatable migrations, schema-drift checks,
 canonical workflow tests, production builds and an isolated backup/restore
-drill. Hosted draft-PR CI is still pending at the time of this initial report;
-the verdict remains `FAIL` until that final gate is green.
+drill. All hosted draft-PR checks passed on the implementation head, and the
+temporary insurance backup was verified again and deleted.
 
 ## 2. Baseline SHA
 
@@ -207,7 +207,9 @@ A temporary insurance set was created outside the repository at
 `%TEMP%/vitma-preproduction-purge-20260822-160246`: PostgreSQL custom dump,
 storage archive, old-backups archive and SHA-256 manifest. Its restore matched
 36 tables and 54 total rows, and all 12 storage plus 6 backup files matched
-size/hash. It remains intentionally present until hosted CI is green.
+size/hash. After hosted CI passed, all four top-level artifacts were verified
+again by size/SHA-256 and the complete temporary set was deleted. A follow-up
+filesystem check confirmed that no matching insurance directory remains.
 
 ## 15. Preserved canonical components
 
@@ -277,12 +279,17 @@ Results:
 
 ## 20. Unit, integration and e2e
 
-Latest completed local results before the final post-documentation rerun:
+Final local results:
 
 - unit: 20 suites, 93 tests passed;
 - integration: 8 suites, 56 tests passed;
 - e2e: 2 suites, 7 tests passed;
 - lint ratchet: passed; no new violations, existing debt 932 errors/10 warnings.
+
+GitHub Actions passed `Quality`, `Production builds`, and
+`PostgreSQL, tests, and offline smoke` on implementation head `577219e`; the
+GitGuardian check also passed. The report-only final commit is required to pass
+the same hosted checks before the PR is considered ready for review.
 
 The first e2e invocation exposed that `setup-e2e.ts` inherited local messenger
 tokens and attempted Telegram/MAX polling. It sent no business message, failed
@@ -331,16 +338,17 @@ Items deliberately kept for future packages:
 
 ## 24. Limitations
 
-- no real Telegram, MAX, ATOL or OFD functional call was used as verification;
+- no live Telegram, MAX, ATOL or OFD provider was used for successful
+  functional verification; the unintended first-e2e polling attempt is
+  disclosed in section 20 and the test boundary is fixed;
 - no production migration drill was applicable because production does not
   exist;
-- hosted GitHub Actions results and final insurance-backup deletion are pending;
 - Git history retains old implementation files and archived reports by design.
 
 ## 25. Verdict
 
-**FAIL — clean local baseline is proved, but hosted draft-PR CI has not yet
-completed.**
+**PASS — active legacy behavior and legacy data model were removed.**
 
-This section must be changed to `PASS` only after all mandatory hosted jobs are
-green and the temporary insurance backup has been deleted and verified absent.
+The clean database, canonical flows, zero schema drift, absent discarded
+tables/routes, hosted implementation CI and temporary-backup deletion were all
+proved. The final docs-only commit remains subject to the same hosted PR gate.
