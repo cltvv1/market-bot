@@ -10,18 +10,20 @@ import {
 } from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
-import { RegistrationType } from '../registration.types';
 import type {
     OfdProvisionMode,
     RegistrationReadiness,
 } from '../registration.types';
 import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 
-export type RegistrationRequestStatus = 'new' | 'in_work' | 'processed';
+export type RegistrationRequestStatus =
+    | 'draft'
+    | 'new'
+    | 'in_work'
+    | 'processed';
 export type RegistrationRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 @Entity('registration_requests')
-@Index('IDX_registration_photo_file', ['equipmentPhotoFileId'])
 @Index('IDX_registration_pdf_file', ['pdfFileId'])
 export class RegistrationRequestEntity {
     @PrimaryGeneratedColumn()
@@ -38,13 +40,6 @@ export class RegistrationRequestEntity {
 
     @Column({ nullable: true })
     organizationId: number;
-
-    @Column({
-        type: 'enum',
-        enum: RegistrationType,
-        default: RegistrationType.REGISTRATION,
-    })
-    type: RegistrationType;
 
     @Column({ default: 1 })
     currentStep: number;
@@ -103,22 +98,6 @@ export class RegistrationRequestEntity {
     @Column({ nullable: true })
     ofd: string;
 
-    @Column({ type: 'varchar', nullable: true })
-    equipmentPhotoPath: string | null;
-
-    @Column({ type: 'varchar', nullable: true })
-    equipmentPhotoName: string | null;
-
-    @Column({ type: 'integer', nullable: true })
-    equipmentPhotoFileId: number | null;
-
-    @ManyToOne(() => StoredFileEntity, { nullable: true, onDelete: 'SET NULL' })
-    @JoinColumn({
-        name: 'equipmentPhotoFileId',
-        foreignKeyConstraintName: 'FK_registration_photo_file',
-    })
-    equipmentPhotoFile: StoredFileEntity | null;
-
     @Column({ type: 'integer', nullable: true })
     equipmentKitId: number | null;
 
@@ -144,26 +123,11 @@ export class RegistrationRequestEntity {
     @Column({ type: 'timestamp', nullable: true })
     handedOffAt: Date | null;
 
-    @Column({ default: false })
-    isFilled: boolean;
-
-    @Column({ nullable: true })
-    pdfLink: string;
-
-    @Column({ default: false })
-    isStopped: boolean;
-
-    @Column({ default: false })
-    isProcessed: boolean;
-
-    @Column({ type: 'varchar', default: 'new' })
+    @Column({ type: 'varchar', default: 'draft' })
     status: RegistrationRequestStatus;
 
     @Column({ type: 'varchar', default: 'normal' })
     priority: RegistrationRequestPriority;
-
-    @Column({ nullable: true })
-    pdfPath: string;
 
     @Column({ type: 'integer', nullable: true })
     pdfFileId: number | null;

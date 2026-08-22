@@ -35,7 +35,6 @@ describe('KKT registration readiness on PostgreSQL', () => {
             login: 'registration-operator',
             displayName: 'Registration Operator',
             passwordHash: 'synthetic',
-            role: 'operator',
             isActive: true,
         });
         staffId = staff.id;
@@ -48,7 +47,6 @@ describe('KKT registration readiness on PostgreSQL', () => {
                 chatId: 'web-registration-owner',
                 platform: 'web',
                 currentStep: 99,
-                isFilled: true,
                 status: 'new',
                 priority: 'normal',
                 ofdProvisionMode: 'clarification_required',

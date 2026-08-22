@@ -56,7 +56,7 @@ if (regressions.length) {
 }
 
 process.stdout.write(
-    'No lint violations were added relative to the reviewed legacy baseline.\n',
+    'No lint violations were added relative to the reviewed Stage 0 baseline.\n',
 );
 printTotals(current);
 
@@ -78,7 +78,7 @@ function summarize(entries) {
         if (Object.keys(rules).length) files[relative] = rules;
     }
     return {
-        generatedFrom: 'reviewed E0-13 legacy baseline',
+        generatedFrom: 'reviewed E0-13 Stage 0 baseline',
         errors,
         warnings,
         files,

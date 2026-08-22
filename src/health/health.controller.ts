@@ -1,11 +1,7 @@
-import {
-    Controller,
-    Get,
-    ServiceUnavailableException,
-} from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
-const EXPECTED_MIGRATION = 'SecurityFoundation1785079000000';
+const EXPECTED_MIGRATION = 'InitialPreproductionBaseline1787388476982';
 
 @Controller('health')
 export class HealthController {

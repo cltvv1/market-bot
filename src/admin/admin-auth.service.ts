@@ -13,7 +13,10 @@ import { DataSource, IsNull, MoreThan, Repository } from 'typeorm';
 import { getPermissions } from './admin.permissions';
 import type { AdminPrincipal } from './admin-auth.types';
 import { AdminSessionEntity } from './entities/admin-session.entity';
-import { AdminUserRoleEntity, AdminRole } from './entities/admin-user-role.entity';
+import {
+    AdminUserRoleEntity,
+    AdminRole,
+} from './entities/admin-user-role.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
 import {
     assertStrongPassword,
@@ -53,8 +56,7 @@ export class AdminAuthService implements OnApplicationBootstrap {
     }
 
     getSessionTtlMs() {
-        const hours =
-            this.config.get<number>('ADMIN_SESSION_TTL_HOURS') ?? 12;
+        const hours = this.config.get<number>('ADMIN_SESSION_TTL_HOURS') ?? 12;
         return hours * 60 * 60 * 1000;
     }
 
@@ -163,9 +165,6 @@ export class AdminAuthService implements OnApplicationBootstrap {
                     login,
                     displayName: input.displayName.trim(),
                     passwordHash: createPasswordHash(input.password),
-                    role: normalizedRoles.includes('superadmin')
-                        ? 'admin'
-                        : 'operator',
                     isActive: true,
                 }),
             );
@@ -197,16 +196,15 @@ export class AdminAuthService implements OnApplicationBootstrap {
 
         await this.dataSource.transaction(async (manager) => {
             await manager.getRepository(AdminUserRoleEntity).delete({ userId });
-            await manager.getRepository(AdminUserRoleEntity).save(
-                roles.map((role) =>
-                    manager
-                        .getRepository(AdminUserRoleEntity)
-                        .create({ userId, role }),
-                ),
-            );
-            await manager.getRepository(AdminUserEntity).update(userId, {
-                role: roles.includes('superadmin') ? 'admin' : 'operator',
-            });
+            await manager
+                .getRepository(AdminUserRoleEntity)
+                .save(
+                    roles.map((role) =>
+                        manager
+                            .getRepository(AdminUserRoleEntity)
+                            .create({ userId, role }),
+                    ),
+                );
         });
         return this.getStaff(userId);
     }

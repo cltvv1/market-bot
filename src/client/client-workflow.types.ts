@@ -9,11 +9,15 @@ export interface ClientIdentity {
 }
 
 export interface ClientFlowResult<T = unknown> {
-    status: 'started' | 'continued' | 'completed' | 'not_found' | 'already_open';
+    status:
+        | 'started'
+        | 'continued'
+        | 'completed'
+        | 'not_found'
+        | 'already_open';
     message: string;
     nextField?: string;
     data?: T;
-    filePath?: string;
     fileId?: number;
 }
 

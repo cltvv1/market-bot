@@ -1,8 +1,6 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import PdfPrinter from 'pdfmake';
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { RegistrationRequestEntity } from '../registrations/entities/registration.entity';
 import { RegistrationFieldEntity } from '../registrations/entities/registration-field.entity';
 
@@ -23,12 +21,7 @@ interface RegistrationPdfRequirement {
 
 @Injectable()
 export class PdfGeneratorService {
-    private readonly pdfDir: string;
     private readonly fontsDir = path.join(process.cwd(), 'src', 'pdf', 'fonts');
-
-    constructor(private configService: ConfigService) {
-        this.pdfDir = this.configService.get<string>('PDF_DIR')!;
-    }
 
     private fonts = {
         Roboto: {
@@ -46,7 +39,7 @@ export class PdfGeneratorService {
             draft?: boolean;
             requirements?: RegistrationPdfRequirement[];
         },
-    ): Promise<string> {
+    ): Promise<Buffer> {
         const printer = new PdfPrinter(this.fonts);
 
         const tableBody = [
@@ -146,30 +139,11 @@ export class PdfGeneratorService {
 
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
 
-        const outputDir = path.join(process.cwd(), this.pdfDir);
-        await fs.promises.mkdir(outputDir, { recursive: true });
-        const filePath = path.join(outputDir, `registration_${request.id}.pdf`);
-        const writeStream = fs.createWriteStream(filePath);
-
-        pdfDoc.pipe(writeStream);
-        pdfDoc.end();
-
-        await new Promise<void>((resolve, reject) => {
-            writeStream.on('finish', () => resolve());
-            writeStream.on('error', reject);
-            pdfDoc.on('error', reject);
-        });
-
-        return filePath;
+        return this.toBuffer(pdfDoc as NodeJS.ReadableStream & { end(): void });
     }
 
-    async generateAtolConsentPdf(consent: AtolConsentPdfData): Promise<string> {
+    async generateAtolConsentPdf(consent: AtolConsentPdfData): Promise<Buffer> {
         const printer = new PdfPrinter(this.fonts);
-        const dir = path.resolve(
-            process.cwd(),
-            this.configService.get<string>('CONSENT_DIR') ?? 'storage/consents',
-        );
-        await fs.promises.mkdir(dir, { recursive: true });
 
         const today = new Date();
         const day = String(today.getDate()).padStart(2, '0');
@@ -295,19 +269,7 @@ export class PdfGeneratorService {
         };
 
         const pdfDoc = printer.createPdfKitDocument(docDefinition);
-        const filePath = path.join(dir, `atol_consent_${consent.id}.pdf`);
-        const writeStream = fs.createWriteStream(filePath);
-
-        pdfDoc.pipe(writeStream);
-        pdfDoc.end();
-
-        await new Promise<void>((resolve, reject) => {
-            writeStream.on('finish', () => resolve());
-            writeStream.on('error', reject);
-            pdfDoc.on('error', reject);
-        });
-
-        return filePath;
+        return this.toBuffer(pdfDoc as NodeJS.ReadableStream & { end(): void });
     }
 
     private getRussianMonthGenitive(date: Date) {
@@ -344,5 +306,17 @@ export class PdfGeneratorService {
             ],
             width: 210,
         };
+    }
+
+    private toBuffer(pdfDoc: NodeJS.ReadableStream & { end(): void }) {
+        return new Promise<Buffer>((resolve, reject) => {
+            const chunks: Buffer[] = [];
+            pdfDoc.on('data', (chunk: Buffer | Uint8Array) => {
+                chunks.push(Buffer.from(chunk));
+            });
+            pdfDoc.on('end', () => resolve(Buffer.concat(chunks)));
+            pdfDoc.on('error', reject);
+            pdfDoc.end();
+        });
     }
 }

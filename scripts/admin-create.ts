@@ -80,7 +80,9 @@ async function main() {
             (await readHiddenPassword('Password: '));
 
         if (!/^[a-z0-9][a-z0-9._-]{2,63}$/.test(login)) {
-            throw new Error('Login must contain 3-64 lowercase ASCII characters');
+            throw new Error(
+                'Login must contain 3-64 lowercase ASCII characters',
+            );
         }
         if (displayName.length < 2 || displayName.length > 120) {
             throw new Error('Display name must contain 2-120 characters');
@@ -101,7 +103,6 @@ async function main() {
                     login,
                     displayName,
                     passwordHash: createPasswordHash(password),
-                    role: 'admin',
                     isActive: true,
                 }),
             );

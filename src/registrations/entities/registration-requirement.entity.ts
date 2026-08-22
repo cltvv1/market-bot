@@ -32,7 +32,7 @@ import type {
 )
 @Check(
     'CK_registration_requirement_source',
-    `"source" IS NULL OR "source" IN ('internal_registry','customer_input','customer_photo','sold_by_vitma','operator_input','external_system','legacy')`,
+    `"source" IS NULL OR "source" IN ('internal_registry','customer_input','customer_photo','sold_by_vitma','operator_input','external_system')`,
 )
 export class RegistrationRequirementEntity {
     @PrimaryGeneratedColumn() id: number;

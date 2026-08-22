@@ -26,18 +26,6 @@ export class UserEntity {
     @Column({ type: 'timestamp', nullable: true })
     lastSeenAt: Date;
 
-    @Column({ default: true })
-    sendNews: boolean;
-
-    @Column({ default: true })
-    sendImportant: boolean;
-
-    @Column({ default: false })
-    isAdmin: boolean;
-
-    @Column({ default: false })
-    isOperator: boolean;
-    
     @Column({ type: 'varchar', nullable: true })
     talkingTo: string | null;
 }

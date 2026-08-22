@@ -1,8 +1,8 @@
-import * as fs from 'fs';
 import * as path from 'path';
-import { Injectable, Optional } from '@nestjs/common';
+import { Readable } from 'node:stream';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 
 import { RegistrationRequestEntity } from './entities/registration.entity';
 import { RegistrationFieldEntity } from './entities/registration-field.entity';
@@ -29,9 +29,8 @@ export class RegistrationsService {
         private readonly pdfService: PdfGeneratorService,
         private usersService: UsersService,
         private readonly adminNotificationsService: AdminNotificationsService,
-        private readonly filesService?: FilesService,
-        @Optional()
-        private readonly readinessService?: RegistrationReadinessService,
+        private readonly filesService: FilesService,
+        private readonly readinessService: RegistrationReadinessService,
     ) {}
 
     async getAllRegs() {
@@ -39,16 +38,16 @@ export class RegistrationsService {
     }
 
     async getNotFilledReg(chatId: string, platform: UserPlatform = 'telegram') {
-        let reg = await this.registrationRepo.findOne({
-            where: { chatId, platform, isFilled: false },
+        const reg = await this.registrationRepo.findOne({
+            where: { chatId, platform, status: 'draft' },
         });
 
         return reg;
     }
 
-    async getRegistrationById(regId) {
-        let reg = await this.registrationRepo.findOne({
-            where: { id: regId, isProcessed: false },
+    async getRegistrationById(regId: number) {
+        const reg = await this.registrationRepo.findOne({
+            where: { id: regId, status: Not('processed') },
         });
 
         return reg;
@@ -66,10 +65,10 @@ export class RegistrationsService {
             userId,
             organizationId,
             currentStep: 2,
-            isFilled: false,
+            status: 'draft',
         });
         await this.registrationRepo.save(reg);
-        await this.readinessService?.initialize(reg.id);
+        await this.readinessService.initialize(reg.id);
 
         return reg;
     }
@@ -110,40 +109,20 @@ export class RegistrationsService {
         const field = await this.getFieldNameByStep(reg.currentStep);
         if (field !== 'equipmentPhoto') return reg;
 
-        if (!this.filesService) {
-            throw new Error('File storage is unavailable');
-        }
-        const evidence = this.readinessService
-            ? await this.readinessService.uploadEvidence(
-                  {
-                      chatId: reg.chatId,
-                      platform: reg.platform,
-                      userId: reg.userId ?? undefined,
-                  },
-                  reg.id,
-                  'kkt_serial',
-                  {
-                      buffer: input.buffer,
-                      fileName: input.fileName,
-                      mimeType: this.imageMime(input.fileName),
-                  },
-              )
-            : {
-                  storedFileId: (
-                      await this.filesService.saveBuffer({
-                          purpose: 'registration-photo',
-                          buffer: input.buffer,
-                          originalName: input.fileName,
-                          mimeType: this.imageMime(input.fileName),
-                          createdByCustomerId: reg.userId ?? undefined,
-                          metadata: { registrationId: reg.id },
-                      })
-                  ).id,
-              };
-
-        reg.equipmentPhotoPath = null;
-        reg.equipmentPhotoName = input.fileName || 'equipment-photo';
-        reg.equipmentPhotoFileId = evidence.storedFileId;
+        await this.readinessService.uploadEvidence(
+            {
+                chatId: reg.chatId,
+                platform: reg.platform,
+                userId: reg.userId ?? undefined,
+            },
+            reg.id,
+            'kkt_serial',
+            {
+                buffer: input.buffer,
+                fileName: input.fileName,
+                mimeType: this.imageMime(input.fileName),
+            },
+        );
         reg.currentStep++;
         await this.registrationRepo.save(reg);
         return reg;
@@ -214,99 +193,74 @@ export class RegistrationsService {
 
     async getActualRegs() {
         return this.registrationRepo.find({
-            where: { isProcessed: false, isFilled: true },
+            where: { status: In(['new', 'in_work']) },
             order: { createdAt: 'ASC' },
         });
     }
 
     async finishReg(reg: RegistrationRequestEntity) {
-        await this.readinessService?.initialize(reg.id);
-        const readiness = this.readinessService
-            ? await this.readinessService.details(reg.id)
-            : null;
+        await this.readinessService.initialize(reg.id);
+        const readiness = await this.readinessService.details(reg.id);
         const fields = await this.fieldsRepo.find();
-        const pdfPath = await this.pdfService.generateRegistrationPdf(
-            reg,
-            fields,
-            {
+        const pdf = await this.pdfService.generateRegistrationPdf(reg, fields, {
+            draft: true,
+            requirements: readiness.requirements,
+        });
+        const storedPdf = await this.filesService.saveBuffer({
+            purpose: 'generated-pdf',
+            buffer: pdf,
+            originalName: `registration_${reg.id}.pdf`,
+            mimeType: 'application/pdf',
+            serverGenerated: true,
+            metadata: {
+                registrationId: reg.id,
                 draft: true,
-                requirements: readiness?.requirements,
+                final: false,
             },
-        );
-        const storedPdf =
-            this.filesService && fs.existsSync(pdfPath)
-                ? await this.filesService.saveBuffer({
-                      purpose: 'generated-pdf',
-                      buffer: await fs.promises.readFile(pdfPath),
-                      originalName: `registration_${reg.id}.pdf`,
-                      mimeType: 'application/pdf',
-                      serverGenerated: true,
-                      metadata: {
-                          registrationId: reg.id,
-                          draft: true,
-                          final: false,
-                      },
-                  })
-                : null;
+        });
 
-        reg.pdfPath = pdfPath;
-        reg.pdfFileId = storedPdf?.id ?? null;
-        reg.isFilled = true;
+        reg.pdfFileId = storedPdf.id;
+        reg.status = 'new';
         await this.registrationRepo.save(reg);
 
-        return pdfPath;
+        return pdf;
     }
 
     async getReadinessDetails(id: number) {
-        if (!this.readinessService)
-            throw new Error('Registration readiness is unavailable');
         return this.readinessService.details(id);
     }
 
     async generateFinalPdf(id: number) {
-        if (!this.readinessService)
-            throw new Error('Registration readiness is unavailable');
         const details = await this.readinessService.details(id);
         if (details.registration.readiness !== 'ready') {
             throw new Error('Registration is not ready for final PDF');
         }
-        if (this.filesService && details.registration.pdfFileId) {
+        if (details.registration.pdfFileId) {
             const existing = await this.filesService.get(
                 details.registration.pdfFileId,
             );
-            if (
-                existing?.metadata?.final === true &&
-                details.registration.pdfPath &&
-                fs.existsSync(details.registration.pdfPath)
-            ) {
-                return details.registration.pdfPath;
-            }
+            if (existing?.metadata?.final === true) return existing;
         }
         const fields = await this.fieldsRepo.find();
-        const pdfPath = await this.pdfService.generateRegistrationPdf(
+        const pdf = await this.pdfService.generateRegistrationPdf(
             details.registration,
             fields,
             { draft: false, requirements: details.requirements },
         );
-        if (!this.filesService || !fs.existsSync(pdfPath)) return pdfPath;
         const stored = await this.filesService.saveBuffer({
             purpose: 'generated-pdf',
-            buffer: await fs.promises.readFile(pdfPath),
+            buffer: pdf,
             originalName: `registration_${id}_final.pdf`,
             mimeType: 'application/pdf',
             serverGenerated: true,
             metadata: { registrationId: id, final: true },
         });
-        details.registration.pdfPath = pdfPath;
         details.registration.pdfFileId = stored.id;
         await this.registrationRepo.save(details.registration);
-        return pdfPath;
+        return stored;
     }
 
-    async notifyAdminsAboutNewReg(
-        reg: RegistrationRequestEntity,
-        filePath: string,
-    ) {
+    async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, pdf: Buffer) {
         const regAuthor = await this.usersService.getOrCreateOrUpdate(
             reg.chatId,
             undefined,
@@ -317,7 +271,7 @@ export class RegistrationsService {
 
         await this.adminNotificationsService.notify('registrations', message);
         await this.adminNotificationsService.notifyDocument('registrations', {
-            sourceFactory: () => fs.createReadStream(filePath),
+            sourceFactory: () => Readable.from(pdf),
             filename: `${reg.orgName}.pdf`,
         });
     }
@@ -327,13 +281,8 @@ export class RegistrationsService {
         await this.adminNotificationsService.notify('registrations', message);
     }
 
-    async doReg(reg: RegistrationRequestEntity, staffId?: number) {
-        if (this.readinessService && staffId) {
-            return this.readinessService.handoff(reg.id, staffId);
-        }
-        reg.isProcessed = true;
-        await this.registrationRepo.save(reg);
-        return reg;
+    async doReg(reg: RegistrationRequestEntity, staffId: number) {
+        return this.readinessService.handoff(reg.id, staffId);
     }
 
     private isRegistrationField(value: string): value is RegistrationField {

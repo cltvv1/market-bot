@@ -43,14 +43,13 @@ describe('UiServingService', () => {
         const service = createService({
             NODE_ENV: 'production',
             SERVE_BUILT_UI: true,
-            ENABLE_LEGACY_UI: false,
         });
 
         service.onModuleInit();
 
         expect(service.getMode()).toBe('built');
-        expect(service.getEntryHtml('admin', 'legacy')).toContain('index.html');
-        expect(service.getEntryHtml('site', 'legacy')).toContain('index.html');
+        expect(service.getEntryHtml('admin')).toContain('index.html');
+        expect(service.getEntryHtml('site')).toContain('index.html');
     });
 
     it('fails production startup when the client build is missing', () => {
@@ -58,7 +57,6 @@ describe('UiServingService', () => {
             {
                 NODE_ENV: 'production',
                 SERVE_BUILT_UI: true,
-                ENABLE_LEGACY_UI: false,
             },
             true,
             false,
@@ -74,7 +72,6 @@ describe('UiServingService', () => {
             {
                 NODE_ENV: 'production',
                 SERVE_BUILT_UI: true,
-                ENABLE_LEGACY_UI: false,
             },
             false,
             true,
@@ -90,7 +87,6 @@ describe('UiServingService', () => {
             {
                 NODE_ENV: 'development',
                 SERVE_BUILT_UI: false,
-                ENABLE_LEGACY_UI: false,
             },
             false,
             false,
@@ -99,39 +95,8 @@ describe('UiServingService', () => {
         service.onModuleInit();
 
         expect(service.getMode()).toBe('disabled');
-        expect(() => service.getEntryHtml('site', 'legacy')).toThrow(
+        expect(() => service.getEntryHtml('site')).toThrow(
             /Built UI serving is disabled/,
-        );
-    });
-
-    it('allows legacy HTML only when explicitly enabled in development', () => {
-        const service = createService(
-            {
-                NODE_ENV: 'development',
-                SERVE_BUILT_UI: false,
-                ENABLE_LEGACY_UI: true,
-            },
-            false,
-            false,
-        );
-
-        service.onModuleInit();
-
-        expect(service.getMode()).toBe('legacy');
-        expect(service.getEntryHtml('admin', 'legacy-admin')).toBe(
-            'legacy-admin',
-        );
-    });
-
-    it('rejects legacy HTML in production', () => {
-        const service = createService({
-            NODE_ENV: 'production',
-            SERVE_BUILT_UI: false,
-            ENABLE_LEGACY_UI: true,
-        });
-
-        expect(() => service.onModuleInit()).toThrow(
-            /ENABLE_LEGACY_UI is forbidden in production/,
         );
     });
 });

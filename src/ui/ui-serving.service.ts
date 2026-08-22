@@ -2,7 +2,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
     Injectable,
-    Logger,
     NotFoundException,
     OnModuleInit,
     ServiceUnavailableException,
@@ -10,22 +9,16 @@ import {
 import { ConfigService } from '@nestjs/config';
 
 export type UiApplication = 'admin' | 'site';
-export type UiServingMode = 'built' | 'legacy' | 'disabled';
+export type UiServingMode = 'built' | 'disabled';
 
 @Injectable()
 export class UiServingService implements OnModuleInit {
-    private readonly logger = new Logger(UiServingService.name);
     private mode?: UiServingMode;
 
     constructor(private readonly config: ConfigService) {}
 
     onModuleInit() {
         this.mode = this.resolveMode();
-        if (this.mode === 'legacy') {
-            this.logger.warn(
-                'Legacy HTML UI is explicitly enabled for development',
-            );
-        }
     }
 
     getMode(): UiServingMode {
@@ -33,9 +26,8 @@ export class UiServingService implements OnModuleInit {
         return this.mode;
     }
 
-    getEntryHtml(application: UiApplication, legacyHtml: string) {
+    getEntryHtml(application: UiApplication) {
         const mode = this.getMode();
-        if (mode === 'legacy') return legacyHtml;
         if (mode === 'disabled') {
             throw new ServiceUnavailableException(
                 'Built UI serving is disabled. Run the Vite development server or set SERVE_BUILT_UI=true after building the UI.',
@@ -60,17 +52,6 @@ export class UiServingService implements OnModuleInit {
         const environment =
             this.config.get<string>('NODE_ENV') ?? 'development';
         const serveBuilt = this.config.get<boolean>('SERVE_BUILT_UI') ?? false;
-        const enableLegacy =
-            this.config.get<boolean>('ENABLE_LEGACY_UI') ?? false;
-
-        if (serveBuilt && enableLegacy) {
-            throw new Error(
-                'SERVE_BUILT_UI and ENABLE_LEGACY_UI cannot both be enabled',
-            );
-        }
-        if (environment === 'production' && enableLegacy) {
-            throw new Error('ENABLE_LEGACY_UI is forbidden in production');
-        }
         if (environment === 'production' && !serveBuilt) {
             throw new Error('Production requires SERVE_BUILT_UI=true');
         }
@@ -87,7 +68,7 @@ export class UiServingService implements OnModuleInit {
             ]);
             return 'built';
         }
-        return enableLegacy ? 'legacy' : 'disabled';
+        return 'disabled';
     }
 
     private validateBuiltApplication(

@@ -1,4 +1,3 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
     BadRequestException,
@@ -241,27 +240,20 @@ export class ClientApiController {
             this.identity(session),
             Number(params.id),
         );
-        if (message.storedFileId) {
-            const { file, stream } = await this.filesService.open(
-                message.storedFileId,
-            );
-            response.setHeader('Content-Type', file.mimeType);
-            response.setHeader(
-                'Content-Disposition',
-                `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
-            );
-            response.setHeader('Cache-Control', 'private, no-store');
-            response.setHeader('X-Content-Type-Options', 'nosniff');
-            stream.pipe(response);
-            return;
-        }
-        if (!message.localPath || !fs.existsSync(message.localPath)) {
+        if (!message.storedFileId) {
             throw new BadRequestException('Ticket file was not found');
         }
-        return response.download(
-            message.localPath,
-            message.fileName || `ticket_message_${params.id}`,
+        const { file, stream } = await this.filesService.open(
+            message.storedFileId,
         );
+        response.setHeader('Content-Type', file.mimeType);
+        response.setHeader(
+            'Content-Disposition',
+            `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
+        );
+        response.setHeader('Cache-Control', 'private, no-store');
+        response.setHeader('X-Content-Type-Options', 'nosniff');
+        stream.pipe(response);
     }
 
     private identity(

@@ -19,11 +19,6 @@ export type RegistrationField =
     | 'ofd'
     | 'equipmentPhoto';
 
-export enum RegistrationType {
-    REGISTRATION = 'REGISTRATION',
-    FISCAL_REPLACEMENT = 'FISCAL_REPLACEMENT',
-}
-
 export const REGISTRATION_REQUIREMENT_KINDS = [
     'kkt_serial',
     'fiscal_drive_serial',
@@ -45,8 +40,7 @@ export type RegistrationDataSource =
     | 'customer_photo'
     | 'sold_by_vitma'
     | 'operator_input'
-    | 'external_system'
-    | 'legacy';
+    | 'external_system';
 
 export type OfdProvisionMode =
     | 'customer_has_code'

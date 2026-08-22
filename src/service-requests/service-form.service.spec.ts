@@ -125,7 +125,7 @@ describe('ServiceFormService', () => {
     });
 });
 
-describe('ServiceFormService ATOL compatibility', () => {
+describe('ServiceFormService published ATOL form', () => {
     const type = {
         id: 7,
         code: 'atol_consent',
@@ -136,7 +136,7 @@ describe('ServiceFormService ATOL compatibility', () => {
         serviceTypeId: type.id,
     } as ServiceFormDefinitionEntity;
 
-    it('keeps a published migrated ATOL form active', async () => {
+    it('keeps the published ATOL form active', async () => {
         const version = {
             id: 13,
             definitionId: definition.id,

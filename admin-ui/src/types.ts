@@ -48,7 +48,6 @@ export interface BaseItem {
 export interface Registration extends BaseItem {
     status?: string;
     priority?: Priority;
-    isProcessed?: boolean;
     orgName?: string;
     innKpp?: string;
     ogrn?: string;
@@ -67,9 +66,7 @@ export interface Registration extends BaseItem {
     taxSystem?: string;
     bankReqs?: string;
     ofd?: string;
-    pdfPath?: string;
-    equipmentPhotoPath?: string;
-    equipmentPhotoName?: string;
+    pdfFileId?: number;
     equipmentKitId?: number;
     ofdProvisionMode?: string;
     readiness?: string;
@@ -116,9 +113,8 @@ export interface TicketMessage extends BaseItem {
     sender: string;
     text?: string;
     messageType?: string;
-    localPath?: string;
-    externalUrl?: string;
-    fileName?: string;
+    storedFileId?: number;
+    storedFile?: { originalName?: string; mimeType: string };
 }
 
 // prettier-ignore
@@ -128,12 +124,13 @@ export interface ServiceRequest extends BaseItem {
   serviceTypeCode?: string;
   status: string;
   priority?: Priority;
-  responsibleOperatorId?: string;
-  executorName?: string;
+  responsibleOperatorStaffId?: number;
   assignedEngineerId?: number;
   operatorComment?: string;
   calculatedPrice?: number;
-  invoiceFileId?: string; paymentProofFileId?: number;
+  invoiceStoredFileId?: number;
+  paymentProofFileId?: number;
+  signedConsentFileId?: number;
   answers?: Record<string, unknown>;
   customerStatus?: string;
   source?: string;

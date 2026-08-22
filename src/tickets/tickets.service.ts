@@ -2,7 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TicketEntity } from './entities/ticket.entity';
-import { TicketMessageEntity, TicketMessageSender, TicketMessageSource, TicketMessageType } from './entities/ticket-message.entity';
+import {
+    TicketMessageEntity,
+    TicketMessageSender,
+    TicketMessageSource,
+    TicketMessageType,
+} from './entities/ticket-message.entity';
 import { UsersService } from 'src/users/users.service';
 import { formatTicket } from 'src/common/utils';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
@@ -21,7 +26,6 @@ export interface TicketMediaInput {
     mimeType?: string;
     fileSize?: number;
     externalUrl?: string;
-    localPath?: string;
     buffer?: Buffer;
 }
 
@@ -37,8 +41,8 @@ export class TicketsService {
         @Inject(MESSENGER_SERVICE)
         private messengerService: MessengerService,
         private readonly adminNotificationsService: AdminNotificationsService,
-        private readonly filesService?: FilesService,
-    ) { }
+        private readonly filesService: FilesService,
+    ) {}
 
     async createTicket(
         userChatId: string,
@@ -56,12 +60,18 @@ export class TicketsService {
             organizationId,
             username: username,
             name: name,
-            text: text
+            text: text,
         });
         const savedTicket = await this.ticketRepo.save(ticket);
 
         if (text?.trim()) {
-            await this.addMessage(savedTicket.id, 'user', text.trim(), userChatId, 'bot');
+            await this.addMessage(
+                savedTicket.id,
+                'user',
+                text.trim(),
+                userChatId,
+                'bot',
+            );
         }
 
         return savedTicket;
@@ -91,19 +101,27 @@ export class TicketsService {
         return this.ticketRepo.findOne({ where: { id } });
     }
 
-    async saveTicketText(chatId: string, value: string, platform: UserPlatform = 'telegram') {
+    async saveTicketText(
+        chatId: string,
+        value: string,
+        platform: UserPlatform = 'telegram',
+    ) {
         const ticket = await this.getActiveTicket(chatId, platform);
         if (!ticket) return null;
 
-        ticket.text = value
+        ticket.text = value;
 
         await this.ticketRepo.save(ticket);
         await this.addMessage(ticket.id, 'user', value, chatId, 'bot');
 
-        return ticket
+        return ticket;
     }
 
-    async saveTicketMedia(chatId: string, media: TicketMediaInput, platform: UserPlatform = 'telegram') {
+    async saveTicketMedia(
+        chatId: string,
+        media: TicketMediaInput,
+        platform: UserPlatform = 'telegram',
+    ) {
         const ticket = await this.getActiveTicket(chatId, platform);
         if (!ticket) return null;
 
@@ -119,12 +137,16 @@ export class TicketsService {
     getTicketMessages(ticketId: number) {
         return this.messagesRepo.find({
             where: { ticketId },
+            relations: { storedFile: true },
             order: { createdAt: 'ASC', id: 'ASC' },
         });
     }
 
     getTicketMessageById(id: number) {
-        return this.messagesRepo.findOne({ where: { id } });
+        return this.messagesRepo.findOne({
+            where: { id },
+            relations: { storedFile: true },
+        });
     }
 
     async addMessage(
@@ -153,14 +175,15 @@ export class TicketsService {
         authorId: string | null,
         source: TicketMessageSource = 'bot',
     ) {
-        const storedFile = media.buffer && this.filesService
-            ? await this.filesService.saveBuffer({
-                purpose: this.filePurpose(media.messageType),
-                buffer: media.buffer,
-                originalName: media.fileName,
-                mimeType: media.mimeType,
-            })
-            : null;
+        if (!media.buffer) {
+            throw new Error('Ticket media must be materialized before storage');
+        }
+        const storedFile = await this.filesService.saveBuffer({
+            purpose: this.filePurpose(media.messageType),
+            buffer: media.buffer,
+            originalName: media.fileName,
+            mimeType: media.mimeType,
+        });
         const message = this.messagesRepo.create({
             ticketId,
             sender,
@@ -168,14 +191,7 @@ export class TicketsService {
             source,
             messageType: media.messageType,
             text: media.text || this.formatMediaLabel(media),
-            fileId: media.fileId ?? null,
-            fileUniqueId: media.fileUniqueId ?? null,
-            fileName: media.fileName ?? null,
-            mimeType: media.mimeType ?? null,
-            fileSize: media.fileSize,
-            externalUrl: media.externalUrl ?? null,
-            localPath: media.localPath ?? null,
-            storedFileId: storedFile?.id ?? null,
+            storedFileId: storedFile.id,
         });
 
         return this.messagesRepo.save(message);
@@ -193,7 +209,10 @@ export class TicketsService {
         await this.adminNotificationsService.notify('tickets', message);
     }
 
-    async notifyOperatorsAboutTicketMessage(ticket: TicketEntity, text: string) {
+    async notifyOperatorsAboutTicketMessage(
+        ticket: TicketEntity,
+        text: string,
+    ) {
         await this.adminNotificationsService.notify('tickets', text);
     }
 
@@ -207,14 +226,17 @@ export class TicketsService {
             document: 'Документ',
         };
 
-        return media.fileName ? `${labels[media.messageType]}: ${media.fileName}` : labels[media.messageType];
+        return media.fileName
+            ? `${labels[media.messageType]}: ${media.fileName}`
+            : labels[media.messageType];
     }
 
     private filePurpose(messageType: TicketMessageType): FilePurpose {
         if (messageType === 'image') return 'ticket-image';
-        if (messageType === 'audio' || messageType === 'voice') return 'ticket-audio';
-        if (messageType === 'video' || messageType === 'video_note') return 'ticket-video';
+        if (messageType === 'audio' || messageType === 'voice')
+            return 'ticket-audio';
+        if (messageType === 'video' || messageType === 'video_note')
+            return 'ticket-video';
         return 'ticket-document';
     }
 }
-

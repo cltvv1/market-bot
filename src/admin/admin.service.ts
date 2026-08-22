@@ -1,4 +1,3 @@
-import * as fs from 'fs';
 import { Readable } from 'node:stream';
 import { randomBytes } from 'crypto';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
@@ -23,7 +22,6 @@ import { UserEntity } from 'src/users/entities/user.entity';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
-import { CanonicalServiceRequestsService } from 'src/service-requests/canonical-service-requests.service';
 import { ServiceRequestEntity } from 'src/service-requests/entities/service-request.entity';
 import type {
     ServiceRequestPriority,
@@ -71,7 +69,6 @@ export class AdminService {
         @InjectRepository(OrganizationContactEntity)
         private readonly organizationContactsRepo: Repository<OrganizationContactEntity>,
         private readonly serviceRequestsService: ServiceRequestsService,
-        private readonly canonicalServiceRequests: CanonicalServiceRequestsService,
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
         private readonly filesService: FilesService,
@@ -152,7 +149,7 @@ export class AdminService {
             await Promise.all([
                 permissions.has('registrations.read')
                     ? this.registrationsRepo.count({
-                          where: { isFilled: true, isProcessed: false },
+                          where: { status: In(['new', 'in_work']) },
                       })
                     : 0,
                 permissions.has('tickets.read')
@@ -183,20 +180,19 @@ export class AdminService {
         };
         const where =
             status === 'all'
-                ? commonWhere
+                ? [
+                      { ...commonWhere, status: 'new' as const },
+                      { ...commonWhere, status: 'in_work' as const },
+                      { ...commonWhere, status: 'processed' as const },
+                  ]
                 : status === 'processed'
-                  ? [
-                        {
-                            ...commonWhere,
-                            status: 'processed' as RegistrationRequestStatus,
-                        },
-                        { ...commonWhere, isProcessed: true },
-                    ]
+                  ? {
+                        ...commonWhere,
+                        status: 'processed' as RegistrationRequestStatus,
+                    }
                   : {
                         ...commonWhere,
                         status,
-                        isFilled: true,
-                        isProcessed: false,
                     };
 
         return this.registrationsRepo.find({
@@ -223,13 +219,17 @@ export class AdminService {
         };
         const where =
             status === 'all'
-                ? commonWhere
+                ? [
+                      { ...commonWhere, status: 'new' as const },
+                      { ...commonWhere, status: 'in_work' as const },
+                      { ...commonWhere, status: 'processed' as const },
+                  ]
                 : status === 'processed'
                   ? {
                         ...commonWhere,
                         status: 'processed' as RegistrationRequestStatus,
                     }
-                  : { ...commonWhere, status, isFilled: true };
+                  : { ...commonWhere, status };
         return this.registrationsRepo.find({
             where,
             order: { createdAt: 'DESC' },
@@ -288,7 +288,7 @@ export class AdminService {
     }
 
     getServiceRequest(id: number) {
-        return this.serviceRequestsService.getRequestDetails(id);
+        return this.serviceRequestsService.getAdminDetails(id);
     }
 
     async getServiceRequestDetailsForAdmin(admin: AdminPrincipal, id: number) {
@@ -302,21 +302,13 @@ export class AdminService {
                 );
             }
         }
-        const [legacy, canonical] = await Promise.all([
-            this.serviceRequestsService.getRequestDetails(id),
-            this.canonicalServiceRequests.getAdminDetails(id),
-        ]);
-        return {
-            ...legacy,
-            messages: canonical.messages,
-            attachments: canonical.attachments,
-        };
+        return this.serviceRequestsService.getAdminDetails(id);
     }
 
     async assignEngineer(
         id: number,
         assignedEngineerId: number,
-        operatorId: string,
+        operatorStaffId: number,
     ) {
         const engineer = await this.adminUsersRepo
             .createQueryBuilder('user')
@@ -338,72 +330,54 @@ export class AdminService {
             throw new BadRequestException('Service request was not found');
         }
         request.assignedEngineerId = engineer.id;
-        request.executorName = engineer.displayName;
         await this.serviceRequestsRepo.save(request);
         return this.serviceRequestsService.updateOperatorState(
             id,
-            { executorName: engineer.displayName },
-            operatorId,
+            {},
+            operatorStaffId,
         );
     }
 
     attachServiceRequestInvoice(
         id: number,
-        invoiceFileId: string,
-        invoiceFileName?: string,
-        operatorId = 'admin-panel',
-        invoiceStoredFileId?: number,
+        invoiceStoredFileId: number,
+        operatorStaffId: number,
     ) {
         return this.serviceRequestsService.attachInvoice(
             id,
-            invoiceFileId,
-            invoiceFileName,
-            operatorId,
             invoiceStoredFileId,
+            operatorStaffId,
         );
-    }
-
-    markServiceRequestPaymentReceived(id: number, operatorId = 'admin-panel') {
-        return this.serviceRequestsService.markPaymentReceived(id, operatorId);
     }
 
     scheduleServiceRequestVisit(
         id: number,
         visitAddress: string,
-        visitTime?: string,
-        operatorComment?: string,
-        operatorId = 'admin-panel',
+        visitTime: string | undefined,
+        operatorComment: string | undefined,
+        operatorStaffId: number,
     ) {
         return this.serviceRequestsService.scheduleVisit(
             id,
             visitAddress,
             visitTime,
             operatorComment,
-            operatorId,
+            operatorStaffId,
         );
-    }
-
-    completeServiceRequest(id: number, operatorId = 'admin-panel') {
-        return this.serviceRequestsService.complete(id, operatorId);
-    }
-
-    cancelServiceRequest(id: number, operatorId = 'admin-panel') {
-        return this.serviceRequestsService.cancel(id, operatorId);
     }
 
     updateServiceRequestOperatorState(
         id: number,
         input: {
             priority?: ServiceRequestPriority;
-            executorName?: string | null;
             operatorComment?: string | null;
         },
-        operatorId = 'admin-panel',
+        operatorStaffId: number,
     ) {
         return this.serviceRequestsService.updateOperatorState(
             id,
             input,
-            operatorId,
+            operatorStaffId,
         );
     }
 
@@ -669,7 +643,7 @@ export class AdminService {
     }
 
     async getServiceRequestDetails(id: number) {
-        const details = await this.serviceRequestsService.getRequestDetails(id);
+        const details = await this.serviceRequestsService.getAdminDetails(id);
         const context = details?.request
             ? await this.getCustomerContext({
                   userId: details.request.userId,
@@ -693,14 +667,6 @@ export class AdminService {
         return this.ticketMessagesRepo.findOne({ where: { id } });
     }
 
-    async processRegistration(id: number) {
-        await this.registrationsRepo.update(id, {
-            isProcessed: true,
-            status: 'processed',
-        });
-        return this.registrationsRepo.findOne({ where: { id } });
-    }
-
     async updateRegistrationOperatorState(
         id: number,
         input: {
@@ -710,7 +676,6 @@ export class AdminService {
     ) {
         const patch: {
             status?: RegistrationRequestStatus;
-            isProcessed?: boolean;
             priority?: RegistrationRequestPriority;
         } = {};
         if (input.status) {
@@ -720,7 +685,6 @@ export class AdminService {
                 );
             }
             patch.status = input.status;
-            patch.isProcessed = false;
         }
         if (input.priority) {
             patch.priority = input.priority;
@@ -767,8 +731,7 @@ export class AdminService {
         id: number,
         media: {
             messageType: Exclude<TicketMessageType, 'text'>;
-            localPath?: string;
-            buffer?: Buffer;
+            buffer: Buffer;
             fileName: string;
             mimeType?: string;
             fileSize?: number;
@@ -780,32 +743,25 @@ export class AdminService {
         if (!ticket) {
             return null;
         }
-        if (!media.buffer && !media.localPath) {
-            throw new BadRequestException('Ticket media content is required');
-        }
-        const storedFile = media.buffer
-            ? await this.filesService.saveBuffer({
-                  purpose:
-                      media.messageType === 'image'
-                          ? 'ticket-image'
-                          : media.messageType === 'video' ||
-                              media.messageType === 'video_note'
-                            ? 'ticket-video'
-                            : media.messageType === 'audio' ||
-                                media.messageType === 'voice'
-                              ? 'ticket-audio'
-                              : 'ticket-document',
-                  buffer: media.buffer,
-                  originalName: media.fileName,
-                  mimeType: media.mimeType,
-              })
-            : null;
+        const storedFile = await this.filesService.saveBuffer({
+            purpose:
+                media.messageType === 'image'
+                    ? 'ticket-image'
+                    : media.messageType === 'video' ||
+                        media.messageType === 'video_note'
+                      ? 'ticket-video'
+                      : media.messageType === 'audio' ||
+                          media.messageType === 'voice'
+                        ? 'ticket-audio'
+                        : 'ticket-document',
+            buffer: media.buffer,
+            originalName: media.fileName,
+            mimeType: media.mimeType,
+        });
 
         if (ticket.platform !== 'web') {
             const file = {
-                source: media.buffer
-                    ? Readable.from(media.buffer)
-                    : fs.createReadStream(media.localPath!),
+                source: Readable.from(media.buffer),
                 filename: media.fileName,
             };
             const options = {
@@ -836,11 +792,7 @@ export class AdminService {
                 source: 'admin-panel',
                 messageType: media.messageType,
                 text: media.text || media.fileName,
-                fileName: media.fileName,
-                mimeType: media.mimeType ?? null,
-                fileSize: media.fileSize,
-                localPath: media.localPath ?? null,
-                storedFileId: storedFile?.id ?? null,
+                storedFileId: storedFile.id,
             }),
         );
 

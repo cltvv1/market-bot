@@ -180,19 +180,6 @@ export class OrganizationAccessReviewDto {
     reviewComment?: string;
 }
 
-export class InvoiceReferenceDto {
-    @IsString()
-    @Transform(trim)
-    @MaxLength(2_000)
-    invoiceFileId: string;
-
-    @IsOptional()
-    @IsString()
-    @Transform(trim)
-    @MaxLength(255)
-    invoiceFileName?: string;
-}
-
 export class ScheduleServiceRequestDto {
     @IsString()
     @Transform(trim)
@@ -214,12 +201,6 @@ export class ServiceRequestOperatorStateDto {
     @IsOptional()
     @IsIn(['low', 'normal', 'high', 'urgent'])
     priority?: 'low' | 'normal' | 'high' | 'urgent';
-
-    @IsOptional()
-    @IsString()
-    @Transform(trim)
-    @MaxLength(120)
-    executorName?: string | null;
 
     @IsOptional()
     @IsString()

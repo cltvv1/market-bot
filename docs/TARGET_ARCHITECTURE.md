@@ -16,7 +16,7 @@ Domain modules use `FilesService`/`FileStoragePort`; there is no public universa
 - DTO/глобальная валидация и стабильный error contract;
 - CORS allowlist, Helmet, route rate limits, body limits, liveness/readiness и production policy Swagger.
 
-Пока не реализованы E0-08 FileStorage, E0-10 Audit Log и E0-12 full backup/restore. Описанные ниже канонический Customer, личный кабинет, outbox и product modules остаются целевой архитектурой, а не текущим кодом.
+FileStorage, Audit Log и full backup/restore уже реализованы. Описанные ниже канонический Customer, личный кабинет, outbox и product modules остаются целевой архитектурой, а не текущим кодом.
 
 ## 1. Архитектурные принципы
 
@@ -355,7 +355,7 @@ erDiagram
 
 Рекомендуется не создавать одномоментную замену всей таблицы `users`.
 
-1. **Инвентаризация и backfill**
+1. **Инвентаризация и контролируемое заполнение**
    - проверить, что для каждого `UserEntity` существует `UserChannelEntity`;
    - устранить только подтверждённые конфликты уникальности;
    - сохранить исходные ID.
@@ -382,7 +382,7 @@ erDiagram
    - operator/superadmin видит preview до применения;
    - rollback выполняется новой компенсирующей операцией, а не удалением аудита.
 
-6. **Удаление legacy-полей**
+6. **Удаление заменённых переходных полей**
    - только после перевода всех lookup и проверки истории;
    - `isAdmin/isOperator` переносятся в staff-модель;
    - `talkingTo` заменяется conversation assignment/state.
@@ -647,7 +647,7 @@ erDiagram
         bigint organizationId FK
         bigint locationId FK
         bigint equipmentId FK
-        bigint responsibleOperatorId FK
+        bigint responsibleOperatorStaffId FK
         bigint assignedEngineerId FK
         varchar internalStatus
         varchar customerStatus
@@ -909,7 +909,7 @@ erDiagram
 - network equipment;
 - other.
 
-Текущие `CashRegister`, `FiscalDrive`, `OfdSubscription` мигрируются без удаления истории: сначала вводится `Equipment`, затем backfill и новые FK, после чего legacy numeric links выводятся из использования.
+Текущие `CashRegister`, `FiscalDrive`, `OfdSubscription` мигрируются без удаления истории: сначала вводится `Equipment`, затем контролируемое заполнение и новые FK, после чего старые numeric links выводятся из использования.
 
 ## 10. Роли и права
 
@@ -1111,9 +1111,9 @@ Redis/Bull можно добавить только при доказанной 
 9. Для опасных изменений использовать expand/migrate/contract:
    - добавить nullable колонку/таблицу;
    - dual-write;
-   - backfill;
+   - заполнить новые поля проверяемой migration;
    - переключить чтение;
-   - удалить legacy только отдельным этапом.
+   - удалить заменённые поля только отдельным этапом.
 10. Перед каждой миграцией проверять restore на копии.
 
 Автоматический rollback схемы не должен заменять backup и forward fix.
@@ -1149,15 +1149,10 @@ Redis/Bull можно добавить только при доказанной 
 
 ## 16. Стратегия перехода frontend
 
-- React является целевой реализацией;
-- legacy остаётся fallback только до подтверждённого production build/deploy;
-- все новые функции создаются только в React;
-- NestJS должен отдавать явную ошибку сборки/health status, а не незаметно переключаться на старый UI в production;
-- удаление legacy выполняется после:
-  - route parity;
-  - успешного browser smoke;
-  - подтверждения deployment pipeline;
-  - отдельного согласованного изменения.
+- React является единственной реализацией admin и client UI;
+- все новые функции создаются только в соответствующем React-приложении;
+- NestJS отдаёт явную ошибку конфигурации/сборки и не выбирает альтернативный UI;
+- production build и browser smoke остаются deploy gates.
 
 ## 17. Главные архитектурные решения
 
@@ -1175,6 +1170,6 @@ Redis/Bull можно добавить только при доказанной 
 
 `ServiceRequestsController` is the sole public HTTP adapter for client service
 requests; `ServiceRequestsService` remains channel-neutral application logic.
-`UiServingService` owns deployment-mode validation and prevents controllers from
-choosing legacy HTML implicitly. CI uses disposable PostgreSQL and filesystem
+`UiServingService` owns deployment-mode validation; no alternate HTML renderer
+exists. CI uses disposable PostgreSQL and filesystem
 roots with messenger polling disabled.

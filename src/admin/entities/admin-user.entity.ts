@@ -8,8 +8,6 @@ import {
 } from 'typeorm';
 import { AdminUserRoleEntity } from './admin-user-role.entity';
 
-export type LegacyAdminRole = 'admin' | 'operator';
-
 @Entity('admin_users')
 export class AdminUserEntity {
     @PrimaryGeneratedColumn()
@@ -23,9 +21,6 @@ export class AdminUserEntity {
 
     @Column()
     passwordHash: string;
-
-    @Column({ type: 'varchar', default: 'operator' })
-    role: LegacyAdminRole;
 
     @OneToMany(() => AdminUserRoleEntity, (assignment) => assignment.user)
     roleAssignments: AdminUserRoleEntity[];
