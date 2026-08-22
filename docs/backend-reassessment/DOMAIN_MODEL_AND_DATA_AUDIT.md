@@ -1,5 +1,14 @@
 # Domain model and data audit
 
+## BKV1-2 domain delta
+
+`RegistrationRequest` remains the aggregate root and now has
+`RegistrationRequirement`, `RegistrationEvidence` and
+`RegistrationDataRequest` children. Canonical KKT/FN/OFD values are separated
+from StoredFile evidence. `ofdProvisionMode`, `readiness`, engineer assignment
+and handoff timestamp live on the root; no parallel RegistrationV2 or generic
+checklist engine was introduced.
+
 ## ER view
 
 ```mermaid

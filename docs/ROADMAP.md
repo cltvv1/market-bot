@@ -1,5 +1,14 @@
 # Roadmap VITMA MARKET
 
+## Backend v1 registration update
+
+- **BKV1-2 implemented:** KKT/FN/OFD checklist, evidence, persistent data
+  requests, channel parity, readiness, engineer-scoped read access and
+  draft/final PDF gate.
+- **Next recommended backend package:** BKV1-3 organization/equipment/location
+  canonicalization and engineer work contract. It must remain separate from
+  outbox/durable messenger delivery.
+
 ## Bot stabilization update
 
 B1 fixes confirmed existing-scenario defects without migrations or new

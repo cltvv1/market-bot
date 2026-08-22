@@ -1,85 +1,124 @@
 // prettier-ignore
 export type Tab = 'registrations' | 'service' | 'tickets' | 'opportunities' | 'organization-access' | 'organizations' | 'equipment-kits' | 'integrations' | 'staff' | 'audit';
 export type Priority = 'low' | 'normal' | 'high' | 'urgent';
-export type AdminRole = 'operator' | 'engineer' | 'sales_manager' | 'superadmin';
+export type AdminRole =
+    | 'operator'
+    | 'engineer'
+    | 'sales_manager'
+    | 'superadmin';
 
 export interface Admin {
-  id: number;
-  login: string;
-  displayName: string;
-  roles: AdminRole[];
-  permissions: string[];
-  isActive: boolean;
-  sessionId: number;
+    id: number;
+    login: string;
+    displayName: string;
+    roles: AdminRole[];
+    permissions: string[];
+    isActive: boolean;
+    sessionId: number;
 }
 export interface Staff {
-  id: number;
-  login: string;
-  displayName: string;
-  roles: AdminRole[];
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  lastLoginAt?: string;
+    id: number;
+    login: string;
+    displayName: string;
+    roles: AdminRole[];
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    lastLoginAt?: string;
 }
-export interface Summary { newRegistrations: number; activeServiceRequests: number; openTickets: number }
+export interface Summary {
+    newRegistrations: number;
+    activeServiceRequests: number;
+    openTickets: number;
+}
 export interface NotificationSettings {
-  notifyRegistrations: boolean;
-  notifyTickets: boolean;
-  notifyServiceRequests: boolean;
+    notifyRegistrations: boolean;
+    notifyTickets: boolean;
+    notifyServiceRequests: boolean;
 }
 export interface BaseItem {
-  id: number;
-  createdAt: string;
-  platform?: string;
-  userId?: number;
-  organizationId?: number;
-  chatId?: string;
+    id: number;
+    createdAt: string;
+    platform?: string;
+    userId?: number;
+    organizationId?: number;
+    chatId?: string;
 }
 
 export interface Registration extends BaseItem {
-  status?: string;
-  priority?: Priority;
-  isProcessed?: boolean;
-  orgName?: string;
-  innKpp?: string;
-  ogrn?: string;
-  urAdress?: string;
-  kktAdress?: string;
-  kktModel?: string;
-  kktName?: string;
-  phoneToCall?: string;
-  phone?: string;
-  email?: string;
-  nds?: string;
-  excise?: string;
-  markirovka?: string;
-  services?: string;
-  strictReporting?: string;
-  taxSystem?: string;
-  bankReqs?: string;
-  ofd?: string;
-  pdfPath?: string;
-  equipmentPhotoPath?: string;
-  equipmentPhotoName?: string;
-  equipmentKitId?: number;
+    status?: string;
+    priority?: Priority;
+    isProcessed?: boolean;
+    orgName?: string;
+    innKpp?: string;
+    ogrn?: string;
+    urAdress?: string;
+    kktAdress?: string;
+    kktModel?: string;
+    kktName?: string;
+    phoneToCall?: string;
+    phone?: string;
+    email?: string;
+    nds?: string;
+    excise?: string;
+    markirovka?: string;
+    services?: string;
+    strictReporting?: string;
+    taxSystem?: string;
+    bankReqs?: string;
+    ofd?: string;
+    pdfPath?: string;
+    equipmentPhotoPath?: string;
+    equipmentPhotoName?: string;
+    equipmentKitId?: number;
+    ofdProvisionMode?: string;
+    readiness?: string;
+    assignedEngineerId?: number;
+    handedOffAt?: string;
+}
+export interface RegistrationRequirement {
+    id: number;
+    kind: 'kkt_serial' | 'fiscal_drive_serial' | 'ofd_code';
+    status: string;
+    value?: string;
+    source?: string;
+    operatorComment?: string;
+    notRequiredReason?: string;
+}
+export interface RegistrationEvidence {
+    id: number;
+    requirementId?: number;
+    storedFileId: number;
+    kind: string;
+    storedFile: { originalName: string; mimeType: string };
+}
+export interface RegistrationDetails {
+    registration: Registration;
+    requirements: RegistrationRequirement[];
+    evidence: RegistrationEvidence[];
+    dataRequests: Array<{
+        id: number;
+        requirementId: number;
+        requestText: string;
+        status: string;
+    }>;
 }
 
 export interface Ticket extends BaseItem {
-  userChatId?: string;
-  name?: string;
-  username?: string;
-  text?: string;
-  isAnswered?: boolean;
+    userChatId?: string;
+    name?: string;
+    username?: string;
+    text?: string;
+    isAnswered?: boolean;
 }
 
 export interface TicketMessage extends BaseItem {
-  sender: string;
-  text?: string;
-  messageType?: string;
-  localPath?: string;
-  externalUrl?: string;
-  fileName?: string;
+    sender: string;
+    text?: string;
+    messageType?: string;
+    localPath?: string;
+    externalUrl?: string;
+    fileName?: string;
 }
 
 // prettier-ignore
@@ -106,10 +145,10 @@ export interface ServiceRequest extends BaseItem {
 }
 
 export interface ServiceEvent extends BaseItem {
-  type: string;
-  actor?: string;
-  message?: string;
-  payload?: Record<string, unknown>;
+    type: string;
+    actor?: string;
+    message?: string;
+    payload?: Record<string, unknown>;
 }
 
 // prettier-ignore
@@ -144,22 +183,39 @@ export interface CustomerCard {
 }
 
 export interface EquipmentKit extends BaseItem {
-  status?: string;
-  cashRegisterModel?: string;
-  cashRegisterSerial?: string;
-  fiscalDriveSerial?: string;
-  ofdActivationCode?: string;
-  marketplaceOrderId?: string;
-  registrationRequestId?: number;
+    status?: string;
+    cashRegisterModel?: string;
+    cashRegisterSerial?: string;
+    fiscalDriveSerial?: string;
+    ofdActivationCode?: string;
+    marketplaceOrderId?: string;
+    registrationRequestId?: number;
 }
 
-export type OrganizationAccessStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
+export type OrganizationAccessStatus =
+    | 'pending'
+    | 'approved'
+    | 'rejected'
+    | 'cancelled';
 export interface OrganizationAccessRequest extends BaseItem {
-  status: OrganizationAccessStatus; requestedRole: 'representative'; submittedName?: string; submittedPhone?: string;
-  submittedEmail?: string; comment?: string; reviewComment?: string; reviewedAt?: string; cancelledAt?: string;
-  organization?: { id: number; name?: string; inn: string; kpp?: string };
-  customer?: { id: number; name?: string; username?: string; platform: string; chatId: string };
-  reviewer?: { id: number; displayName: string };
+    status: OrganizationAccessStatus;
+    requestedRole: 'representative';
+    submittedName?: string;
+    submittedPhone?: string;
+    submittedEmail?: string;
+    comment?: string;
+    reviewComment?: string;
+    reviewedAt?: string;
+    cancelledAt?: string;
+    organization?: { id: number; name?: string; inn: string; kpp?: string };
+    customer?: {
+        id: number;
+        name?: string;
+        username?: string;
+        platform: string;
+        chatId: string;
+    };
+    reviewer?: { id: number; displayName: string };
 }
 
 // prettier-ignore

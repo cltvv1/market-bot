@@ -1,5 +1,13 @@
 # API, workflow and channel audit
 
+## BKV1-2 channel contract
+
+Client registration API now exposes an ownership-scoped checklist plus late
+value/evidence submit. Admin API exposes request/verify/re-request/not-required,
+OFD mode, exact kit use, evidence operations, handoff and final PDF. Telegram
+and MAX receive opaque PostgreSQL-backed `regdata:<uuid>` callbacks. Public
+responses mask OFD values and omit internal comments, tokens and local paths.
+
 ## API surface
 
 - Client: `/api/client/session`, users, registration fields/start/answer/form, tickets/messages/media/files, service request types/list/start/answer/confirm, organizations and assets.

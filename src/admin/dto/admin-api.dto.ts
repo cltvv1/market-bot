@@ -282,12 +282,90 @@ export class LinkEquipmentKitDto {
 
 export class RegistrationOperatorStateDto {
     @IsOptional()
-    @IsIn(['new', 'in_work', 'processed'])
-    status?: 'new' | 'in_work' | 'processed';
+    @IsIn(['new', 'in_work'])
+    status?: 'new' | 'in_work';
 
     @IsOptional()
     @IsIn(['low', 'normal', 'high', 'urgent'])
     priority?: 'low' | 'normal' | 'high' | 'urgent';
+}
+
+export class RegistrationRequirementActionDto {
+    @IsIn(['kkt_serial', 'fiscal_drive_serial', 'ofd_code'])
+    kind: 'kkt_serial' | 'fiscal_drive_serial' | 'ofd_code';
+
+    @IsOptional()
+    @IsString()
+    @Transform(trim)
+    @MaxLength(2_000)
+    comment?: string;
+}
+
+export class RegistrationOperatorValueDto extends RegistrationRequirementActionDto {
+    @IsString()
+    @Transform(trim)
+    @MaxLength(500)
+    value: string;
+
+    @IsOptional()
+    @IsIn(['operator_input', 'sold_by_vitma'])
+    source?: 'operator_input' | 'sold_by_vitma';
+}
+
+export class RegistrationEvidenceParamsDto extends PositiveIdParamDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    evidenceId: number;
+}
+
+export class RegistrationEvidenceLinkDto extends RegistrationRequirementActionDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    evidenceId: number;
+}
+
+export class RegistrationRequestDataDto extends RegistrationRequirementActionDto {
+    @IsOptional()
+    @IsString()
+    @Transform(trim)
+    @MaxLength(2_000)
+    text?: string;
+}
+
+export class RegistrationNotRequiredDto extends RegistrationRequirementActionDto {
+    @IsString()
+    @Transform(trim)
+    @MaxLength(1_000)
+    reason: string;
+}
+
+export class RegistrationOfdModeDto {
+    @IsIn([
+        'customer_has_code',
+        'purchase_from_vitma',
+        'clarification_required',
+        'not_applicable',
+    ])
+    mode:
+        | 'customer_has_code'
+        | 'purchase_from_vitma'
+        | 'clarification_required'
+        | 'not_applicable';
+    @IsOptional()
+    @IsString()
+    @Transform(trim)
+    @MaxLength(1_000)
+    reason?: string;
+}
+
+export class RegistrationHandoffDto {
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    engineerId?: number;
 }
 
 export class TextMessageDto {

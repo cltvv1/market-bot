@@ -6,6 +6,8 @@ import { Button, Input, Loader, Textarea } from '../components/ui';
 import {
     registrationService,
     type RegistrationFieldDto,
+    type RegistrationChecklistDto,
+    type RegistrationRequirementKind,
 } from '../services/client';
 
 const largeFields = new Set(['bankReqs', 'services', 'urAdress', 'kktAdress']);
@@ -17,16 +19,34 @@ export function CashRegistrationPage() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [number, setNumber] = useState<number | null>(null);
+    const [checklist, setChecklist] = useState<RegistrationChecklistDto | null>(
+        null,
+    );
 
     useEffect(() => {
         registrationService
             .getFields()
-            .then(setFields)
+            .then((items) =>
+                setFields(
+                    items.filter((item) => item.name !== 'equipmentPhoto'),
+                ),
+            )
             .catch(() =>
                 setError('Не удалось загрузить анкету. Обновите страницу.'),
             )
             .finally(() => setLoading(false));
     }, []);
+
+    useEffect(() => {
+        if (!number) return;
+        const timer = window.setInterval(() => {
+            void registrationService
+                .checklist(number)
+                .then(setChecklist)
+                .catch(() => undefined);
+        }, 5_000);
+        return () => window.clearInterval(timer);
+    }, [number]);
 
     const submit = async (event: FormEvent) => {
         event.preventDefault();
@@ -44,6 +64,7 @@ export function CashRegistrationPage() {
         try {
             const result = await registrationService.submit(completed);
             setNumber(result.data.id);
+            setChecklist(await registrationService.checklist(result.data.id));
         } catch {
             setError(
                 'Не удалось отправить анкету. Проверьте соединение и попробуйте ещё раз.',
@@ -54,15 +75,51 @@ export function CashRegistrationPage() {
     };
 
     if (number) {
+        const refresh = () =>
+            registrationService.checklist(number).then(setChecklist);
+        const provide = async (
+            kind: RegistrationRequirementKind,
+            value: string,
+            file?: File,
+        ) => {
+            if (value.trim())
+                await registrationService.value(number, kind, value);
+            if (file) await registrationService.evidence(number, kind, file);
+            await refresh();
+        };
         return (
             <div className="page container success-page">
                 <CheckCircle2 />
                 <span className="eyebrow">Анкета отправлена</span>
                 <h1>Регистрация кассы · анкета #{number}</h1>
                 <p>
-                    Данные поступили оператору в административную панель.
-                    Специалист проверит комплектность и свяжется с вами.
+                    Анкета принята. Оператор проверит данные и при необходимости
+                    запросит недостающие сведения.
                 </p>
+                {checklist && (
+                    <section className="registration-form">
+                        <h2>
+                            Комплектность:{' '}
+                            {readinessText(checklist.registration.readiness)}
+                        </h2>
+                        {checklist.requirements.map((item) => (
+                            <ClientRequirement
+                                key={item.id}
+                                item={item}
+                                requestText={
+                                    checklist.dataRequests.find(
+                                        (request) =>
+                                            request.requirementId === item.id &&
+                                            !['closed', 'answered'].includes(
+                                                request.status,
+                                            ),
+                                    )?.requestText
+                                }
+                                onProvide={provide}
+                            />
+                        ))}
+                    </section>
+                )}
                 <div>
                     <Link className="button button--primary" to="/service">
                         В сервисный центр
@@ -98,7 +155,8 @@ export function CashRegistrationPage() {
                     <FileText />
                     <span>
                         <strong>Подготовьте реквизиты</strong>
-                        ИНН, ОГРН, адрес установки ККТ и данные ОФД.
+                        ИНН, ОГРН и адрес установки ККТ. Номера оборудования
+                        можно дослать после отправки.
                     </span>
                 </div>
                 <div>
@@ -177,6 +235,95 @@ export function CashRegistrationPage() {
                         </Button>
                     </footer>
                 </form>
+            )}
+        </div>
+    );
+}
+
+const requirementLabels: Record<RegistrationRequirementKind, string> = {
+    kkt_serial: 'Заводской номер ККТ',
+    fiscal_drive_serial: 'Номер ФН',
+    ofd_code: 'Код ОФД',
+};
+function readinessText(value: string) {
+    return (
+        (
+            {
+                incomplete: 'неполная',
+                awaiting_customer: 'ожидаются данные',
+                awaiting_verification: 'на проверке',
+                ready: 'готова',
+            } as Record<string, string>
+        )[value] || value
+    );
+}
+function ClientRequirement({
+    item,
+    requestText,
+    onProvide,
+}: {
+    item: RegistrationChecklistDto['requirements'][number];
+    requestText?: string;
+    onProvide: (
+        kind: RegistrationRequirementKind,
+        value: string,
+        file?: File,
+    ) => Promise<void>;
+}) {
+    const [value, setValue] = useState('');
+    const [file, setFile] = useState<File>();
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+    const locked = item.status === 'verified' || item.status === 'not_required';
+    const submit = async () => {
+        setBusy(true);
+        setError('');
+        try {
+            await onProvide(item.kind, value, file);
+            setValue('');
+            setFile(undefined);
+        } catch (caught) {
+            setError(
+                caught instanceof Error
+                    ? caught.message
+                    : 'Не удалось передать данные',
+            );
+        } finally {
+            setBusy(false);
+        }
+    };
+    return (
+        <div className="context-panel">
+            <strong>{requirementLabels[item.kind]}</strong>
+            <span>
+                {item.status}
+                {item.value ? ` · ${item.value}` : ''}
+            </span>
+            {requestText && <p>{requestText}</p>}
+            {!locked && (
+                <>
+                    <Input
+                        label="Значение"
+                        value={value}
+                        onChange={(event) => setValue(event.target.value)}
+                    />
+                    <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        onChange={(event) => setFile(event.target.files?.[0])}
+                    />
+                    <Button
+                        disabled={busy || (!value.trim() && !file)}
+                        onClick={() => void submit()}
+                    >
+                        Передать данные
+                    </Button>
+                    {error && (
+                        <p className="form-error" role="alert">
+                            {error}
+                        </p>
+                    )}
+                </>
             )}
         </div>
     );

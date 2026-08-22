@@ -4,6 +4,7 @@ import {
     IsObject,
     IsOptional,
     IsString,
+    IsIn,
     Matches,
     MaxLength,
     Min,
@@ -122,4 +123,16 @@ export class TicketMediaDto extends ClientContextDto {
 export class ClientIdParamDto {
     @Matches(/^[1-9]\d*$/)
     id: string;
+}
+
+export class RegistrationRequirementParamDto extends ClientIdParamDto {
+    @IsIn(['kkt_serial', 'fiscal_drive_serial', 'ofd_code'])
+    kind: 'kkt_serial' | 'fiscal_drive_serial' | 'ofd_code';
+}
+
+export class RegistrationRequirementValueDto extends ClientContextDto {
+    @IsString()
+    @Transform(trim)
+    @MaxLength(500)
+    value: string;
 }

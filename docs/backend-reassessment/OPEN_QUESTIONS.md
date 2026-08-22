@@ -1,5 +1,17 @@
 # Open questions
 
+## Decisions closed by BKV1-2
+
+- Initial KKT registration submission may omit photos and serial data.
+- Engineer handoff requires all applicable KKT/FN/OFD requirements to be
+  `verified` or `not_required`.
+- OFD purchase from VITMA is a provisioning mode, not a store/order flow.
+- A legacy general photo is evidence with unknown purpose and is not assigned
+  to a requirement automatically.
+
+Still open: production field encryption policy, real legacy dry-run and the
+future engineer task/location model.
+
 Only decisions not derivable from code, tests, Git or existing dated evidence are listed.
 
 ## Blocks canonical model selection

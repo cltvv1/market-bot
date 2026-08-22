@@ -1,5 +1,13 @@
 # Backend v1 scope and sequence
 
+## Sequence update: BKV1-2
+
+`BKV1-2 — parity регистрации ККТ` is implemented on its dedicated branch.
+Web/Telegram/MAX submit to the existing registration aggregate; late evidence,
+operator verification, OFD provisioning, readiness, engineer assignment and
+PDF gates share one backend service. Durable delivery/outbox and a full
+engineer task model remain outside this package.
+
 ## Definition of done
 
 Backend v1 for the client site is a stable modular-monolith contract for service requests, KKT registration, organization/equipment context, catalog and order-request. Every public mutation has server-derived identity, validation, ownership, idempotent or guarded transition behavior, persisted history and tested admin visibility. Client-safe DTOs/statuses and OpenAPI describe that contract.

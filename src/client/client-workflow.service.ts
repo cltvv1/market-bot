@@ -6,7 +6,11 @@ import type { TicketMediaInput } from 'src/tickets/tickets.service';
 import { UsersService } from 'src/users/users.service';
 import { OrganizationsService } from 'src/organizations/organizations.service';
 import { CustomerActivityService } from 'src/customer-activity/customer-activity.service';
-import type { ClientFlowResult, ClientIdentity, StartSimpleServiceRequestInput } from './client-workflow.types';
+import type {
+    ClientFlowResult,
+    ClientIdentity,
+    StartSimpleServiceRequestInput,
+} from './client-workflow.types';
 import type { RegistrationField } from 'src/registrations/registration.types';
 import type { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 
@@ -24,20 +28,35 @@ export class ClientWorkflowService {
     ) {}
 
     async upsertClient(input: ClientIdentity) {
-        return this.usersService.getOrCreateOrUpdate(input.chatId, input.name, input.username, input.platform);
+        return this.usersService.getOrCreateOrUpdate(
+            input.chatId,
+            input.name,
+            input.username,
+            input.platform,
+        );
     }
 
     async startRegistration(input: ClientIdentity): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        let registration = await this.registrationsService.getNotFilledReg(input.chatId, input.platform);
+        let registration = await this.registrationsService.getNotFilledReg(
+            input.chatId,
+            input.platform,
+        );
         const status = registration ? 'continued' : 'started';
 
         if (!registration) {
-            registration = await this.registrationsService.createRegistration(input.chatId, input.platform, user.id, organizationId);
+            registration = await this.registrationsService.createRegistration(
+                input.chatId,
+                input.platform,
+                user.id,
+                organizationId,
+            );
         }
 
-        const nextField = await this.registrationsService.getFieldTextByStep(registration.currentStep);
+        const nextField = await this.registrationsService.getFieldTextByStep(
+            registration.currentStep,
+        );
 
         if (!nextField) {
             return {
@@ -49,29 +68,67 @@ export class ClientWorkflowService {
 
         return {
             status,
-            message: status === 'started' ? 'Registration request created.' : 'Unfinished registration request found.',
+            message:
+                status === 'started'
+                    ? 'Registration request created.'
+                    : 'Unfinished registration request found.',
             nextField,
             data: registration,
         };
     }
 
-    async submitRegistrationAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
+    async submitRegistrationAnswer(
+        input: ClientIdentity,
+        value: string,
+    ): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
 
-        const active = await this.registrationsService.getNotFilledReg(input.chatId, input.platform);
+        const active = await this.registrationsService.getNotFilledReg(
+            input.chatId,
+            input.platform,
+        );
         if (active) {
-            const field = await this.registrationsService.getFieldNameByStep(active.currentStep);
+            const field = await this.registrationsService.getFieldNameByStep(
+                active.currentStep,
+            );
             if (field === 'equipmentPhoto') {
+                if (/^(пропустить|нет|skip)$/i.test(value.trim())) {
+                    const skipped =
+                        await this.registrationsService.skipEquipmentPhoto(
+                            input.chatId,
+                            input.platform,
+                        );
+                    if (!skipped)
+                        return {
+                            status: 'not_found',
+                            message: 'Registration request was not found.',
+                        };
+                    const filePath =
+                        await this.registrationsService.finishReg(skipped);
+                    await this.notifyAdminsAboutRegistration(skipped, filePath);
+                    return {
+                        status: 'completed',
+                        message: 'Registration request completed.',
+                        data: skipped,
+                    };
+                }
                 return {
                     status: 'continued',
-                    message: 'Equipment photo is required.',
-                    nextField: await this.registrationsService.getFieldTextByStep(active.currentStep),
+                    message: 'Equipment photo can be provided now or skipped.',
+                    nextField:
+                        await this.registrationsService.getFieldTextByStep(
+                            active.currentStep,
+                        ),
                     data: active,
                 };
             }
         }
 
-        const registration = await this.registrationsService.saveFieldValue(input.chatId, value, input.platform);
+        const registration = await this.registrationsService.saveFieldValue(
+            input.chatId,
+            value,
+            input.platform,
+        );
         if (!registration) {
             return {
                 status: 'not_found',
@@ -79,7 +136,9 @@ export class ClientWorkflowService {
             };
         }
 
-        const nextField = await this.registrationsService.getFieldTextByStep(registration.currentStep);
+        const nextField = await this.registrationsService.getFieldTextByStep(
+            registration.currentStep,
+        );
         if (nextField) {
             return {
                 status: 'continued',
@@ -89,7 +148,8 @@ export class ClientWorkflowService {
             };
         }
 
-        const filePath = await this.registrationsService.finishReg(registration);
+        const filePath =
+            await this.registrationsService.finishReg(registration);
         await this.notifyAdminsAboutRegistration(registration, filePath);
 
         return {
@@ -99,15 +159,30 @@ export class ClientWorkflowService {
         };
     }
 
-    async submitRegistrationForm(input: ClientIdentity, values: Partial<Record<RegistrationField, string>>): Promise<ClientFlowResult> {
+    async submitRegistrationForm(
+        input: ClientIdentity,
+        values: Partial<Record<RegistrationField, string>>,
+    ): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        let registration = await this.registrationsService.getNotFilledReg(input.chatId, input.platform);
+        let registration = await this.registrationsService.getNotFilledReg(
+            input.chatId,
+            input.platform,
+        );
         if (!registration) {
-            registration = await this.registrationsService.createRegistration(input.chatId, input.platform, user.id, organizationId);
+            registration = await this.registrationsService.createRegistration(
+                input.chatId,
+                input.platform,
+                user.id,
+                organizationId,
+            );
         }
 
-        const filled = await this.registrationsService.fillRegistration(input.chatId, values, input.platform);
+        const filled = await this.registrationsService.fillRegistration(
+            input.chatId,
+            values,
+            input.platform,
+        );
         if (!filled) {
             return {
                 status: 'not_found',
@@ -125,26 +200,47 @@ export class ClientWorkflowService {
         };
     }
 
-    async startSimpleServiceRequest(input: StartSimpleServiceRequestInput): Promise<ClientFlowResult> {
+    async startSimpleServiceRequest(
+        input: StartSimpleServiceRequestInput,
+    ): Promise<ClientFlowResult> {
         const identity = await this.resolveServiceRequestIdentity(input);
-        const request = await this.serviceRequestsService.getLatestDraftForClient(identity, [input.serviceTypeCode]);
+        const request =
+            await this.serviceRequestsService.getLatestDraftForClient(
+                identity,
+                [input.serviceTypeCode],
+            );
         const status = request ? 'continued' : 'started';
-        const result = request ? this.serviceRequestsService.present(request) : await this.serviceRequestsService.start(identity, input.serviceTypeCode);
+        const result = request
+            ? this.serviceRequestsService.present(request)
+            : await this.serviceRequestsService.start(
+                  identity,
+                  input.serviceTypeCode,
+              );
 
         const nextField = result.nextStep?.label;
 
         return {
             status,
-            message: status === 'started' ? `Service request created: ${result.request.serviceTypeTitle}.` : 'Unfinished service request found.',
+            message:
+                status === 'started'
+                    ? `Service request created: ${result.request.serviceTypeTitle}.`
+                    : 'Unfinished service request found.',
             nextField,
             data: result.request,
         };
     }
 
-    async submitRegistrationPhoto(input: ClientIdentity, file: { buffer: Buffer; fileName?: string }): Promise<ClientFlowResult> {
+    async submitRegistrationPhoto(
+        input: ClientIdentity,
+        file: { buffer: Buffer; fileName?: string },
+    ): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
 
-        const registration = await this.registrationsService.saveEquipmentPhoto(input.chatId, file, input.platform);
+        const registration = await this.registrationsService.saveEquipmentPhoto(
+            input.chatId,
+            file,
+            input.platform,
+        );
         if (!registration) {
             return {
                 status: 'not_found',
@@ -152,7 +248,9 @@ export class ClientWorkflowService {
             };
         }
 
-        const nextField = await this.registrationsService.getFieldTextByStep(registration.currentStep);
+        const nextField = await this.registrationsService.getFieldTextByStep(
+            registration.currentStep,
+        );
         if (nextField) {
             return {
                 status: 'continued',
@@ -162,7 +260,8 @@ export class ClientWorkflowService {
             };
         }
 
-        const filePath = await this.registrationsService.finishReg(registration);
+        const filePath =
+            await this.registrationsService.finishReg(registration);
         await this.notifyAdminsAboutRegistration(registration, filePath);
 
         return {
@@ -172,9 +271,16 @@ export class ClientWorkflowService {
         };
     }
 
-    async submitSimpleServiceRequestAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
+    async submitSimpleServiceRequestAnswer(
+        input: ClientIdentity,
+        value: string,
+    ): Promise<ClientFlowResult> {
         const identity = await this.resolveServiceRequestIdentity(input);
-        const result = await this.serviceRequestsService.answerLatestDraft(identity, value, ['firmware_update', 'kkt_remote_work']);
+        const result = await this.serviceRequestsService.answerLatestDraft(
+            identity,
+            value,
+            ['firmware_update', 'kkt_remote_work'],
+        );
         if (!result) {
             return {
                 status: 'not_found',
@@ -186,7 +292,9 @@ export class ClientWorkflowService {
 
         return {
             status: nextField ? 'continued' : 'completed',
-            message: nextField ? 'Service request answer saved.' : 'Service request completed.',
+            message: nextField
+                ? 'Service request answer saved.'
+                : 'Service request completed.',
             nextField,
             data: result.request,
         };
@@ -219,18 +327,30 @@ export class ClientWorkflowService {
         };
     }
 
-    private async notifyAdminsAboutRegistration(registration: RegistrationRequestEntity, filePath: string) {
+    private async notifyAdminsAboutRegistration(
+        registration: RegistrationRequestEntity,
+        filePath: string,
+    ) {
         try {
-            await this.registrationsService.notifyAdminsAboutNewReg(registration, filePath);
+            await this.registrationsService.notifyAdminsAboutNewReg(
+                registration,
+                filePath,
+            );
         } catch (error) {
-            this.logger.error(`Registration ${registration.id} was completed, but admin notification failed`, error);
+            this.logger.error(
+                `Registration ${registration.id} was completed, but admin notification failed`,
+                error,
+            );
         }
     }
 
     async openTicket(input: ClientIdentity): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        const activeTicket = await this.ticketsService.getActiveTicket(input.chatId, input.platform);
+        const activeTicket = await this.ticketsService.getActiveTicket(
+            input.chatId,
+            input.platform,
+        );
         if (activeTicket?.text) {
             return {
                 status: 'already_open',
@@ -239,7 +359,17 @@ export class ClientWorkflowService {
             };
         }
 
-        const ticket = activeTicket ?? (await this.ticketsService.createTicket(input.chatId, input.username, input.name, undefined, input.platform, user.id, organizationId));
+        const ticket =
+            activeTicket ??
+            (await this.ticketsService.createTicket(
+                input.chatId,
+                input.username,
+                input.name,
+                undefined,
+                input.platform,
+                user.id,
+                organizationId,
+            ));
 
         return {
             status: activeTicket ? 'continued' : 'started',
@@ -248,15 +378,33 @@ export class ClientWorkflowService {
         };
     }
 
-    async submitTicketMessage(input: ClientIdentity, text: string): Promise<ClientFlowResult> {
+    async submitTicketMessage(
+        input: ClientIdentity,
+        text: string,
+    ): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        let ticket = await this.ticketsService.getActiveTicket(input.chatId, input.platform);
+        let ticket = await this.ticketsService.getActiveTicket(
+            input.chatId,
+            input.platform,
+        );
         if (!ticket) {
-            ticket = await this.ticketsService.createTicket(input.chatId, input.username, input.name, undefined, input.platform, user.id, organizationId);
+            ticket = await this.ticketsService.createTicket(
+                input.chatId,
+                input.username,
+                input.name,
+                undefined,
+                input.platform,
+                user.id,
+                organizationId,
+            );
         }
 
-        const savedTicket = await this.ticketsService.saveTicketText(input.chatId, text, input.platform);
+        const savedTicket = await this.ticketsService.saveTicketText(
+            input.chatId,
+            text,
+            input.platform,
+        );
         if (!savedTicket) {
             return {
                 status: 'not_found',
@@ -265,7 +413,9 @@ export class ClientWorkflowService {
         }
 
         if (!ticket.text) {
-            await this.ticketsService.notifyOperatorsAboutNewTicket(savedTicket);
+            await this.ticketsService.notifyOperatorsAboutNewTicket(
+                savedTicket,
+            );
         }
 
         await this.activityService.add({
@@ -286,15 +436,33 @@ export class ClientWorkflowService {
         };
     }
 
-    async submitTicketMedia(input: ClientIdentity, media: TicketMediaInput): Promise<ClientFlowResult> {
+    async submitTicketMedia(
+        input: ClientIdentity,
+        media: TicketMediaInput,
+    ): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        let ticket = await this.ticketsService.getActiveTicket(input.chatId, input.platform);
+        let ticket = await this.ticketsService.getActiveTicket(
+            input.chatId,
+            input.platform,
+        );
         if (!ticket) {
-            ticket = await this.ticketsService.createTicket(input.chatId, input.username, input.name, undefined, input.platform, user.id, organizationId);
+            ticket = await this.ticketsService.createTicket(
+                input.chatId,
+                input.username,
+                input.name,
+                undefined,
+                input.platform,
+                user.id,
+                organizationId,
+            );
         }
 
-        const savedTicket = await this.ticketsService.saveTicketMedia(input.chatId, media, input.platform);
+        const savedTicket = await this.ticketsService.saveTicketMedia(
+            input.chatId,
+            media,
+            input.platform,
+        );
         if (!savedTicket) {
             return {
                 status: 'not_found',
@@ -302,7 +470,10 @@ export class ClientWorkflowService {
             };
         }
 
-        await this.ticketsService.notifyOperatorsAboutTicketMessage(savedTicket, `Новое вложение в тикете #${savedTicket.id}: ${media.fileName || media.messageType}`);
+        await this.ticketsService.notifyOperatorsAboutTicketMessage(
+            savedTicket,
+            `Новое вложение в тикете #${savedTicket.id}: ${media.fileName || media.messageType}`,
+        );
 
         await this.activityService.add({
             userId: user.id,
@@ -324,7 +495,10 @@ export class ClientWorkflowService {
 
     async getActiveTicket(input: ClientIdentity): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
-        const ticket = await this.ticketsService.getActiveTicket(input.chatId, input.platform);
+        const ticket = await this.ticketsService.getActiveTicket(
+            input.chatId,
+            input.platform,
+        );
 
         if (!ticket) {
             return {
@@ -346,7 +520,8 @@ export class ClientWorkflowService {
     }
 
     async getTicketMessageFile(input: ClientIdentity, messageId: number) {
-        const message = await this.ticketsService.getTicketMessageById(messageId);
+        const message =
+            await this.ticketsService.getTicketMessageById(messageId);
         if (!message) {
             throw new BadRequestException('Ticket message was not found.');
         }
@@ -358,8 +533,14 @@ export class ClientWorkflowService {
     private async assertTicketOwner(input: ClientIdentity, ticketId: number) {
         await this.resolveClientContext(input);
         const ticket = await this.ticketsService.getTicketById(ticketId);
-        if (!ticket || ticket.userChatId !== input.chatId || ticket.platform !== input.platform) {
-            throw new BadRequestException('Ticket was not found for this client.');
+        if (
+            !ticket ||
+            ticket.userChatId !== input.chatId ||
+            ticket.platform !== input.platform
+        ) {
+            throw new BadRequestException(
+                'Ticket was not found for this client.',
+            );
         }
 
         return ticket;
@@ -367,28 +548,45 @@ export class ClientWorkflowService {
 
     private async resolveClientContext(input: ClientIdentity) {
         const user = await this.upsertClient(input);
-        await this.organizationsService.assertUserOrganization(input.chatId, input.platform, input.organizationId);
+        await this.organizationsService.assertUserOrganization(
+            input.chatId,
+            input.platform,
+            input.organizationId,
+        );
 
         return { user, organizationId: input.organizationId };
     }
 
     async startAtolConsent(input: ClientIdentity): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
-        const result = await this.serviceRequestsService.startAtolConsent(await this.resolveServiceRequestIdentity(input));
+        const result = await this.serviceRequestsService.startAtolConsent(
+            await this.resolveServiceRequestIdentity(input),
+        );
 
         return {
             status: result.request.currentStep > 0 ? 'continued' : 'started',
-            message: result.request.currentStep > 0 ? 'Unfinished ATOL consent found.' : 'ATOL consent draft created.',
+            message:
+                result.request.currentStep > 0
+                    ? 'Unfinished ATOL consent found.'
+                    : 'ATOL consent draft created.',
             nextField: result.nextStep?.label,
             data: result.request,
-            filePath: result.request.answers?.generatedPdfPath ? String(result.request.answers.generatedPdfPath) : undefined,
+            filePath: result.request.answers?.generatedPdfPath
+                ? String(result.request.answers.generatedPdfPath)
+                : undefined,
             fileId: result.request.generatedConsentFileId ?? undefined,
         };
     }
 
-    async submitAtolConsentAnswer(input: ClientIdentity, value: string): Promise<ClientFlowResult> {
+    async submitAtolConsentAnswer(
+        input: ClientIdentity,
+        value: string,
+    ): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
-        const result = await this.serviceRequestsService.answerAtolConsent(await this.resolveServiceRequestIdentity(input), value);
+        const result = await this.serviceRequestsService.answerAtolConsent(
+            await this.resolveServiceRequestIdentity(input),
+            value,
+        );
         if (!result) {
             return {
                 status: 'not_found',
@@ -398,17 +596,28 @@ export class ClientWorkflowService {
 
         return {
             status: result.nextStep ? 'continued' : 'completed',
-            message: result.nextStep ? 'ATOL consent answer saved.' : 'ATOL consent PDF generated.',
+            message: result.nextStep
+                ? 'ATOL consent answer saved.'
+                : 'ATOL consent PDF generated.',
             nextField: result.nextStep?.label,
             data: result.request,
-            filePath: result.request.answers?.generatedPdfPath ? String(result.request.answers.generatedPdfPath) : undefined,
+            filePath: result.request.answers?.generatedPdfPath
+                ? String(result.request.answers.generatedPdfPath)
+                : undefined,
             fileId: result.request.generatedConsentFileId ?? undefined,
         };
     }
 
-    async submitAtolConsentSignedFile(input: ClientIdentity, file: { buffer: Buffer; fileName?: string }): Promise<ClientFlowResult> {
+    async submitAtolConsentSignedFile(
+        input: ClientIdentity,
+        file: { buffer: Buffer; fileName?: string },
+    ): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
-        const result = await this.serviceRequestsService.attachAtolConsentSignedFile(await this.resolveServiceRequestIdentity(input), file);
+        const result =
+            await this.serviceRequestsService.attachAtolConsentSignedFile(
+                await this.resolveServiceRequestIdentity(input),
+                file,
+            );
         if (!result) {
             return {
                 status: 'not_found',
@@ -425,7 +634,10 @@ export class ClientWorkflowService {
 
     async cancelAtolConsent(input: ClientIdentity): Promise<ClientFlowResult> {
         await this.resolveClientContext(input);
-        const request = await this.serviceRequestsService.cancelAtolConsentDraft(await this.resolveServiceRequestIdentity(input));
+        const request =
+            await this.serviceRequestsService.cancelAtolConsentDraft(
+                await this.resolveServiceRequestIdentity(input),
+            );
         if (!request) {
             return {
                 status: 'not_found',

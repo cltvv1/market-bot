@@ -1,5 +1,14 @@
 # Backlog VITMA MARKET
 
+## BKV1-2 follow-ups
+
+- Real legacy DB/FileStorage dry-run on an isolated restored copy.
+- Encryption-at-rest decision for commercially sensitive OFD codes.
+- General inbound messenger/media deduplication; duplicate content is harmless
+  to readiness but can leave duplicate evidence rows.
+- Outbox/retry worker for registration data-request delivery.
+- Full engineer task/location workflow after the canonical equipment package.
+
 ## Bot B1 follow-ups
 
 - **Completed in B1:** Telegram callback RBAC, OFD-to-ticket routing, bounded

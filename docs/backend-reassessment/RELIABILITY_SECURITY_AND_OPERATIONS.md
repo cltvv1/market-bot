@@ -1,5 +1,14 @@
 # Reliability, security and operations
 
+## BKV1-2 bounded reliability update
+
+Registration requirement mutations and handoff now use transactions and row
+locks; unique constraints protect checklist initialization, evidence links and
+one open data request. Delivery status and safe failure text are persisted, and
+bot response context survives restart. General messenger deduplication, outbox,
+retry worker and field-level encryption at rest remain production-hardening
+work.
+
 ## Reliability and consistency
 
 | Finding | Evidence | Impact | Gate | Direction |

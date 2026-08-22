@@ -9,7 +9,11 @@ export interface StoredObject {
 }
 
 export interface FileStoragePort {
-    write(objectKey: string, source: Readable, maxBytes: number): Promise<StoredObject>;
+    write(
+        objectKey: string,
+        source: Readable,
+        maxBytes: number,
+    ): Promise<StoredObject>;
     openRead(objectKey: string): Promise<Readable>;
     exists(objectKey: string): Promise<boolean>;
     checksum(objectKey: string): Promise<string>;
@@ -19,6 +23,7 @@ export interface FileStoragePort {
 
 export type FilePurpose =
     | 'registration-photo'
+    | 'registration-evidence'
     | 'ticket-image'
     | 'ticket-document'
     | 'ticket-audio'

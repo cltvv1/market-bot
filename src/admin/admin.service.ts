@@ -6,7 +6,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Not, In } from 'typeorm';
 import { Repository } from 'typeorm';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
-import type { RegistrationRequestPriority, RegistrationRequestStatus } from 'src/registrations/entities/registration.entity';
+import type {
+    RegistrationRequestPriority,
+    RegistrationRequestStatus,
+} from 'src/registrations/entities/registration.entity';
 import { TicketEntity } from 'src/tickets/entities/ticket.entity';
 import { TicketMessageEntity } from 'src/tickets/entities/ticket-message.entity';
 import { OrganizationEntity } from 'src/organizations/entities/organization.entity';
@@ -22,7 +25,10 @@ import type { MessengerService } from 'src/messenger/messenger.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { CanonicalServiceRequestsService } from 'src/service-requests/canonical-service-requests.service';
 import { ServiceRequestEntity } from 'src/service-requests/entities/service-request.entity';
-import type { ServiceRequestPriority, ServiceRequestStatus } from 'src/service-requests/entities/service-request.entity';
+import type {
+    ServiceRequestPriority,
+    ServiceRequestStatus,
+} from 'src/service-requests/entities/service-request.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import type { TicketMessageType } from 'src/tickets/entities/ticket-message.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
@@ -69,10 +75,12 @@ export class AdminService {
         @Inject(MESSENGER_SERVICE)
         private readonly messengerService: MessengerService,
         private readonly filesService: FilesService,
-    ) { }
+    ) {}
 
     async getNotificationBindings(adminId: number) {
-        const admin = await this.adminUsersRepo.findOne({ where: { id: adminId } });
+        const admin = await this.adminUsersRepo.findOne({
+            where: { id: adminId },
+        });
         if (!admin) return null;
 
         return {
@@ -87,13 +95,20 @@ export class AdminService {
         };
     }
 
-    async createMessengerBindCode(adminId: number, platform: 'telegram' | 'max') {
-        const admin = await this.adminUsersRepo.findOne({ where: { id: adminId, isActive: true } });
+    async createMessengerBindCode(
+        adminId: number,
+        platform: 'telegram' | 'max',
+    ) {
+        const admin = await this.adminUsersRepo.findOne({
+            where: { id: adminId, isActive: true },
+        });
         if (!admin) return null;
 
         admin.messengerBindCode = randomBytes(4).toString('hex').toUpperCase();
         admin.messengerBindPlatform = platform;
-        admin.messengerBindCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+        admin.messengerBindCodeExpiresAt = new Date(
+            Date.now() + 15 * 60 * 1000,
+        );
         await this.adminUsersRepo.save(admin);
 
         return {
@@ -106,9 +121,15 @@ export class AdminService {
 
     async updateNotificationSettings(
         adminId: number,
-        input: { notifyRegistrations?: boolean; notifyTickets?: boolean; notifyServiceRequests?: boolean },
+        input: {
+            notifyRegistrations?: boolean;
+            notifyTickets?: boolean;
+            notifyServiceRequests?: boolean;
+        },
     ) {
-        const admin = await this.adminUsersRepo.findOne({ where: { id: adminId, isActive: true } });
+        const admin = await this.adminUsersRepo.findOne({
+            where: { id: adminId, isActive: true },
+        });
         if (!admin) return null;
 
         if (input.notifyRegistrations !== undefined) {
@@ -124,7 +145,6 @@ export class AdminService {
         await this.adminUsersRepo.save(admin);
         return this.getNotificationBindings(admin.id);
     }
-
 
     async getSummary(admin: AdminPrincipal) {
         const permissions = new Set(admin.permissions);
@@ -152,21 +172,78 @@ export class AdminService {
         return { newRegistrations, openTickets, activeServiceRequests };
     }
 
-    getRegistrations(status: AdminStatusFilter = 'new', platform?: UserPlatform, priority?: RegistrationRequestPriority) {
+    getRegistrations(
+        status: AdminStatusFilter = 'new',
+        platform?: UserPlatform,
+        priority?: RegistrationRequestPriority,
+    ) {
         const commonWhere = {
             ...(platform ? { platform } : {}),
             ...(priority ? { priority } : {}),
         };
-        const where = status === 'all'
-            ? commonWhere
-            : status === 'processed'
-                ? [{ ...commonWhere, status: 'processed' as RegistrationRequestStatus }, { ...commonWhere, isProcessed: true }]
-                : { ...commonWhere, status, isFilled: true, isProcessed: false };
+        const where =
+            status === 'all'
+                ? commonWhere
+                : status === 'processed'
+                  ? [
+                        {
+                            ...commonWhere,
+                            status: 'processed' as RegistrationRequestStatus,
+                        },
+                        { ...commonWhere, isProcessed: true },
+                    ]
+                  : {
+                        ...commonWhere,
+                        status,
+                        isFilled: true,
+                        isProcessed: false,
+                    };
 
         return this.registrationsRepo.find({
             where,
             order: { createdAt: 'DESC' },
             take: 100,
+        });
+    }
+
+    getRegistrationsForAdmin(
+        admin: AdminPrincipal,
+        status: AdminStatusFilter = 'new',
+        platform?: UserPlatform,
+        priority?: RegistrationRequestPriority,
+    ) {
+        if (admin.permissions.includes('registrations.read'))
+            return this.getRegistrations(status, platform, priority);
+        if (!admin.permissions.includes('registrations.read.assigned'))
+            return [];
+        const commonWhere = {
+            assignedEngineerId: admin.id,
+            ...(platform ? { platform } : {}),
+            ...(priority ? { priority } : {}),
+        };
+        const where =
+            status === 'all'
+                ? commonWhere
+                : status === 'processed'
+                  ? {
+                        ...commonWhere,
+                        status: 'processed' as RegistrationRequestStatus,
+                    }
+                  : { ...commonWhere, status, isFilled: true };
+        return this.registrationsRepo.find({
+            where,
+            order: { createdAt: 'DESC' },
+            take: 100,
+        });
+    }
+
+    async getRegistrationForAdmin(admin: AdminPrincipal, id: number) {
+        if (admin.permissions.includes('registrations.read'))
+            return this.getRegistration(id);
+        if (!admin.permissions.includes('registrations.read.assigned'))
+            return null;
+        return this.registrationsRepo.findOne({
+            where: { id, assignedEngineerId: admin.id },
         });
     }
 
@@ -186,7 +263,10 @@ export class AdminService {
         });
     }
 
-    getServiceRequests(status: ServiceRequestStatus | 'active' | 'all' = 'active', platform?: UserPlatform) {
+    getServiceRequests(
+        status: ServiceRequestStatus | 'active' | 'all' = 'active',
+        platform?: UserPlatform,
+    ) {
         return this.serviceRequestsService.listForAdmin(status, platform);
     }
 
@@ -211,10 +291,7 @@ export class AdminService {
         return this.serviceRequestsService.getRequestDetails(id);
     }
 
-    async getServiceRequestDetailsForAdmin(
-        admin: AdminPrincipal,
-        id: number,
-    ) {
+    async getServiceRequestDetailsForAdmin(admin: AdminPrincipal, id: number) {
         if (!admin.permissions.includes('serviceRequests.read.all')) {
             const request = await this.serviceRequestsRepo.findOne({
                 where: { id, assignedEngineerId: admin.id },
@@ -270,16 +347,40 @@ export class AdminService {
         );
     }
 
-    attachServiceRequestInvoice(id: number, invoiceFileId: string, invoiceFileName?: string, operatorId = 'admin-panel', invoiceStoredFileId?: number) {
-        return this.serviceRequestsService.attachInvoice(id, invoiceFileId, invoiceFileName, operatorId, invoiceStoredFileId);
+    attachServiceRequestInvoice(
+        id: number,
+        invoiceFileId: string,
+        invoiceFileName?: string,
+        operatorId = 'admin-panel',
+        invoiceStoredFileId?: number,
+    ) {
+        return this.serviceRequestsService.attachInvoice(
+            id,
+            invoiceFileId,
+            invoiceFileName,
+            operatorId,
+            invoiceStoredFileId,
+        );
     }
 
     markServiceRequestPaymentReceived(id: number, operatorId = 'admin-panel') {
         return this.serviceRequestsService.markPaymentReceived(id, operatorId);
     }
 
-    scheduleServiceRequestVisit(id: number, visitAddress: string, visitTime?: string, operatorComment?: string, operatorId = 'admin-panel') {
-        return this.serviceRequestsService.scheduleVisit(id, visitAddress, visitTime, operatorComment, operatorId);
+    scheduleServiceRequestVisit(
+        id: number,
+        visitAddress: string,
+        visitTime?: string,
+        operatorComment?: string,
+        operatorId = 'admin-panel',
+    ) {
+        return this.serviceRequestsService.scheduleVisit(
+            id,
+            visitAddress,
+            visitTime,
+            operatorComment,
+            operatorId,
+        );
     }
 
     completeServiceRequest(id: number, operatorId = 'admin-panel') {
@@ -292,10 +393,18 @@ export class AdminService {
 
     updateServiceRequestOperatorState(
         id: number,
-        input: { priority?: ServiceRequestPriority; executorName?: string | null; operatorComment?: string | null },
+        input: {
+            priority?: ServiceRequestPriority;
+            executorName?: string | null;
+            operatorComment?: string | null;
+        },
         operatorId = 'admin-panel',
     ) {
-        return this.serviceRequestsService.updateOperatorState(id, input, operatorId);
+        return this.serviceRequestsService.updateOperatorState(
+            id,
+            input,
+            operatorId,
+        );
     }
 
     getActivities(userId?: number, organizationId?: number) {
@@ -309,7 +418,12 @@ export class AdminService {
         });
     }
 
-    async getCustomerContext(input: { userId?: number; organizationId?: number; platform?: UserPlatform; chatId?: string }) {
+    async getCustomerContext(input: {
+        userId?: number;
+        organizationId?: number;
+        platform?: UserPlatform;
+        chatId?: string;
+    }) {
         const user = await this.findContextUser(input);
         // prettier-ignore
         const [organization, memberships, assets, activities, contacts] = await Promise.all([
@@ -346,7 +460,12 @@ export class AdminService {
         };
     }
 
-    async getCustomerCard(input: { userId?: number; organizationId?: number; platform?: UserPlatform; chatId?: string }) {
+    async getCustomerCard(input: {
+        userId?: number;
+        organizationId?: number;
+        platform?: UserPlatform;
+        chatId?: string;
+    }) {
         const context = await this.getCustomerContext(input);
         const user = context.user;
         const relationWhere = this.buildCustomerRelationWhere({
@@ -356,25 +475,33 @@ export class AdminService {
         });
 
         const [registrations, serviceRequests, tickets] = await Promise.all([
-            relationWhere.length ? this.registrationsRepo.find({
-                where: relationWhere,
-                order: { createdAt: 'DESC' },
-                take: 50,
-            }) : Promise.resolve([]),
-            relationWhere.length ? this.serviceRequestsRepo.find({
-                where: relationWhere,
-                order: { createdAt: 'DESC' },
-                take: 50,
-            }) : Promise.resolve([]),
-            relationWhere.length ? this.ticketsRepo.find({
-                where: relationWhere.map((where) => ({
-                    ...(where.userId ? { userId: where.userId } : {}),
-                    ...(where.platform ? { platform: where.platform } : {}),
-                    ...(where.chatId ? { userChatId: where.chatId } : {}),
-                })),
-                order: { createdAt: 'DESC' },
-                take: 50,
-            }) : Promise.resolve([]),
+            relationWhere.length
+                ? this.registrationsRepo.find({
+                      where: relationWhere,
+                      order: { createdAt: 'DESC' },
+                      take: 50,
+                  })
+                : Promise.resolve([]),
+            relationWhere.length
+                ? this.serviceRequestsRepo.find({
+                      where: relationWhere,
+                      order: { createdAt: 'DESC' },
+                      take: 50,
+                  })
+                : Promise.resolve([]),
+            relationWhere.length
+                ? this.ticketsRepo.find({
+                      where: relationWhere.map((where) => ({
+                          ...(where.userId ? { userId: where.userId } : {}),
+                          ...(where.platform
+                              ? { platform: where.platform }
+                              : {}),
+                          ...(where.chatId ? { userChatId: where.chatId } : {}),
+                      })),
+                      order: { createdAt: 'DESC' },
+                      take: 50,
+                  })
+                : Promise.resolve([]),
         ]);
 
         return {
@@ -398,46 +525,64 @@ export class AdminService {
 
         return organizations.map((organization) => ({
             ...organization,
-            members: members.filter((member) => member.organizationId === organization.id),
+            members: members.filter(
+                (member) => member.organizationId === organization.id,
+            ),
         }));
     }
 
     getEquipmentKits(query?: string) {
-        return this.equipmentKitsRepo.find({
-            order: { createdAt: 'DESC' },
-            take: 200,
-        }).then((items) => {
-            const normalized = query?.trim().toLowerCase();
-            if (!normalized) return items;
-            return items.filter((item) => [
-                item.cashRegisterModel,
-                item.cashRegisterSerial,
-                item.fiscalDriveSerial,
-                item.ofdActivationCode,
-                item.marketplaceOrderId,
-            ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized)));
-        });
+        return this.equipmentKitsRepo
+            .find({
+                order: { createdAt: 'DESC' },
+                take: 200,
+            })
+            .then((items) => {
+                const normalized = query?.trim().toLowerCase();
+                if (!normalized) return items;
+                return items.filter((item) =>
+                    [
+                        item.cashRegisterModel,
+                        item.cashRegisterSerial,
+                        item.fiscalDriveSerial,
+                        item.ofdActivationCode,
+                        item.marketplaceOrderId,
+                    ]
+                        .filter(Boolean)
+                        .some((value) =>
+                            String(value).toLowerCase().includes(normalized),
+                        ),
+                );
+            });
     }
 
     getFreeEquipmentKits(query?: string) {
-        return this.equipmentKitsRepo.find({
-            where: {
-                registrationRequestId: IsNull(),
-                status: Not(In(['linked', 'registered', 'archived'])),
-            },
-            order: { createdAt: 'DESC' },
-            take: 200,
-        }).then((items) => {
-            const normalized = query?.trim().toLowerCase();
-            if (!normalized) return items;
-            return items.filter((item) => [
-                item.cashRegisterModel,
-                item.cashRegisterSerial,
-                item.fiscalDriveSerial,
-                item.ofdActivationCode,
-                item.marketplaceOrderId,
-            ].filter(Boolean).some((value) => String(value).toLowerCase().includes(normalized)));
-        });
+        return this.equipmentKitsRepo
+            .find({
+                where: {
+                    registrationRequestId: IsNull(),
+                    status: Not(In(['linked', 'registered', 'archived'])),
+                },
+                order: { createdAt: 'DESC' },
+                take: 200,
+            })
+            .then((items) => {
+                const normalized = query?.trim().toLowerCase();
+                if (!normalized) return items;
+                return items.filter((item) =>
+                    [
+                        item.cashRegisterModel,
+                        item.cashRegisterSerial,
+                        item.fiscalDriveSerial,
+                        item.ofdActivationCode,
+                        item.marketplaceOrderId,
+                    ]
+                        .filter(Boolean)
+                        .some((value) =>
+                            String(value).toLowerCase().includes(normalized),
+                        ),
+                );
+            });
     }
 
     createEquipmentKit(input: Partial<EquipmentKitEntity>) {
@@ -453,7 +598,10 @@ export class AdminService {
         return this.equipmentKitsRepo.save(kit);
     }
 
-    async linkEquipmentKitToRegistration(registrationId: number, kitId: number) {
+    async linkEquipmentKitToRegistration(
+        registrationId: number,
+        kitId: number,
+    ) {
         const [registration, kit] = await Promise.all([
             this.registrationsRepo.findOne({ where: { id: registrationId } }),
             this.equipmentKitsRepo.findOne({ where: { id: kitId } }),
@@ -472,11 +620,21 @@ export class AdminService {
     }
 
     async getOrganizationAssets(organizationId: number) {
-        const [cashRegisters, fiscalDrives, ofdSubscriptions] = await Promise.all([
-            this.cashRegistersRepo.find({ where: { organizationId }, order: { id: 'ASC' } }),
-            this.fiscalDrivesRepo.find({ where: { organizationId }, order: { id: 'ASC' } }),
-            this.ofdSubscriptionsRepo.find({ where: { organizationId }, order: { id: 'ASC' } }),
-        ]);
+        const [cashRegisters, fiscalDrives, ofdSubscriptions] =
+            await Promise.all([
+                this.cashRegistersRepo.find({
+                    where: { organizationId },
+                    order: { id: 'ASC' },
+                }),
+                this.fiscalDrivesRepo.find({
+                    where: { organizationId },
+                    order: { id: 'ASC' },
+                }),
+                this.ofdSubscriptionsRepo.find({
+                    where: { organizationId },
+                    order: { id: 'ASC' },
+                }),
+            ]);
 
         return { cashRegisters, fiscalDrives, ofdSubscriptions };
     }
@@ -486,23 +644,25 @@ export class AdminService {
         let messages = await this.getTicketMessages(id);
 
         if (ticket?.text && messages.length === 0) {
-            await this.ticketMessagesRepo.save(this.ticketMessagesRepo.create({
-                ticketId: id,
-                sender: 'user',
-                authorId: ticket.userChatId,
-                source: 'bot',
-                text: ticket.text,
-            }));
+            await this.ticketMessagesRepo.save(
+                this.ticketMessagesRepo.create({
+                    ticketId: id,
+                    sender: 'user',
+                    authorId: ticket.userChatId,
+                    source: 'bot',
+                    text: ticket.text,
+                }),
+            );
             messages = await this.getTicketMessages(id);
         }
 
         const context = ticket
             ? await this.getCustomerContext({
-                userId: ticket.userId,
-                organizationId: ticket.organizationId,
-                platform: ticket.platform,
-                chatId: ticket.userChatId,
-            })
+                  userId: ticket.userId,
+                  organizationId: ticket.organizationId,
+                  platform: ticket.platform,
+                  chatId: ticket.userChatId,
+              })
             : null;
 
         return { ticket, messages, context };
@@ -512,11 +672,11 @@ export class AdminService {
         const details = await this.serviceRequestsService.getRequestDetails(id);
         const context = details?.request
             ? await this.getCustomerContext({
-                userId: details.request.userId,
-                organizationId: details.request.organizationId,
-                platform: details.request.platform,
-                chatId: details.request.chatId,
-            })
+                  userId: details.request.userId,
+                  organizationId: details.request.organizationId,
+                  platform: details.request.platform,
+                  chatId: details.request.chatId,
+              })
             : null;
 
         return { ...details, context };
@@ -534,13 +694,19 @@ export class AdminService {
     }
 
     async processRegistration(id: number) {
-        await this.registrationsRepo.update(id, { isProcessed: true, status: 'processed' });
+        await this.registrationsRepo.update(id, {
+            isProcessed: true,
+            status: 'processed',
+        });
         return this.registrationsRepo.findOne({ where: { id } });
     }
 
     async updateRegistrationOperatorState(
         id: number,
-        input: { status?: RegistrationRequestStatus; priority?: RegistrationRequestPriority },
+        input: {
+            status?: RegistrationRequestStatus;
+            priority?: RegistrationRequestPriority;
+        },
     ) {
         const patch: {
             status?: RegistrationRequestStatus;
@@ -548,8 +714,13 @@ export class AdminService {
             priority?: RegistrationRequestPriority;
         } = {};
         if (input.status) {
+            if (input.status === 'processed') {
+                throw new BadRequestException(
+                    'Use registration handoff to complete processing',
+                );
+            }
             patch.status = input.status;
-            patch.isProcessed = input.status === 'processed';
+            patch.isProcessed = false;
         }
         if (input.priority) {
             patch.priority = input.priority;
@@ -563,7 +734,11 @@ export class AdminService {
         return this.registrationsRepo.findOne({ where: { id } });
     }
 
-    async sendTicketMessage(id: number, text: string, operatorId = 'admin-panel') {
+    async sendTicketMessage(
+        id: number,
+        text: string,
+        operatorId = 'admin-panel',
+    ) {
         const ticket = await this.ticketsRepo.findOne({ where: { id } });
         if (!ticket) {
             return null;
@@ -575,13 +750,15 @@ export class AdminService {
             });
         }
 
-        await this.ticketMessagesRepo.save(this.ticketMessagesRepo.create({
-            ticketId: id,
-            sender: 'operator',
-            authorId: operatorId,
-            source: 'admin-panel',
-            text,
-        }));
+        await this.ticketMessagesRepo.save(
+            this.ticketMessagesRepo.create({
+                ticketId: id,
+                sender: 'operator',
+                authorId: operatorId,
+                source: 'admin-panel',
+                text,
+            }),
+        );
 
         return this.getTicket(id);
     }
@@ -608,16 +785,27 @@ export class AdminService {
         }
         const storedFile = media.buffer
             ? await this.filesService.saveBuffer({
-                purpose: media.messageType === 'image' ? 'ticket-image' : media.messageType === 'video' || media.messageType === 'video_note' ? 'ticket-video' : media.messageType === 'audio' || media.messageType === 'voice' ? 'ticket-audio' : 'ticket-document',
-                buffer: media.buffer,
-                originalName: media.fileName,
-                mimeType: media.mimeType,
-            })
+                  purpose:
+                      media.messageType === 'image'
+                          ? 'ticket-image'
+                          : media.messageType === 'video' ||
+                              media.messageType === 'video_note'
+                            ? 'ticket-video'
+                            : media.messageType === 'audio' ||
+                                media.messageType === 'voice'
+                              ? 'ticket-audio'
+                              : 'ticket-document',
+                  buffer: media.buffer,
+                  originalName: media.fileName,
+                  mimeType: media.mimeType,
+              })
             : null;
 
         if (ticket.platform !== 'web') {
             const file = {
-                source: media.buffer ? Readable.from(media.buffer) : fs.createReadStream(media.localPath!),
+                source: media.buffer
+                    ? Readable.from(media.buffer)
+                    : fs.createReadStream(media.localPath!),
                 filename: media.fileName,
             };
             const options = {
@@ -626,25 +814,35 @@ export class AdminService {
             };
 
             if (media.messageType === 'image') {
-                await this.messengerService.sendImage(ticket.userChatId, file, options);
+                await this.messengerService.sendImage(
+                    ticket.userChatId,
+                    file,
+                    options,
+                );
             } else {
-                await this.messengerService.sendDocument(ticket.userChatId, file, options);
+                await this.messengerService.sendDocument(
+                    ticket.userChatId,
+                    file,
+                    options,
+                );
             }
         }
 
-        await this.ticketMessagesRepo.save(this.ticketMessagesRepo.create({
-            ticketId: id,
-            sender: 'operator',
-            authorId: operatorId,
-            source: 'admin-panel',
-            messageType: media.messageType,
-            text: media.text || media.fileName,
-            fileName: media.fileName,
-            mimeType: media.mimeType ?? null,
-            fileSize: media.fileSize,
-            localPath: media.localPath ?? null,
-            storedFileId: storedFile?.id ?? null,
-        }));
+        await this.ticketMessagesRepo.save(
+            this.ticketMessagesRepo.create({
+                ticketId: id,
+                sender: 'operator',
+                authorId: operatorId,
+                source: 'admin-panel',
+                messageType: media.messageType,
+                text: media.text || media.fileName,
+                fileName: media.fileName,
+                mimeType: media.mimeType ?? null,
+                fileSize: media.fileSize,
+                localPath: media.localPath ?? null,
+                storedFileId: storedFile?.id ?? null,
+            }),
+        );
 
         return this.getTicket(id);
     }
@@ -667,32 +865,51 @@ export class AdminService {
         return this.closeTicket(id, operatorId);
     }
 
-    private async findContextUser(input: { userId?: number; platform?: UserPlatform; chatId?: string }) {
+    private async findContextUser(input: {
+        userId?: number;
+        platform?: UserPlatform;
+        chatId?: string;
+    }) {
         if (input.userId) {
-            const user = await this.usersRepo.findOne({ where: { id: input.userId } });
+            const user = await this.usersRepo.findOne({
+                where: { id: input.userId },
+            });
             if (user) return user;
         }
 
         if (input.platform && input.chatId) {
-            return this.usersRepo.findOne({ where: { platform: input.platform, chatId: input.chatId } });
+            return this.usersRepo.findOne({
+                where: { platform: input.platform, chatId: input.chatId },
+            });
         }
 
         return null;
     }
 
-    private buildActivityContextWhere(input: { userId?: number; organizationId?: number }) {
+    private buildActivityContextWhere(input: {
+        userId?: number;
+        organizationId?: number;
+    }) {
         const where = [
             ...(input.userId ? [{ userId: input.userId }] : []),
-            ...(input.organizationId ? [{ organizationId: input.organizationId }] : []),
+            ...(input.organizationId
+                ? [{ organizationId: input.organizationId }]
+                : []),
         ];
 
         return where.length ? where : { id: -1 };
     }
 
-    private buildCustomerRelationWhere(input: { userId?: number; platform?: UserPlatform; chatId?: string }) {
+    private buildCustomerRelationWhere(input: {
+        userId?: number;
+        platform?: UserPlatform;
+        chatId?: string;
+    }) {
         return [
             ...(input.userId ? [{ userId: input.userId }] : []),
-            ...(input.platform && input.chatId ? [{ platform: input.platform, chatId: input.chatId }] : []),
+            ...(input.platform && input.chatId
+                ? [{ platform: input.platform, chatId: input.chatId }]
+                : []),
         ];
     }
 }

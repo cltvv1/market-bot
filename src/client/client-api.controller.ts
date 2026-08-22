@@ -26,11 +26,14 @@ import {
     ClientIdParamDto,
     RegistrationAnswerDto,
     RegistrationFormDto,
+    RegistrationRequirementParamDto,
+    RegistrationRequirementValueDto,
     TicketMediaDto,
     TicketMessageDto,
 } from './dto/client-api.dto';
 import { RateLimit } from 'src/security/rate-limit';
 import { FilesService } from 'src/files/files.service';
+import { RegistrationReadinessService } from 'src/registrations/registration-readiness.service';
 
 interface UploadedMemoryFile {
     buffer: Buffer;
@@ -47,6 +50,7 @@ export class ClientApiController {
         private readonly clientWorkflow: ClientWorkflowService,
         private readonly registrationsService: RegistrationsService,
         private readonly filesService: FilesService,
+        private readonly registrationReadiness: RegistrationReadinessService,
     ) {}
 
     @Post('users')
@@ -96,6 +100,54 @@ export class ClientApiController {
         return this.clientWorkflow.submitRegistrationForm(
             this.identity(session, body),
             body.values,
+        );
+    }
+
+    @Get('registrations/:id/checklist')
+    @RateLimit('public-sensitive-read', 60, 60)
+    getRegistrationChecklist(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+    ) {
+        return this.registrationReadiness.clientDetails(
+            this.identity(session),
+            Number(params.id),
+        );
+    }
+
+    @Post('registrations/:id/requirements/:kind/value')
+    @RateLimit('public-form', 30, 600)
+    provideRegistrationValue(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: RegistrationRequirementParamDto,
+        @Body() body: RegistrationRequirementValueDto,
+    ) {
+        return this.registrationReadiness.provideValue(
+            this.identity(session, body),
+            Number(params.id),
+            params.kind,
+            body.value,
+        );
+    }
+
+    @Post('registrations/:id/requirements/:kind/evidence')
+    @RateLimit('public-form', 20, 600)
+    @UseInterceptors(FileInterceptor('file'))
+    provideRegistrationEvidence(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: RegistrationRequirementParamDto,
+        @UploadedFile() file?: UploadedMemoryFile,
+    ) {
+        if (!file) throw new BadRequestException('Evidence file is required');
+        return this.registrationReadiness.uploadEvidence(
+            this.identity(session),
+            Number(params.id),
+            params.kind,
+            {
+                buffer: file.buffer,
+                fileName: file.originalname,
+                mimeType: file.mimetype,
+            },
         );
     }
 
@@ -175,10 +227,7 @@ export class ClientApiController {
             identity,
             Number(params.id),
         );
-        return this.clientWorkflow.submitTicketMessage(
-            identity,
-            body.text,
-        );
+        return this.clientWorkflow.submitTicketMessage(identity, body.text);
     }
 
     @Get('ticket-messages/:id/file')
@@ -193,9 +242,14 @@ export class ClientApiController {
             Number(params.id),
         );
         if (message.storedFileId) {
-            const { file, stream } = await this.filesService.open(message.storedFileId);
+            const { file, stream } = await this.filesService.open(
+                message.storedFileId,
+            );
             response.setHeader('Content-Type', file.mimeType);
-            response.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`);
+            response.setHeader(
+                'Content-Disposition',
+                `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
+            );
             response.setHeader('Cache-Control', 'private, no-store');
             response.setHeader('X-Content-Type-Options', 'nosniff');
             stream.pipe(response);

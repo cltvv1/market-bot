@@ -67,12 +67,50 @@ describe('TelegramUpdate admin callbacks', () => {
 
         await update.onRegDone(ctx as never);
 
-        expect(registrations.doReg).toHaveBeenCalledWith({ id: 42 });
+        expect(registrations.doReg).toHaveBeenCalledWith({ id: 42 }, 1);
         expect(access.recordSuccess).toHaveBeenCalledWith(
             { id: 1 },
             'telegram',
             expect.objectContaining({ targetId: '42' }),
         );
+    });
+
+    it('activates a persistent registration data request by opaque token', async () => {
+        const readiness = {
+            activateRequest: jest.fn().mockResolvedValue({ id: 9 }),
+        };
+        const handler = new TelegramUpdate(
+            registrations as never,
+            contexts as never,
+            tickets as never,
+            users as never,
+            clientWorkflow as never,
+            serviceRequests as never,
+            {} as never,
+            files as never,
+            access as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            {} as never,
+            readiness as never,
+        );
+        const token = '11111111-1111-4111-8111-111111111111';
+        const requestCtx = {
+            ...ctx,
+            callbackQuery: { data: `regdata:${token}` },
+        };
+
+        await handler.activateRegistrationDataRequest(requestCtx as never);
+
+        expect(readiness.activateRequest).toHaveBeenCalledWith(
+            expect.objectContaining({
+                platform: 'telegram',
+                chatId: '100',
+            }),
+            token,
+        );
+        expect(requestCtx.answerCbQuery).toHaveBeenCalledWith('Запрос выбран');
     });
 
     it('denies an unbound client before any business mutation', async () => {

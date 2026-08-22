@@ -1,5 +1,14 @@
 # Технический и продуктовый аудит VITMA MARKET
 
+## BKV1-2 update
+
+Registration parity is implemented without a parallel aggregate or UI
+redesign. Web, Telegram and MAX allow incomplete initial submit, while a typed
+KKT/FN/OFD checklist gates final PDF and engineer handoff on the server.
+PostgreSQL-backed response context, exact EquipmentKit use, evidence links,
+RBAC/ownership and synthetic migration backfill are covered. See
+[`backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md`](backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md).
+
 ## Bot B1 update
 
 The Telegram callback authorization, OFD dead routing, MAX attachment and ATOL

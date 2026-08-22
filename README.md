@@ -1,5 +1,15 @@
 # VITMA MARKET
 
+## Backend v1: KKT registration readiness
+
+BKV1-2 unifies web, Telegram, MAX and admin KKT registration around one
+server-side checklist. Initial submission no longer requires a photo; KKT, FN
+and OFD data must be provided and verified before engineer handoff or final
+PDF generation. See
+[`docs/backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md`](docs/backend-v1/BKV1_2_KKT_REGISTRATION_PARITY.md)
+and the
+[`synthetic backfill report`](docs/backend-v1/BKV1_2_BACKFILL_REPORT.md).
+
 ## Phase 0 quality foundation
 
 The final phase-zero package adds reproducible GitHub Actions checks, unique
@@ -92,20 +102,21 @@ npm run admin:create
 ## Доступ к организациям
 
 Ввод ИНН больше не создаёт активного владельца. Клиентский endpoint создаёт `pending`-запрос, а оператор рассматривает его во вкладке «Доступ к организациям». Только approve создаёт `active representative`; до этого кассы, ФН, ОФД и история организации недоступны. Миграция и API описаны в `docs/backend-v1/BKV1_0_ORGANIZATION_ACCESS.md`.
+
 - включённый в production Swagger требует действующую admin-сессию.
 
 `Secure` для cookie включается автоматически при `NODE_ENV=production`. TLS должен завершаться на приложении или доверенном reverse proxy; `TRUST_PROXY` задаётся только в соответствии с реальной схемой deployment.
 
 Базовые лимиты одного процесса:
 
-| Bucket | Лимит |
-|---|---|
-| `admin-login` | 10 запросов / 60 секунд |
-| `web-session-create` | 20 / 60 секунд |
-| `public-form` | 30 / 600 секунд |
-| `public-message` | 60 / 600 секунд |
-| `public-sensitive-read` | 60 / 60 секунд |
-| `public-read` | 120 / 60 секунд |
+| Bucket                  | Лимит                   |
+| ----------------------- | ----------------------- |
+| `admin-login`           | 10 запросов / 60 секунд |
+| `web-session-create`    | 20 / 60 секунд          |
+| `public-form`           | 30 / 600 секунд         |
+| `public-message`        | 60 / 600 секунд         |
+| `public-sensitive-read` | 60 / 60 секунд          |
+| `public-read`           | 120 / 60 секунд         |
 
 Лимит переопределяется переменными `RATE_LIMIT_<BUCKET>_LIMIT` и `RATE_LIMIT_<BUCKET>_WINDOW_SECONDS`, где дефисы заменяются подчёркиваниями. In-memory limiter подходит для одного экземпляра; распределённый лимитер понадобится только при горизонтальном масштабировании.
 
