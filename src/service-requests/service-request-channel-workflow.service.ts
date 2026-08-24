@@ -246,21 +246,19 @@ export class ServiceRequestChannelWorkflowService {
             identity.platform,
             identity.organizationId,
         );
-        await this.ensureDefaultTypes();
-
-        const serviceType = await this.serviceTypesRepo.findOne({
-            where: { code: serviceTypeCode, isActive: true },
-        });
-        if (!serviceType) {
-            throw new BadRequestException('Service type was not found');
-        }
-        const formVersionId = await this.getFormVersionId(serviceType);
 
         let created = false;
-        const request = await this.withDraftLock(
+        const { request, serviceType } = await this.withDraftLock(
             identity,
-            serviceType.code,
+            serviceTypeCode,
             async (manager) => {
+                await this.ensureDefaultTypes();
+                const serviceType = await this.serviceTypesRepo.findOne({
+                    where: { code: serviceTypeCode, isActive: true },
+                });
+                if (!serviceType) {
+                    throw new BadRequestException('Service type was not found');
+                }
                 const requests = manager.getRepository(ServiceRequestEntity);
                 const existing = await requests.findOne({
                     where: {
@@ -270,10 +268,11 @@ export class ServiceRequestChannelWorkflowService {
                         status: 'draft',
                     },
                 });
-                if (existing) return existing;
+                if (existing) return { request: existing, serviceType };
 
                 created = true;
-                return requests.save(
+                const formVersionId = await this.getFormVersionId(serviceType);
+                const request = await requests.save(
                     requests.create({
                         requestNumber: this.createRequestNumber(),
                         serviceTypeId: serviceType.id,
@@ -299,6 +298,7 @@ export class ServiceRequestChannelWorkflowService {
                         },
                     }),
                 );
+                return { request, serviceType };
             },
         );
 
@@ -336,14 +336,13 @@ export class ServiceRequestChannelWorkflowService {
             identity.platform,
             identity.organizationId,
         );
-        const serviceType = await this.ensureAtolConsentServiceType();
-        const formVersionId = await this.getFormVersionId(serviceType);
 
         let created = false;
-        const request = await this.withDraftLock(
+        const { request, serviceType } = await this.withDraftLock(
             identity,
-            serviceType.code,
+            'atol_consent',
             async (manager) => {
+                const serviceType = await this.ensureAtolConsentServiceType();
                 const requests = manager.getRepository(ServiceRequestEntity);
                 const existing = await requests.findOne({
                     where: {
@@ -353,10 +352,11 @@ export class ServiceRequestChannelWorkflowService {
                         status: 'draft',
                     },
                 });
-                if (existing) return existing;
+                if (existing) return { request: existing, serviceType };
 
                 created = true;
-                return requests.save(
+                const formVersionId = await this.getFormVersionId(serviceType);
+                const request = await requests.save(
                     requests.create({
                         requestNumber: this.createRequestNumber(),
                         serviceTypeId: serviceType.id,
@@ -382,6 +382,7 @@ export class ServiceRequestChannelWorkflowService {
                         },
                     }),
                 );
+                return { request, serviceType };
             },
         );
 

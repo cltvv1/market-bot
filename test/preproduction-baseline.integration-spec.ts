@@ -13,13 +13,14 @@ describe('pre-production database baseline', () => {
         if (dataSource.isInitialized) await dataSource.destroy();
     });
 
-    it('records exactly the current initial migration', async () => {
+    it('records the reviewed current migration chain', async () => {
         const migrations: Array<{ name: string }> = await dataSource.query(
             `SELECT name FROM typeorm_migrations ORDER BY id`,
         );
 
         expect(migrations).toEqual([
             { name: 'InitialPreproductionBaseline1787388476982' },
+            { name: 'AddDurableInboundCommands1787577304950' },
         ]);
     });
 
@@ -36,6 +37,8 @@ describe('pre-production database baseline', () => {
             'registration_data_requests',
             'stored_files',
             'organization_access_requests',
+            'inbound_commands',
+            'user_dialog_states',
         ];
         const rows: Array<{ table_name: string }> = await dataSource.query(
             `SELECT table_name
