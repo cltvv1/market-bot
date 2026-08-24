@@ -34,6 +34,11 @@ import { StoredFileEntity } from '../src/files/entities/stored-file.entity';
 import { FilesService } from '../src/files/files.service';
 import { AuditService } from '../src/audit/audit.service';
 import { AuditEventEntity } from '../src/audit/entities/audit-event.entity';
+import { InboundCommandEntity } from '../src/inbound-commands/entities/inbound-command.entity';
+import { InboundCommandsService } from '../src/inbound-commands/inbound-commands.service';
+import { UserDialogStateEntity } from '../src/userContext/entities/user-dialog-state.entity';
+import { UserContextService } from '../src/userContext/user-context.service';
+import { StaleServiceRequestChannelCommandException } from '../src/service-requests/service-request-channel-workflow.service';
 
 const testIdentity = {
     platform: 'web' as const,
@@ -47,6 +52,9 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     let registrationsService: RegistrationsService;
     let ticketsService: TicketsService;
     let serviceRequestsService: ServiceRequestsService;
+    let channelWorkflow: ServiceRequestChannelWorkflowService;
+    let inboundCommands: InboundCommandsService;
+    let userContext: UserContextService;
     let storedFileSequence = 0;
 
     const messenger: jest.Mocked<MessengerService> = {
@@ -129,6 +137,14 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             dataSource.getRepository(UserEntity),
             dataSource.getRepository(UserChannelEntity),
         );
+        inboundCommands = new InboundCommandsService(
+            dataSource.getRepository(InboundCommandEntity),
+            dataSource,
+            usersService,
+        );
+        userContext = new UserContextService(
+            dataSource.getRepository(UserDialogStateEntity),
+        );
         const organizationsService = new OrganizationsService(
             dataSource.getRepository(OrganizationEntity),
             dataSource.getRepository(OrganizationMemberEntity),
@@ -164,6 +180,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             notifications as unknown as AdminNotificationsService,
             files as unknown as FilesService,
             readiness as unknown as RegistrationReadinessService,
+            dataSource,
         );
         ticketsService = new TicketsService(
             dataSource.getRepository(TicketEntity),
@@ -172,8 +189,9 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             messenger,
             notifications as unknown as AdminNotificationsService,
             files as unknown as FilesService,
+            dataSource,
         );
-        const channelWorkflow = new ServiceRequestChannelWorkflowService(
+        channelWorkflow = new ServiceRequestChannelWorkflowService(
             dataSource.getRepository(ServiceTypeEntity),
             dataSource.getRepository(ServiceRequestEntity),
             dataSource.getRepository(ServiceRequestEventEntity),
@@ -186,6 +204,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             files as unknown as FilesService,
             formService,
             dataSource.getRepository(ServiceRequestAttachmentEntity),
+            dataSource,
         );
         serviceRequestsService = new ServiceRequestsService(
             dataSource.getRepository(ServiceTypeEntity),
@@ -617,5 +636,249 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         expect(files.logicalDelete).toHaveBeenCalledWith(
             generated?.generatedConsentFileId,
         );
+    });
+
+    it('processes the same inbound provider update exactly once', async () => {
+        let executions = 0;
+        const input = {
+            platform: 'telegram' as const,
+            externalUpdateId: 'update:durable-duplicate-1',
+            chatId: 'durable-duplicate-client',
+            commandType: 'telegram.message',
+            payload: { kind: 'text' },
+        };
+
+        const [first, second] = await Promise.all([
+            inboundCommands.execute(input, async () => {
+                executions += 1;
+                await new Promise<void>((resolve) => setTimeout(resolve, 10));
+                return { applied: true };
+            }),
+            inboundCommands.execute(input, () => {
+                executions += 1;
+                return Promise.resolve({ applied: true });
+            }),
+        ]);
+
+        expect(executions).toBe(1);
+        expect([first.status, second.status].sort()).toEqual([
+            'duplicate',
+            'processed',
+        ]);
+        expect(
+            await dataSource.getRepository(InboundCommandEntity).countBy({
+                platform: 'telegram',
+                externalUpdateId: input.externalUpdateId,
+            }),
+        ).toBe(1);
+    });
+
+    it('serializes parallel service-request answers and rejects a replayed callback state', async () => {
+        const identity = {
+            platform: 'telegram' as const,
+            chatId: 'durable-fn-client',
+            name: 'Durable FN client',
+        };
+        const started = await serviceRequestsService.start(
+            identity,
+            'fn_replacement',
+        );
+        await serviceRequestsService.answer(
+            identity,
+            started.request.id,
+            '2460000000',
+        );
+        const choiceStep = await serviceRequestsService.answer(
+            identity,
+            started.request.id,
+            'KKT-0001',
+        );
+        const expected = {
+            expectedStep: choiceStep.request.currentStep,
+            expectedVersion: choiceStep.request.version,
+        };
+
+        const results = await Promise.allSettled([
+            serviceRequestsService.answer(
+                identity,
+                started.request.id,
+                '15',
+                expected,
+            ),
+            serviceRequestsService.answer(
+                identity,
+                started.request.id,
+                '36',
+                expected,
+            ),
+        ]);
+        const fulfilled = results.filter(
+            (result) => result.status === 'fulfilled',
+        );
+        const rejected = results.find(
+            (result): result is PromiseRejectedResult =>
+                result.status === 'rejected',
+        );
+
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toBeDefined();
+        expect(rejected?.reason).toBeInstanceOf(
+            StaleServiceRequestChannelCommandException,
+        );
+
+        const afterParallel = await dataSource
+            .getRepository(ServiceRequestEntity)
+            .findOneByOrFail({ id: started.request.id });
+        expect(afterParallel.currentStep).toBe(expected.expectedStep + 1);
+        expect(afterParallel.answers.fiscalDriveTerm).toMatch(/^(15|36)$/);
+        expect(afterParallel.answers.contactForCall).toBeUndefined();
+
+        const replaySnapshot = {
+            currentStep: afterParallel.currentStep,
+            answers: afterParallel.answers,
+        };
+        await expect(
+            serviceRequestsService.answer(
+                identity,
+                started.request.id,
+                '15',
+                expected,
+            ),
+        ).rejects.toBeInstanceOf(StaleServiceRequestChannelCommandException);
+
+        const afterReplay = await dataSource
+            .getRepository(ServiceRequestEntity)
+            .findOneByOrFail({ id: started.request.id });
+        expect(afterReplay.currentStep).toBe(replaySnapshot.currentStep);
+        expect(afterReplay.answers).toEqual(replaySnapshot.answers);
+    });
+
+    it('keeps one active draft for parallel channel starts', async () => {
+        const identity = {
+            platform: 'max' as const,
+            chatId: 'durable-start-client',
+            name: 'Durable start client',
+        };
+        await usersService.getOrCreateOrUpdate(
+            identity.chatId,
+            identity.name,
+            undefined,
+            identity.platform,
+        );
+
+        const serviceStarts = await Promise.all([
+            serviceRequestsService.start(identity, 'kkt_remote_work'),
+            serviceRequestsService.start(identity, 'kkt_remote_work'),
+        ]);
+        expect(serviceStarts[0].request.id).toBe(serviceStarts[1].request.id);
+        expect(
+            await dataSource.getRepository(ServiceRequestEntity).countBy({
+                platform: 'max',
+                chatId: identity.chatId,
+                serviceTypeCode: 'kkt_remote_work',
+                status: 'draft',
+            }),
+        ).toBe(1);
+
+        const registrations = await Promise.all([
+            registrationsService.createRegistration(
+                identity.chatId,
+                identity.platform,
+            ),
+            registrationsService.createRegistration(
+                identity.chatId,
+                identity.platform,
+            ),
+        ]);
+        expect(registrations[0].id).toBe(registrations[1].id);
+        expect(
+            await dataSource.getRepository(RegistrationRequestEntity).countBy({
+                platform: 'max',
+                chatId: identity.chatId,
+                status: 'draft',
+            }),
+        ).toBe(1);
+
+        const tickets = await Promise.all([
+            ticketsService.getOrCreateActiveTicket({
+                userChatId: identity.chatId,
+                platform: identity.platform,
+            }),
+            ticketsService.getOrCreateActiveTicket({
+                userChatId: identity.chatId,
+                platform: identity.platform,
+            }),
+        ]);
+        expect(tickets[0].ticket.id).toBe(tickets[1].ticket.id);
+        expect(
+            await dataSource.getRepository(TicketEntity).countBy({
+                platform: 'max',
+                userChatId: identity.chatId,
+                isAnswered: false,
+            }),
+        ).toBe(1);
+    });
+
+    it('does not apply a duplicate registration answer twice', async () => {
+        await dataSource.getRepository(RegistrationFieldEntity).save([
+            { name: 'orgName', label: 'Организация', step: 2 },
+            { name: 'phone', label: 'Телефон', step: 3 },
+        ]);
+        const chatId = 'durable-registration-client';
+        const registration = await registrationsService.createRegistration(
+            chatId,
+            'telegram',
+        );
+        const input = {
+            platform: 'telegram' as const,
+            externalUpdateId: 'update:durable-registration-answer-1',
+            chatId,
+            commandType: 'telegram.registration.answer',
+            payload: { value: 'ООО Дубликат' },
+        };
+
+        await Promise.all([
+            inboundCommands.execute(input, () =>
+                registrationsService.saveFieldValue(
+                    chatId,
+                    'ООО Дубликат',
+                    'telegram',
+                ),
+            ),
+            inboundCommands.execute(input, () =>
+                registrationsService.saveFieldValue(
+                    chatId,
+                    'ООО Дубликат',
+                    'telegram',
+                ),
+            ),
+        ]);
+
+        const persisted = await dataSource
+            .getRepository(RegistrationRequestEntity)
+            .findOneByOrFail({ id: registration.id });
+        expect(persisted).toMatchObject({
+            orgName: 'ООО Дубликат',
+            currentStep: 3,
+        });
+    });
+
+    it('recovers a persisted dialog context after a service restart', async () => {
+        await userContext.set(
+            'durable-context-client',
+            { mode: 'SERVICE_REQUEST', serviceRequestId: 42 },
+            'telegram',
+        );
+        const restartedContext = new UserContextService(
+            dataSource.getRepository(UserDialogStateEntity),
+        );
+
+        await expect(
+            restartedContext.get('durable-context-client', 'telegram'),
+        ).resolves.toEqual({
+            mode: 'SERVICE_REQUEST',
+            talkingTo: null,
+            serviceRequestId: 42,
+        });
     });
 });

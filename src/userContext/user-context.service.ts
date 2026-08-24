@@ -1,32 +1,65 @@
 import { Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
-
-export type UserMode = 'IDLE' | 'REGISTER' | 'TICKET' | 'OPERATOR' | 'SERVICE_REQUEST' | 'ATOL_CONSENT';
-
-interface UserContext {
-    mode: UserMode;
-    talkingTo?: string | null;
-    serviceRequestId?: number | null;
-}
+import { UserDialogStateEntity } from './entities/user-dialog-state.entity';
+import type { UserContext } from './user-context.types';
 
 @Injectable()
 export class UserContextService {
-    private contexts = new Map<string, UserContext>();
+    constructor(
+        @InjectRepository(UserDialogStateEntity)
+        private readonly contexts: Repository<UserDialogStateEntity>,
+    ) {}
 
-    get(chatId: string, platform: UserPlatform = 'telegram'): UserContext {
-        return this.contexts.get(this.getKey(chatId, platform)) || { mode: 'IDLE' };
+    async get(
+        chatId: string,
+        platform: UserPlatform = 'telegram',
+    ): Promise<UserContext> {
+        const context = await this.contexts.findOne({
+            where: { chatId, platform },
+        });
+        if (!context) return { mode: 'IDLE' };
+
+        return {
+            mode: context.mode,
+            talkingTo: context.talkingTo,
+            serviceRequestId: context.serviceRequestId,
+        };
     }
 
-    set(chatId: string, context: Partial<UserContext>, platform: UserPlatform = 'telegram') {
-        const existing = this.get(chatId, platform);
-        this.contexts.set(this.getKey(chatId, platform), { ...existing, ...context });
+    async set(
+        chatId: string,
+        context: Partial<UserContext>,
+        platform: UserPlatform = 'telegram',
+    ): Promise<UserContext> {
+        const existing = await this.contexts.findOne({
+            where: { chatId, platform },
+        });
+        const saved = await this.contexts.save(
+            existing
+                ? Object.assign(existing, context)
+                : this.contexts.create({
+                      chatId,
+                      platform,
+                      mode: context.mode ?? 'IDLE',
+                      talkingTo: context.talkingTo ?? null,
+                      serviceRequestId: context.serviceRequestId ?? null,
+                  }),
+        );
+
+        return {
+            mode: saved.mode,
+            talkingTo: saved.talkingTo,
+            serviceRequestId: saved.serviceRequestId,
+        };
     }
 
-    reset(chatId: string, platform: UserPlatform = 'telegram') {
-        this.contexts.set(this.getKey(chatId, platform), { mode: 'IDLE' });
-    }
-
-    private getKey(chatId: string, platform: UserPlatform) {
-        return `${platform}:${chatId}`;
+    async reset(chatId: string, platform: UserPlatform = 'telegram') {
+        return this.set(
+            chatId,
+            { mode: 'IDLE', talkingTo: null, serviceRequestId: null },
+            platform,
+        );
     }
 }

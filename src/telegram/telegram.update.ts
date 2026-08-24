@@ -32,6 +32,15 @@ import { AdminNotificationsService } from 'src/admin/admin-notifications.service
 import { FilesService } from 'src/files/files.service';
 import { MessengerAdminAccessService } from 'src/admin/messenger-admin-access.service';
 import { RegistrationReadinessService } from 'src/registrations/registration-readiness.service';
+import { InboundCommandsService } from 'src/inbound-commands/inbound-commands.service';
+import {
+    createServiceRequestAnswerCallback,
+    createServiceRequestConfirmCallback,
+    parseServiceRequestAnswerCallback,
+    parseServiceRequestConfirmCallback,
+    STALE_SERVICE_REQUEST_CALLBACK_MESSAGE,
+} from 'src/inbound-commands/service-request-callback';
+import { StaleServiceRequestChannelCommandException } from 'src/service-requests/service-request-channel-workflow.service';
 
 @Update()
 export class TelegramUpdate {
@@ -49,6 +58,7 @@ export class TelegramUpdate {
         private readonly idleHandler: IdleTextHandler,
         private readonly ticketHandler: TicketTextHandler,
         private readonly operatorHandler: OperatorTextHandler,
+        private readonly inboundCommands: InboundCommandsService,
         @Optional()
         private readonly registrationReadiness?: RegistrationReadinessService,
     ) {}
@@ -60,6 +70,53 @@ export class TelegramUpdate {
             name: ctx.from?.first_name,
             username: ctx.from?.username,
         };
+    }
+
+    private async processInboundCommand(
+        ctx: Context,
+        commandType: string,
+        payload: Record<string, unknown> | undefined,
+        handler: () => Promise<void>,
+    ) {
+        const chatId = String(ctx.chat?.id ?? ctx.from?.id ?? '');
+        if (!chatId) return false;
+
+        const outcome = await this.inboundCommands.execute(
+            {
+                platform: 'telegram',
+                externalUpdateId: this.telegramExternalUpdateId(ctx),
+                chatId,
+                commandType,
+                payload,
+            },
+            handler,
+        );
+        if (outcome.status === 'processed') return true;
+
+        if (ctx.callbackQuery) {
+            const notification =
+                outcome.status === 'duplicate'
+                    ? 'Команда уже обработана'
+                    : 'Команда не была обработана';
+            await ctx.answerCbQuery(notification).catch(() => undefined);
+        }
+        return false;
+    }
+
+    private telegramExternalUpdateId(ctx: Context) {
+        const update = ctx.update as { update_id?: number };
+        if (typeof update.update_id === 'number') {
+            return `update:${update.update_id}`;
+        }
+        const callbackId = ctx.callbackQuery?.id;
+        if (callbackId) return `callback:${callbackId}`;
+        const messageId = ctx.message?.message_id;
+        if (messageId !== undefined) return `message:${messageId}`;
+        throw new Error('Telegram update has no durable external identifier');
+    }
+
+    private async rejectStaleServiceRequestCallback(ctx: Context) {
+        await ctx.answerCbQuery(STALE_SERVICE_REQUEST_CALLBACK_MESSAGE);
     }
 
     private async handleTextByMode(ctx: Context, mode: string, text: string) {
@@ -231,7 +288,7 @@ export class TelegramUpdate {
 
         const conversation = await this.resolveTelegramConversation(chatId);
         if (!conversation) {
-            this.ctxService.set(chatId, { mode: 'IDLE' });
+            await this.ctxService.set(chatId, { mode: 'IDLE' });
             await ctx.reply(
                 'Активный диалог не найден. Выберите клиента заново.',
                 mainMenuButton(),
@@ -343,15 +400,26 @@ export class TelegramUpdate {
         const chatId = ctx.chat?.id;
         if (!chatId) return;
 
-        await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
-        await ctx.reply(
-            'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
-            menuButtons(),
-        );
+        await this.processInboundCommand(
+            ctx,
+            'telegram.start',
+            undefined,
+            async () => {
+                await this.clientWorkflow.upsertClient(
+                    this.toClientIdentity(ctx),
+                );
+                await ctx.reply(
+                    'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
+                    menuButtons(),
+                );
 
-        if (ctx.message?.message_id) {
-            await ctx.deleteMessage(ctx.message.message_id).catch(() => {});
-        }
+                if (ctx.message?.message_id) {
+                    await ctx
+                        .deleteMessage(ctx.message.message_id)
+                        .catch(() => {});
+                }
+            },
+        );
     }
 
     @Action('wantToRegister')
@@ -359,22 +427,32 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        let reg = await this.regService.getNotFilledReg(chatId);
+        await this.processInboundCommand(
+            ctx,
+            'telegram.registration.intro',
+            undefined,
+            async () => {
+                const reg = await this.regService.getNotFilledReg(chatId);
 
-        await this.ctxService.set(chatId, { mode: 'REGISTER' });
+                await this.ctxService.set(chatId, { mode: 'REGISTER' });
 
-        if (!reg) {
-            const fields = await this.regService.getAllFields();
-            await ctx.reply(wantToRegisterMsg(fields), startRegButtons());
-            return;
-        }
+                if (!reg) {
+                    const fields = await this.regService.getAllFields();
+                    await ctx.reply(
+                        wantToRegisterMsg(fields),
+                        startRegButtons(),
+                    );
+                    return;
+                }
 
-        const fieldText = await this.regService.getFieldTextByStep(
-            reg.currentStep,
-        );
-        await ctx.reply(
-            `Найдена незаполненная заявка.\nПродолжим.\n\n${fieldText}:`,
-            removeKeyboard(),
+                const fieldText = await this.regService.getFieldTextByStep(
+                    reg.currentStep,
+                );
+                await ctx.reply(
+                    `Найдена незаполненная заявка.\nПродолжим.\n\n${fieldText}:`,
+                    removeKeyboard(),
+                );
+            },
         );
     }
 
@@ -384,18 +462,34 @@ export class TelegramUpdate {
         if (!query || !('data' in query)) return;
         const token = query.data.slice('regdata:'.length);
         if (!this.registrationReadiness) return;
-        await this.registrationReadiness.activateRequest(
-            this.toClientIdentity(ctx),
-            token,
-        );
-        await ctx.answerCbQuery('Запрос выбран');
-        await ctx.reply(
-            'Отправьте значение текстом, фотографией или PDF-файлом.',
+        await this.processInboundCommand(
+            ctx,
+            'telegram.registration.data-request.activate',
+            { token },
+            async () => {
+                await this.registrationReadiness!.activateRequest(
+                    this.toClientIdentity(ctx),
+                    token,
+                );
+                await ctx.answerCbQuery('Запрос выбран');
+                await ctx.reply(
+                    'Отправьте значение текстом, фотографией или PDF-файлом.',
+                );
+            },
         );
     }
 
     @Action('actualRegs')
     async handleActualRegs(@Ctx() ctx: Context) {
+        await this.processInboundCommand(
+            ctx,
+            'telegram.registrations.list',
+            undefined,
+            () => this.showActualRegistrations(ctx),
+        );
+    }
+
+    private async showActualRegistrations(ctx: Context) {
         if (
             !(await this.authorizeTelegram(
                 ctx,
@@ -432,6 +526,15 @@ export class TelegramUpdate {
         const data = query.data;
 
         const [, regId] = data.split(':');
+        await this.processInboundCommand(
+            ctx,
+            'telegram.registration.open',
+            { registrationId: regId },
+            () => this.completeRegistration(ctx, regId),
+        );
+    }
+
+    private async completeRegistration(ctx: Context, regId: string) {
         const admin = await this.authorizeTelegram(
             ctx,
             'registrations.read',
@@ -495,6 +598,15 @@ export class TelegramUpdate {
         const data = query.data;
 
         const [, regId] = data.split(':');
+        await this.processInboundCommand(
+            ctx,
+            'telegram.registration.complete',
+            { registrationId: regId },
+            () => this.finishRegistration(ctx, regId),
+        );
+    }
+
+    private async finishRegistration(ctx: Context, regId: string) {
         const admin = await this.authorizeTelegram(
             ctx,
             'registrations.update',
@@ -528,8 +640,18 @@ export class TelegramUpdate {
         await ctx.deleteMessage(ctx.message?.message_id);
         await this.regService.notifyAdminsAboutRegDone(reg);
     }
+
     @Action('actualTickets')
     async handleActualTickets(@Ctx() ctx: Context) {
+        await this.processInboundCommand(
+            ctx,
+            'telegram.tickets.list',
+            undefined,
+            () => this.showActualTickets(ctx),
+        );
+    }
+
+    private async showActualTickets(ctx: Context) {
         if (
             !(await this.authorizeTelegram(
                 ctx,
@@ -566,6 +688,15 @@ export class TelegramUpdate {
         const data = query.data;
 
         const [, ticketId] = data.split(':');
+        await this.processInboundCommand(
+            ctx,
+            'telegram.ticket.open',
+            { ticketId },
+            () => this.showTicket(ctx, ticketId),
+        );
+    }
+
+    private async showTicket(ctx: Context, ticketId: string) {
         const admin = await this.authorizeTelegram(
             ctx,
             'tickets.read',
@@ -599,6 +730,28 @@ export class TelegramUpdate {
 
     @Action('createTicket')
     async hadleCreateTicket(@Ctx() ctx: Context) {
+        await this.processInboundCommand(
+            ctx,
+            'telegram.ticket.open',
+            undefined,
+            () => this.openTicket(ctx),
+        );
+    }
+
+    @Action('wantToOfd')
+    async onWantToOfd(@Ctx() ctx: Context) {
+        await this.processInboundCommand(
+            ctx,
+            'telegram.ticket.open-ofd',
+            undefined,
+            async () => {
+                await ctx.answerCbQuery();
+                await this.openTicket(ctx);
+            },
+        );
+    }
+
+    private async openTicket(ctx: Context) {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
@@ -607,7 +760,7 @@ export class TelegramUpdate {
         );
 
         if (result.status === 'already_open') {
-            ctx.editMessageText(
+            await ctx.editMessageText(
                 'У вас уже есть вопрос в работе, ожидайте, когда оператор подключится к чату с вами.',
                 mainMenuButton(),
             );
@@ -615,24 +768,37 @@ export class TelegramUpdate {
         }
 
         await this.ctxService.set(chatId, { mode: 'TICKET' });
-
         await ctx.editMessageText('Введите текст вопроса:');
-    }
-
-    @Action('wantToOfd')
-    async onWantToOfd(@Ctx() ctx: Context) {
-        await ctx.answerCbQuery();
-        await this.hadleCreateTicket(ctx);
     }
 
     @Action('credits')
     async sendCredits(ctx: Context) {
-        await ctx.editMessageText(TG_TEXTS.CREDITS_TEXT, creditsButtons());
+        await this.processInboundCommand(
+            ctx,
+            'telegram.credits.open',
+            undefined,
+            async () => {
+                await ctx.editMessageText(
+                    TG_TEXTS.CREDITS_TEXT,
+                    creditsButtons(),
+                );
+            },
+        );
     }
 
     @Action('serviceMenu')
     async sendServiceMenu(ctx: Context) {
-        await ctx.editMessageText(TG_TEXTS.SERVICE_TEXT, serviceButtons());
+        await this.processInboundCommand(
+            ctx,
+            'telegram.service-menu.open',
+            undefined,
+            async () => {
+                await ctx.editMessageText(
+                    TG_TEXTS.SERVICE_TEXT,
+                    serviceButtons(),
+                );
+            },
+        );
     }
 
     @Action('fnReplacement')
@@ -640,16 +806,25 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        const result = await this.serviceRequestsService.start(
-            this.toClientIdentity(ctx),
-            'fn_replacement',
+        await this.processInboundCommand(
+            ctx,
+            'telegram.service-request.fn-replacement.start',
+            undefined,
+            async () => {
+                const result = await this.serviceRequestsService.start(
+                    this.toClientIdentity(ctx),
+                    'fn_replacement',
+                );
+                await this.ctxService.set(chatId, {
+                    mode: 'SERVICE_REQUEST',
+                    serviceRequestId: result.request.id,
+                });
+                await ctx.reply(
+                    'Начинаем заявку на замену фискального накопителя.',
+                );
+                await this.replyServiceRequestStep(ctx, result);
+            },
         );
-        await this.ctxService.set(chatId, {
-            mode: 'SERVICE_REQUEST',
-            serviceRequestId: result.request.id,
-        });
-        await ctx.reply('Начинаем заявку на замену фискального накопителя.');
-        await this.replyServiceRequestStep(ctx, result);
     }
 
     @Action('atolConsent')
@@ -657,24 +832,31 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        const result = await this.clientWorkflow.startAtolConsent(
-            this.toClientIdentity(ctx),
-        );
-        await this.ctxService.set(chatId, { mode: 'ATOL_CONSENT' });
+        await this.processInboundCommand(
+            ctx,
+            'telegram.atol-consent.start',
+            undefined,
+            async () => {
+                const result = await this.clientWorkflow.startAtolConsent(
+                    this.toClientIdentity(ctx),
+                );
+                await this.ctxService.set(chatId, { mode: 'ATOL_CONSENT' });
 
-        await ctx.reply(
-            result.status === 'started'
-                ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.'
-                : 'Нашел незаполненное согласие. Продолжим с места остановки.',
-        );
+                await ctx.reply(
+                    result.status === 'started'
+                        ? 'Сформируем согласие на дистанционный доступ АТОЛ. Я задам несколько вопросов и отправлю готовый PDF.'
+                        : 'Нашел незаполненное согласие. Продолжим с места остановки.',
+                );
 
-        if (result.nextField) {
-            await ctx.reply(`${result.nextField}:`);
-            return;
-        }
+                if (result.nextField) {
+                    await ctx.reply(`${result.nextField}:`);
+                    return;
+                }
 
-        await ctx.reply(
-            'Согласие уже сформировано. Отправьте фото или скан подписанного документа.',
+                await ctx.reply(
+                    'Согласие уже сформировано. Отправьте фото или скан подписанного документа.',
+                );
+            },
         );
     }
 
@@ -683,55 +865,154 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        await ctx.answerCbQuery('Подача согласия отменена');
-        await this.clientWorkflow.cancelAtolConsent(this.toClientIdentity(ctx));
-        await this.ctxService.set(chatId, { mode: 'IDLE' });
-        await ctx.reply(
-            'Подача согласия на доступ АТОЛ отменена. Черновик удален.',
-        );
-        await ctx.reply(
-            'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
-            menuButtons(),
+        await this.processInboundCommand(
+            ctx,
+            'telegram.atol-consent.cancel',
+            undefined,
+            async () => {
+                await ctx.answerCbQuery('Подача согласия отменена');
+                await this.clientWorkflow.cancelAtolConsent(
+                    this.toClientIdentity(ctx),
+                );
+                await this.ctxService.set(chatId, { mode: 'IDLE' });
+                await ctx.reply(
+                    'Подача согласия на доступ АТОЛ отменена. Черновик удален.',
+                );
+                await ctx.reply(
+                    'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
+                    menuButtons(),
+                );
+            },
         );
     }
 
-    @Action(/^serviceRequestAnswer:\d+:.+/)
+    @Action(/^sra2:\d+:\d+:\d+:.+/)
     async onServiceRequestButtonAnswer(@Ctx() ctx: Context) {
         const query = ctx.callbackQuery;
         if (!query || !('data' in query)) return;
 
-        const [, requestId, value] = query.data.split(':');
-        await ctx.answerCbQuery();
-        const result = await this.serviceRequestsService.answer(
-            this.toClientIdentity(ctx),
-            Number(requestId),
-            value,
+        const callback = parseServiceRequestAnswerCallback(query.data);
+        if (!callback) {
+            await this.rejectStaleServiceRequestCallback(ctx);
+            return;
+        }
+
+        await this.processInboundCommand(
+            ctx,
+            'telegram.service-request.answer',
+            {
+                requestId: callback.requestId,
+                expectedStep: callback.expectedStep,
+                expectedVersion: callback.expectedVersion,
+                value: callback.value,
+            },
+            async () => {
+                try {
+                    const result = await this.serviceRequestsService.answer(
+                        this.toClientIdentity(ctx),
+                        callback.requestId,
+                        callback.value,
+                        {
+                            expectedStep: callback.expectedStep,
+                            expectedVersion: callback.expectedVersion,
+                        },
+                    );
+                    await this.ctxService.set(String(ctx.chat?.id), {
+                        mode: 'SERVICE_REQUEST',
+                        serviceRequestId: result.request.id,
+                    });
+                    await ctx.answerCbQuery('Ответ сохранен');
+                    await this.replyServiceRequestStep(ctx, result);
+                } catch (error) {
+                    if (
+                        error instanceof
+                        StaleServiceRequestChannelCommandException
+                    ) {
+                        await this.rejectStaleServiceRequestCallback(ctx);
+                        return;
+                    }
+                    throw error;
+                }
+            },
         );
-        await this.ctxService.set(String(ctx.chat?.id), {
-            mode: 'SERVICE_REQUEST',
-            serviceRequestId: result.request.id,
-        });
-        await this.replyServiceRequestStep(ctx, result);
     }
 
-    @Action(/^serviceRequestConfirm:\d+/)
+    @Action(/^src2:\d+:\d+:\d+$/)
     async onServiceRequestConfirm(@Ctx() ctx: Context) {
         const query = ctx.callbackQuery;
         if (!query || !('data' in query)) return;
 
-        const [, requestId] = query.data.split(':');
-        await ctx.answerCbQuery();
-        const result = await this.serviceRequestsService.confirmPrice(
-            this.toClientIdentity(ctx),
-            Number(requestId),
+        const callback = parseServiceRequestConfirmCallback(query.data);
+        if (!callback) {
+            await this.rejectStaleServiceRequestCallback(ctx);
+            return;
+        }
+
+        await this.processInboundCommand(
+            ctx,
+            'telegram.service-request.confirm',
+            {
+                requestId: callback.requestId,
+                expectedStep: callback.expectedStep,
+                expectedVersion: callback.expectedVersion,
+            },
+            async () => {
+                try {
+                    const result =
+                        await this.serviceRequestsService.confirmPrice(
+                            this.toClientIdentity(ctx),
+                            callback.requestId,
+                            {
+                                expectedStep: callback.expectedStep,
+                                expectedVersion: callback.expectedVersion,
+                            },
+                        );
+                    await this.ctxService.set(String(ctx.chat?.id), {
+                        mode: 'IDLE',
+                        serviceRequestId: null,
+                    });
+                    await ctx.answerCbQuery('Заявка отправлена');
+                    await ctx.reply(
+                        `Заявка #${result.request.id} отправлена оператору. Оператор подготовит счет и пришлет его вам.`,
+                        mainMenuButton(),
+                    );
+                } catch (error) {
+                    if (
+                        error instanceof
+                        StaleServiceRequestChannelCommandException
+                    ) {
+                        await this.rejectStaleServiceRequestCallback(ctx);
+                        return;
+                    }
+                    throw error;
+                }
+            },
         );
-        await this.ctxService.set(String(ctx.chat?.id), {
-            mode: 'IDLE',
-            serviceRequestId: null,
-        });
-        await ctx.reply(
-            `Заявка #${result.request.id} отправлена оператору. Оператор подготовит счет и пришлет его вам.`,
-            mainMenuButton(),
+    }
+
+    @Action(/^serviceRequestAnswer:\d+:.+/)
+    async onLegacyServiceRequestButtonAnswer(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+        if (!query || !('data' in query)) return;
+
+        await this.processInboundCommand(
+            ctx,
+            'telegram.service-request.answer.legacy',
+            { callback: 'legacy' },
+            () => this.rejectStaleServiceRequestCallback(ctx),
+        );
+    }
+
+    @Action(/^serviceRequestConfirm:\d+$/)
+    async onLegacyServiceRequestConfirm(@Ctx() ctx: Context) {
+        const query = ctx.callbackQuery;
+        if (!query || !('data' in query)) return;
+
+        await this.processInboundCommand(
+            ctx,
+            'telegram.service-request.confirm.legacy',
+            { callback: 'legacy' },
+            () => this.rejectStaleServiceRequestCallback(ctx),
         );
     }
 
@@ -740,17 +1021,26 @@ export class TelegramUpdate {
         const chatId = String(ctx.chat?.id);
         if (!chatId) return;
 
-        await this.clientWorkflow.upsertClient(this.toClientIdentity(ctx));
-        try {
-            await ctx.deleteMessage(ctx.message?.message_id);
-        } catch {
-            return;
-        } finally {
-            await ctx.reply(
-                'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
-                menuButtons(),
-            );
-        }
+        await this.processInboundCommand(
+            ctx,
+            'telegram.menu.open',
+            undefined,
+            async () => {
+                await this.clientWorkflow.upsertClient(
+                    this.toClientIdentity(ctx),
+                );
+                try {
+                    await ctx.deleteMessage(ctx.message?.message_id);
+                } catch {
+                    return;
+                } finally {
+                    await ctx.reply(
+                        'Я чат-бот компании ВитмаМаркет, чем могу вам помочь?',
+                        menuButtons(),
+                    );
+                }
+            },
+        );
     }
 
     @Action(/connectTo:\d+/)
@@ -760,9 +1050,17 @@ export class TelegramUpdate {
         if (!query || !('data' in query)) {
             return;
         }
-        if (!ctx.from) return;
-
         const [, clientChatId] = query.data.split(':');
+        await this.processInboundCommand(
+            ctx,
+            'telegram.ticket.connect',
+            { clientChatId },
+            () => this.connectToTicket(ctx, clientChatId),
+        );
+    }
+
+    private async connectToTicket(ctx: Context, clientChatId: string) {
+        if (!ctx.from) return;
         const operatorChatId = String(ctx.from.id);
         const admin = await this.adminAccess.authorize(
             'telegram',
@@ -830,11 +1128,18 @@ export class TelegramUpdate {
         if (!query || !('data' in query)) {
             return;
         }
-        if (!ctx.from) return;
-
         const data = query.data;
-
         const [, talkingToChatId] = data.split(':');
+        await this.processInboundCommand(
+            ctx,
+            'telegram.ticket.disconnect',
+            { talkingToChatId },
+            () => this.disconnectFromTicket(ctx, talkingToChatId),
+        );
+    }
+
+    private async disconnectFromTicket(ctx: Context, talkingToChatId: string) {
+        if (!ctx.from) return;
         const initChatId = String(ctx.from.id);
 
         const isTalking =
@@ -887,7 +1192,7 @@ export class TelegramUpdate {
             return;
         }
 
-        let closedTicket =
+        const closedTicket =
             await this.ticketService.getActiveTicket(clientChatId);
 
         if (!closedTicket) {
@@ -938,29 +1243,37 @@ export class TelegramUpdate {
             await ctx.answerCbQuery('Неизвестный тип заявки');
             return;
         }
-        const result = await this.clientWorkflow.startSimpleServiceRequest({
-            ...this.toClientIdentity(ctx),
-            serviceTypeCode: rawType,
-        });
-        const request = result.data as { id?: number } | undefined;
-        await this.ctxService.set(chatId, {
-            mode: 'SERVICE_REQUEST',
-            serviceRequestId: request?.id,
-        });
+        await this.processInboundCommand(
+            ctx,
+            'telegram.service-request.simple.start',
+            { serviceTypeCode: rawType },
+            async () => {
+                const result =
+                    await this.clientWorkflow.startSimpleServiceRequest({
+                        ...this.toClientIdentity(ctx),
+                        serviceTypeCode: rawType,
+                    });
+                const request = result.data as { id?: number } | undefined;
+                await this.ctxService.set(chatId, {
+                    mode: 'SERVICE_REQUEST',
+                    serviceRequestId: request?.id,
+                });
 
-        if (!result.nextField) {
-            await this.ctxService.set(chatId, {
-                mode: 'IDLE',
-                serviceRequestId: null,
-            });
-            await ctx.reply(
-                'Заявка создана, ожидайте ответа оператора',
-                mainMenuButton(),
-            );
-            return;
-        }
+                if (!result.nextField) {
+                    await this.ctxService.set(chatId, {
+                        mode: 'IDLE',
+                        serviceRequestId: null,
+                    });
+                    await ctx.reply(
+                        'Заявка создана, ожидайте ответа оператора',
+                        mainMenuButton(),
+                    );
+                    return;
+                }
 
-        await ctx.reply(`${result.nextField}:`);
+                await ctx.reply(`${result.nextField}:`);
+            },
+        );
     }
 
     private async handleServiceRequestText(ctx: Context, text: string) {
@@ -1061,7 +1374,12 @@ export class TelegramUpdate {
                         result.nextStep.options.map((option) =>
                             Markup.button.callback(
                                 option.label,
-                                `serviceRequestAnswer:${result.request.id}:${option.value}`,
+                                createServiceRequestAnswerCallback({
+                                    requestId: result.request.id,
+                                    expectedStep: result.request.currentStep,
+                                    expectedVersion: result.request.version,
+                                    value: option.value,
+                                }),
                             ),
                         ),
                         { columns: 1 },
@@ -1094,7 +1412,11 @@ export class TelegramUpdate {
             Markup.inlineKeyboard([
                 Markup.button.callback(
                     'Согласен, заказать счет',
-                    `serviceRequestConfirm:${result.request.id}`,
+                    createServiceRequestConfirmCallback({
+                        requestId: result.request.id,
+                        expectedStep: result.request.currentStep,
+                        expectedVersion: result.request.version,
+                    }),
                 ),
             ]),
         );
@@ -1105,6 +1427,18 @@ export class TelegramUpdate {
         @Ctx() ctx: Context,
         @Message('text') msgText?: string,
     ) {
+        if (!ctx.chat || !ctx.message) return;
+        if (msgText?.trim().startsWith('/start')) return;
+
+        await this.processInboundCommand(
+            ctx,
+            'telegram.message',
+            { kind: msgText ? 'text' : 'media' },
+            () => this.handleIncomingMessage(ctx, msgText),
+        );
+    }
+
+    private async handleIncomingMessage(ctx: Context, msgText?: string) {
         const chatId = String(ctx.chat?.id);
         if (!chatId || !ctx.message) return;
 
