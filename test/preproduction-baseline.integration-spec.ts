@@ -21,6 +21,7 @@ describe('pre-production database baseline', () => {
         expect(migrations).toEqual([
             { name: 'InitialPreproductionBaseline1787388476982' },
             { name: 'AddDurableInboundCommands1787577304950' },
+            { name: 'AddDurableOutboundDeliveries1787664000000' },
         ]);
     });
 
@@ -39,6 +40,7 @@ describe('pre-production database baseline', () => {
             'organization_access_requests',
             'inbound_commands',
             'user_dialog_states',
+            'outbound_deliveries',
         ];
         const rows: Array<{ table_name: string }> = await dataSource.query(
             `SELECT table_name

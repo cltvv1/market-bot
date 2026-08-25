@@ -10,12 +10,19 @@ import { AuditService } from '../src/audit/audit.service';
 import { AuditEventEntity } from '../src/audit/entities/audit-event.entity';
 import { AdminUserEntity } from '../src/admin/entities/admin-user.entity';
 import { AdminUserRoleEntity } from '../src/admin/entities/admin-user-role.entity';
+import { AdminNotificationsService } from '../src/admin/admin-notifications.service';
 import type { FilesService } from '../src/files/files.service';
 import type { MessengerService } from '../src/messenger/messenger.types';
+import { OutboundDeliveryEntity } from '../src/outbound-deliveries/entities/outbound-delivery.entity';
+import { OutboundDeliveriesService } from '../src/outbound-deliveries/outbound-deliveries.service';
+import { RegistrationFieldEntity } from '../src/registrations/entities/registration-field.entity';
+import { RegistrationsService } from '../src/registrations/registrations.service';
 
 describe('KKT registration readiness on PostgreSQL', () => {
     let dataSource: DataSource;
     let service: RegistrationReadinessService;
+    let registrationsService: RegistrationsService;
+    let outbound: OutboundDeliveriesService;
     let registrationId: number;
     let staffId: number;
 
@@ -36,6 +43,8 @@ describe('KKT registration readiness on PostgreSQL', () => {
             displayName: 'Registration Operator',
             passwordHash: 'synthetic',
             isActive: true,
+            telegramChatId: 'registration-operator-chat',
+            notifyRegistrations: true,
         });
         staffId = staff.id;
         await dataSource
@@ -68,6 +77,16 @@ describe('KKT registration readiness on PostgreSQL', () => {
             {} as FilesService,
             new AuditService(dataSource.getRepository(AuditEventEntity)),
             messenger,
+        );
+        outbound = new OutboundDeliveriesService(
+            dataSource.getRepository(OutboundDeliveryEntity),
+            dataSource,
+        );
+        registrationsService = createRegistrationsService(
+            new AdminNotificationsService(
+                dataSource.getRepository(AdminUserEntity),
+                outbound,
+            ),
         );
     });
 
@@ -192,4 +211,141 @@ describe('KKT registration readiness on PostgreSQL', () => {
             ),
         ).toBe(true);
     });
+
+    it('commits registration handoff, audit and staff completion delivery atomically', async () => {
+        const registration = await makeReady();
+
+        const handedOff = await registrationsService.doReg(
+            registration,
+            staffId,
+        );
+
+        expect(handedOff).toMatchObject({
+            id: registrationId,
+            status: 'processed',
+        });
+        expect(handedOff.handedOffAt).toBeTruthy();
+        expect(
+            await dataSource.getRepository(AuditEventEntity).countBy({
+                action: 'registration.handoff.allowed',
+                targetId: String(registrationId),
+            }),
+        ).toBe(1);
+        expect(
+            await outbound.repository.find({
+                where: {
+                    sourceType: 'registration',
+                    sourceId: String(registrationId),
+                },
+            }),
+        ).toEqual([
+            expect.objectContaining({
+                dedupeKey: `registration:${registrationId}:completed:staff:${staffId}:telegram`,
+                status: 'pending',
+                audience: 'staff',
+            }),
+        ]);
+    });
+
+    it('rolls the handoff and audit back when completion enqueue fails', async () => {
+        const registration = await makeReady();
+        const failingService = createRegistrationsService({
+            notify: jest
+                .fn()
+                .mockRejectedValue(
+                    new Error('forced completion enqueue failure'),
+                ),
+        } as unknown as AdminNotificationsService);
+
+        await expect(
+            failingService.doReg(registration, staffId),
+        ).rejects.toThrow('forced completion enqueue failure');
+
+        expect(
+            await dataSource
+                .getRepository(RegistrationRequestEntity)
+                .findOneByOrFail({ id: registrationId }),
+        ).toMatchObject({ status: 'new', handedOffAt: null });
+        expect(
+            await dataSource.getRepository(AuditEventEntity).countBy({
+                action: 'registration.handoff.allowed',
+                targetId: String(registrationId),
+            }),
+        ).toBe(0);
+        expect(await outbound.repository.count()).toBe(0);
+    });
+
+    it('keeps repeated completion idempotent', async () => {
+        const registration = await makeReady();
+
+        await registrationsService.doReg(registration, staffId);
+        const repeated = await registrationsService.doReg(
+            registration,
+            staffId,
+        );
+
+        expect(repeated).toMatchObject({
+            id: registrationId,
+            status: 'processed',
+        });
+        expect(await outbound.repository.count()).toBe(1);
+        expect(
+            await dataSource.getRepository(AuditEventEntity).countBy({
+                action: 'registration.handoff.allowed',
+                targetId: String(registrationId),
+            }),
+        ).toBe(1);
+    });
+
+    it('does not enqueue completion delivery when readiness denies handoff', async () => {
+        const registration = await dataSource
+            .getRepository(RegistrationRequestEntity)
+            .findOneByOrFail({ id: registrationId });
+
+        await expect(
+            registrationsService.doReg(registration, staffId),
+        ).rejects.toMatchObject({ status: 409 });
+
+        expect(
+            await dataSource
+                .getRepository(RegistrationRequestEntity)
+                .findOneByOrFail({ id: registrationId }),
+        ).toMatchObject({ status: 'new', handedOffAt: null });
+        expect(await outbound.repository.count()).toBe(0);
+    });
+
+    function createRegistrationsService(
+        notifications: AdminNotificationsService,
+    ) {
+        return new RegistrationsService(
+            dataSource.getRepository(RegistrationRequestEntity),
+            dataSource.getRepository(RegistrationFieldEntity),
+            {} as never,
+            {} as never,
+            notifications,
+            {} as FilesService,
+            service,
+            dataSource,
+        );
+    }
+
+    async function makeReady() {
+        await service.initialize(registrationId);
+        await dataSource
+            .getRepository(RegistrationRequirementEntity)
+            .update(
+                { registrationId },
+                { status: 'verified', verifiedAt: new Date() },
+            );
+        await dataSource
+            .getRepository(RegistrationRequestEntity)
+            .update(
+                { id: registrationId },
+                { ofdProvisionMode: 'customer_has_code' },
+            );
+        expect(await service.recompute(registrationId)).toBe('ready');
+        return dataSource
+            .getRepository(RegistrationRequestEntity)
+            .findOneByOrFail({ id: registrationId });
+    }
 });

@@ -7,7 +7,6 @@ describe('TelegramUpdate admin callbacks', () => {
     const registrations = {
         getRegistrationById: jest.fn(),
         doReg: jest.fn().mockResolvedValue(undefined),
-        notifyAdminsAboutRegDone: jest.fn().mockResolvedValue(undefined),
     };
     const contexts = {
         get: jest.fn().mockResolvedValue({ mode: 'IDLE' }),

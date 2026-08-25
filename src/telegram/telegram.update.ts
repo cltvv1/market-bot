@@ -16,7 +16,7 @@ import { TicketTextHandler } from './handlers/ticket/ticket-text.handler';
 import { actualTicketsButtons } from './keyboards/actual-tickets.keyboard';
 import { RegistrationsService } from '../registrations/registrations.service';
 import { OperatorTextHandler } from './handlers/operator/operator-text.handler';
-import { disconnectFromButton } from 'src/telegram/keyboards/disconnect.keyboard';
+import { disconnectFromKeyboard } from 'src/messenger/messenger-keyboards';
 import { mainMenuButton } from 'src/telegram/keyboards/return-to-main-menu.keyboard';
 import { RegisterTextHandler } from 'src/telegram/handlers/register/register-text.handler';
 import {
@@ -295,16 +295,12 @@ export class TelegramUpdate {
             );
             return;
         }
-        const talkingToId = conversation.targetChatId;
-
-        await ctx.copyMessage(talkingToId, disconnectFromButton(chatId));
-
-        await this.ticketService.addMediaMessage(
+        await this.ticketService.enqueueOperatorMedia(
             conversation.ticket.id,
-            'operator',
             await this.materializeTicketMedia(media),
             chatId,
             'bot',
+            disconnectFromKeyboard(chatId),
         );
     }
 
@@ -638,7 +634,6 @@ export class TelegramUpdate {
             targetId: regId,
         });
         await ctx.deleteMessage(ctx.message?.message_id);
-        await this.regService.notifyAdminsAboutRegDone(reg);
     }
 
     @Action('actualTickets')

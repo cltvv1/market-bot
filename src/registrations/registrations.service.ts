@@ -1,5 +1,4 @@
 import * as path from 'path';
-import { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Not, Repository } from 'typeorm';
@@ -257,10 +256,52 @@ export class RegistrationsService {
                 final: false,
             },
         });
-
-        reg.pdfFileId = storedPdf.id;
-        reg.status = 'new';
-        await this.registrationRepo.save(reg);
+        const regAuthor = await this.usersService.getOrCreateOrUpdate(
+            reg.chatId,
+            undefined,
+            undefined,
+            reg.platform,
+        );
+        const message = formatRegistrationRequest(reg, regAuthor);
+        try {
+            const saved = await this.dataSource.transaction(async (manager) => {
+                const registrations = manager.getRepository(
+                    RegistrationRequestEntity,
+                );
+                const locked = await registrations.findOne({
+                    where: { id: reg.id },
+                    lock: { mode: 'pessimistic_write' },
+                });
+                if (!locked) throw new Error('Registration was not found');
+                locked.pdfFileId = storedPdf.id;
+                locked.status = 'new';
+                const updated = await registrations.save(locked);
+                const context = {
+                    dedupeKey: `registration:${updated.id}:submitted`,
+                    sourceType: 'registration',
+                    sourceId: updated.id,
+                    manager,
+                };
+                await this.adminNotificationsService.notify(
+                    'registrations',
+                    message,
+                    context,
+                );
+                await this.adminNotificationsService.notifyDocument(
+                    'registrations',
+                    {
+                        storedFileId: storedPdf.id,
+                        filename: `${updated.orgName}.pdf`,
+                    },
+                    context,
+                );
+                return updated;
+            });
+            Object.assign(reg, saved);
+        } catch (error) {
+            await this.filesService.logicalDelete(storedPdf.id);
+            throw error;
+        }
 
         return pdf;
     }
@@ -299,29 +340,23 @@ export class RegistrationsService {
         return stored;
     }
 
-    async notifyAdminsAboutNewReg(reg: RegistrationRequestEntity, pdf: Buffer) {
-        const regAuthor = await this.usersService.getOrCreateOrUpdate(
-            reg.chatId,
-            undefined,
-            undefined,
-            reg.platform,
-        );
-        const message = formatRegistrationRequest(reg, regAuthor);
-
-        await this.adminNotificationsService.notify('registrations', message);
-        await this.adminNotificationsService.notifyDocument('registrations', {
-            sourceFactory: () => Readable.from(pdf),
-            filename: `${reg.orgName}.pdf`,
-        });
-    }
-
-    async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
-        const message = formatRegistrationDone(reg);
-        await this.adminNotificationsService.notify('registrations', message);
-    }
-
     async doReg(reg: RegistrationRequestEntity, staffId: number) {
-        return this.readinessService.handoff(reg.id, staffId);
+        return this.readinessService.handoffWithAction(
+            reg.id,
+            staffId,
+            async (registration, manager) => {
+                await this.adminNotificationsService.notify(
+                    'registrations',
+                    formatRegistrationDone(registration),
+                    {
+                        dedupeKey: `registration:${registration.id}:completed`,
+                        sourceType: 'registration',
+                        sourceId: registration.id,
+                        manager,
+                    },
+                );
+            },
+        );
     }
 
     private isRegistrationField(value: string): value is RegistrationField {

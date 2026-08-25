@@ -2,7 +2,6 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
     BadRequestException,
     ConflictException,
-    Inject,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
@@ -32,8 +31,7 @@ import { ServiceTypeEntity } from './entities/service-type.entity';
 import { ServiceFormService } from './service-form.service';
 import { transitionServiceRequest } from './service-request-status';
 import { defaultServiceTypes } from './service-request.flows';
-import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
-import type { MessengerService } from 'src/messenger/messenger.types';
+import { OutboundDeliveriesService } from 'src/outbound-deliveries/outbound-deliveries.service';
 import { ServiceRequestChannelWorkflowService } from './service-request-channel-workflow.service';
 
 @Injectable()
@@ -57,8 +55,7 @@ export class ServiceRequestsService {
         private readonly audit: AuditService,
         private readonly notifications: AdminNotificationsService,
         private readonly dataSource: DataSource,
-        @Inject(MESSENGER_SERVICE)
-        private readonly messenger: MessengerService,
+        private readonly outbound: OutboundDeliveriesService,
         private readonly channelWorkflow: ServiceRequestChannelWorkflowService,
     ) {}
 
@@ -417,12 +414,18 @@ export class ServiceRequestsService {
                 text: 'Заявка принята и передана оператору.',
                 storedFileId: null,
             });
+            await this.notifications.notify(
+                'serviceRequests',
+                `Новая сервисная заявка ${submitted.requestNumber}: ${submitted.serviceTypeTitle}`,
+                {
+                    dedupeKey: `service-request:${submitted.id}:submitted:staff`,
+                    sourceType: 'service_request',
+                    sourceId: submitted.id,
+                    manager,
+                },
+            );
             return submitted;
         });
-        await this.notifications.notify(
-            'serviceRequests',
-            `Новая сервисная заявка ${saved.requestNumber}: ${saved.serviceTypeTitle}`,
-        );
         await this.audit.record({
             actorType: 'customer',
             actorCustomerId: session.userId,
@@ -594,29 +597,53 @@ export class ServiceRequestsService {
         id: number,
         text: string,
     ) {
-        const request = await this.requireOwnedRequest(session.userId, id);
-        if (['draft', 'closed', 'cancelled'].includes(request.status))
-            throw new BadRequestException(
-                'Messages are not accepted in the current status',
-            );
-        const message = await this.messages.save(
-            this.messages.create({
-                serviceRequestId: id,
-                authorType: 'customer',
-                authorCustomerId: session.userId,
-                authorStaffId: null,
-                visibility: 'customer',
-                text: text.trim(),
-                storedFileId: null,
-            }),
-        );
-        if (request.status === 'clarification_required') {
-            transitionServiceRequest(request, 'submitted');
-            await this.requests.save(request);
-        }
-        await this.notifications.notify(
-            'serviceRequests',
-            `Новое сообщение клиента по заявке ${request.requestNumber}`,
+        const { message, request } = await this.dataSource.transaction(
+            async (manager) => {
+                const requests = manager.getRepository(ServiceRequestEntity);
+                const request = await requests.findOne({
+                    where: { id },
+                    lock: { mode: 'pessimistic_write' },
+                });
+                if (!request || request.userId !== session.userId) {
+                    throw new NotFoundException(
+                        'Service request was not found',
+                    );
+                }
+                if (['draft', 'closed', 'cancelled'].includes(request.status)) {
+                    throw new BadRequestException(
+                        'Messages are not accepted in the current status',
+                    );
+                }
+                const messages = manager.getRepository(
+                    ServiceRequestMessageEntity,
+                );
+                const message = await messages.save(
+                    messages.create({
+                        serviceRequestId: id,
+                        authorType: 'customer',
+                        authorCustomerId: session.userId,
+                        authorStaffId: null,
+                        visibility: 'customer',
+                        text: text.trim(),
+                        storedFileId: null,
+                    }),
+                );
+                if (request.status === 'clarification_required') {
+                    transitionServiceRequest(request, 'submitted');
+                    await requests.save(request);
+                }
+                await this.notifications.notify(
+                    'serviceRequests',
+                    `Новое сообщение клиента по заявке ${request.requestNumber}`,
+                    {
+                        dedupeKey: `service-request-message:${message.id}:staff`,
+                        sourceType: 'service_request',
+                        sourceId: request.id,
+                        manager,
+                    },
+                );
+                return { message, request };
+            },
         );
         await this.audit.record({
             actorType: 'customer',
@@ -642,34 +669,53 @@ export class ServiceRequestsService {
     }
 
     async addPublicMessage(token: string, text: string) {
-        const request = await this.requests.findOne({
-            where: { publicTokenHash: this.hashToken(token) },
-        });
-        if (!request)
-            throw new NotFoundException('Service request was not found');
-        if (['draft', 'closed', 'cancelled'].includes(request.status)) {
-            throw new BadRequestException(
-                'Messages are not accepted in the current status',
-            );
-        }
-        const message = await this.messages.save(
-            this.messages.create({
-                serviceRequestId: request.id,
-                authorType: 'customer',
-                authorCustomerId: request.userId,
-                authorStaffId: null,
-                visibility: 'customer',
-                text: text.trim(),
-                storedFileId: null,
-            }),
-        );
-        if (request.status === 'clarification_required') {
-            transitionServiceRequest(request, 'submitted');
-            await this.requests.save(request);
-        }
-        await this.notifications.notify(
-            'serviceRequests',
-            `Новое сообщение клиента по заявке ${request.requestNumber}`,
+        const { message, request } = await this.dataSource.transaction(
+            async (manager) => {
+                const requests = manager.getRepository(ServiceRequestEntity);
+                const request = await requests.findOne({
+                    where: { publicTokenHash: this.hashToken(token) },
+                    lock: { mode: 'pessimistic_write' },
+                });
+                if (!request) {
+                    throw new NotFoundException(
+                        'Service request was not found',
+                    );
+                }
+                if (['draft', 'closed', 'cancelled'].includes(request.status)) {
+                    throw new BadRequestException(
+                        'Messages are not accepted in the current status',
+                    );
+                }
+                const messages = manager.getRepository(
+                    ServiceRequestMessageEntity,
+                );
+                const message = await messages.save(
+                    messages.create({
+                        serviceRequestId: request.id,
+                        authorType: 'customer',
+                        authorCustomerId: request.userId,
+                        authorStaffId: null,
+                        visibility: 'customer',
+                        text: text.trim(),
+                        storedFileId: null,
+                    }),
+                );
+                if (request.status === 'clarification_required') {
+                    transitionServiceRequest(request, 'submitted');
+                    await requests.save(request);
+                }
+                await this.notifications.notify(
+                    'serviceRequests',
+                    `Новое сообщение клиента по заявке ${request.requestNumber}`,
+                    {
+                        dedupeKey: `service-request-message:${message.id}:staff`,
+                        sourceType: 'service_request',
+                        sourceId: request.id,
+                        manager,
+                    },
+                );
+                return { message, request };
+            },
         );
         await this.audit.record({
             actorType: 'customer',
@@ -760,27 +806,46 @@ export class ServiceRequestsService {
         text: string,
         visibility: 'customer' | 'internal',
     ) {
-        const request = await this.requireRequest(id);
-        const message = await this.messages.save(
-            this.messages.create({
-                serviceRequestId: id,
-                authorType: 'staff',
-                authorCustomerId: null,
-                authorStaffId: adminId,
-                visibility,
-                text: text.trim(),
-                storedFileId: null,
-            }),
-        );
-        if (
-            visibility === 'customer' &&
-            (request.platform === 'telegram' || request.platform === 'max')
-        ) {
-            await this.messenger.sendMessage(request.chatId, text.trim(), {
-                platform: request.platform,
+        return this.dataSource.transaction(async (manager) => {
+            const requests = manager.getRepository(ServiceRequestEntity);
+            const request = await requests.findOne({
+                where: { id },
+                lock: { mode: 'pessimistic_write' },
             });
-        }
-        return message;
+            if (!request)
+                throw new NotFoundException('Service request was not found');
+            const messages = manager.getRepository(ServiceRequestMessageEntity);
+            const message = await messages.save(
+                messages.create({
+                    serviceRequestId: id,
+                    authorType: 'staff',
+                    authorCustomerId: null,
+                    authorStaffId: adminId,
+                    visibility,
+                    text: text.trim(),
+                    storedFileId: null,
+                }),
+            );
+            if (
+                visibility === 'customer' &&
+                (request.platform === 'telegram' || request.platform === 'max')
+            ) {
+                await this.outbound.enqueue(
+                    {
+                        dedupeKey: `service-request-message:${message.id}:customer`,
+                        platform: request.platform,
+                        recipientChatId: request.chatId,
+                        kind: 'text',
+                        audience: 'customer',
+                        sourceType: 'service_request',
+                        sourceId: request.id,
+                        payload: { text: message.text! },
+                    },
+                    { manager },
+                );
+            }
+            return message;
+        });
     }
 
     async transitionByStaff(
@@ -818,29 +883,35 @@ export class ServiceRequestsService {
                     { staffId: adminId },
                     manager,
                 );
+                const text: Partial<Record<ServiceRequestStatus, string>> = {
+                    paid: `Оплата по заявке ${locked.requestNumber} получена.`,
+                    completed: `Работа по заявке ${locked.requestNumber} выполнена.`,
+                    closed: `Заявка ${locked.requestNumber} закрыта.`,
+                    cancelled: `Заявка ${locked.requestNumber} отменена.`,
+                };
+                const message = text[target];
+                if (
+                    message &&
+                    (locked.platform === 'telegram' ||
+                        locked.platform === 'max')
+                ) {
+                    await this.outbound.enqueue(
+                        {
+                            dedupeKey: `service-request:${locked.id}:status:${target}:v${locked.version}:customer`,
+                            platform: locked.platform,
+                            recipientChatId: locked.chatId,
+                            kind: 'text',
+                            audience: 'customer',
+                            sourceType: 'service_request',
+                            sourceId: locked.id,
+                            payload: { text: message },
+                        },
+                        { manager },
+                    );
+                }
             }
             return { request: locked, changed };
         });
-        if (
-            result.changed &&
-            (result.request.platform === 'telegram' ||
-                result.request.platform === 'max')
-        ) {
-            const text: Partial<Record<ServiceRequestStatus, string>> = {
-                paid: `Оплата по заявке ${result.request.requestNumber} получена.`,
-                completed: `Работа по заявке ${result.request.requestNumber} выполнена.`,
-                closed: `Заявка ${result.request.requestNumber} закрыта.`,
-                cancelled: `Заявка ${result.request.requestNumber} отменена.`,
-            };
-            const message = text[target];
-            if (message) {
-                await this.messenger.sendMessage(
-                    result.request.chatId,
-                    message,
-                    { platform: result.request.platform },
-                );
-            }
-        }
         return this.details(result.request, true);
     }
 
@@ -946,12 +1017,18 @@ export class ServiceRequestsService {
                             .getRepository(ServiceRequestEntity)
                             .save(locked);
                     }
+                    await this.notifications.notify(
+                        'serviceRequests',
+                        `Новый файл клиента по заявке ${locked.requestNumber}`,
+                        {
+                            dedupeKey: `service-request-attachment:${attachment.id}:staff`,
+                            sourceType: 'service_request',
+                            sourceId: locked.id,
+                            manager,
+                        },
+                    );
                     return { attachment, message };
                 },
-            );
-            await this.notifications.notify(
-                'serviceRequests',
-                `Новый файл клиента по заявке ${request.requestNumber}`,
             );
             await this.audit.record({
                 actorType: 'customer',
@@ -972,7 +1049,7 @@ export class ServiceRequestsService {
         request: ServiceRequestEntity,
         includeInternal = false,
     ) {
-        const [messages, attachments, events] = await Promise.all([
+        const [messages, attachments, events, deliveries] = await Promise.all([
             this.messages.find({
                 where: includeInternal
                     ? { serviceRequestId: request.id }
@@ -992,16 +1069,33 @@ export class ServiceRequestsService {
                       order: { createdAt: 'ASC', id: 'ASC' },
                   })
                 : Promise.resolve([]),
+            includeInternal
+                ? this.outbound.listForSource('service_request', request.id)
+                : Promise.resolve([]),
         ]);
         return {
             request: includeInternal
                 ? this.adminView(request)
                 : this.customerView(request),
             messages,
-            events,
+            events: includeInternal
+                ? [
+                      ...events,
+                      ...deliveries.map((delivery) => ({
+                          id: -delivery.id,
+                          serviceRequestId: request.id,
+                          type: 'delivery_status',
+                          actor: 'system',
+                          message: this.deliveryStatusMessage(delivery),
+                          payload: null,
+                          createdAt: delivery.updatedAt,
+                      })),
+                  ]
+                : events,
             attachments: attachments.map((item) =>
                 this.attachmentView(item, item.storedFile),
             ),
+            ...(includeInternal ? { deliveries } : {}),
         };
     }
 
@@ -1249,6 +1343,26 @@ export class ServiceRequestsService {
         return createHash('sha256')
             .update(`${userId}:${requestId}:${idempotencyKey}`)
             .digest('base64url');
+    }
+
+    private deliveryStatusMessage(delivery: {
+        audience: 'customer' | 'staff';
+        platform: 'telegram' | 'max';
+        status: string;
+        attemptCount: number;
+        lastError: string | null;
+    }) {
+        const statuses: Record<string, string> = {
+            pending: 'ожидает отправки',
+            processing: 'отправляется',
+            retrying: 'ожидает повторной отправки',
+            sent: 'отправлено',
+            failed: 'ошибка доставки',
+        };
+        const audience =
+            delivery.audience === 'customer' ? 'клиенту' : 'сотруднику';
+        const error = delivery.lastError ? `: ${delivery.lastError}` : '';
+        return `Доставка ${audience} через ${delivery.platform}: ${statuses[delivery.status] ?? delivery.status}; попыток: ${delivery.attemptCount}${error}`;
     }
 
     private async addEvent(

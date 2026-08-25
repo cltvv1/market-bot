@@ -12,6 +12,9 @@ if (process.env.NODE_ENV !== 'test') {
 if (process.env.BOT_POLLING_ENABLED !== 'false') {
     throw new Error('CI checks require BOT_POLLING_ENABLED=false');
 }
+if (process.env.OUTBOUND_DELIVERY_WORKER_ENABLED !== 'false') {
+    throw new Error('CI checks require OUTBOUND_DELIVERY_WORKER_ENABLED=false');
+}
 if (process.env.MAX_BOT_TOKEN?.trim()) {
     throw new Error('CI checks require an empty MAX_BOT_TOKEN');
 }

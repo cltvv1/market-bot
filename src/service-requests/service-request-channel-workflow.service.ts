@@ -3,15 +3,13 @@ import { randomBytes } from 'node:crypto';
 import {
     BadRequestException,
     ConflictException,
-    Inject,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { CustomerActivityService } from 'src/customer-activity/customer-activity.service';
-import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
-import type { MessengerService } from 'src/messenger/messenger.types';
+import { OutboundDeliveriesService } from 'src/outbound-deliveries/outbound-deliveries.service';
 import { OrganizationsService } from 'src/organizations/organizations.service';
 import { UsersService } from 'src/users/users.service';
 import type { UserPlatform } from 'src/users/entities/user.entity';
@@ -74,8 +72,7 @@ export class ServiceRequestChannelWorkflowService {
         private readonly activityService: CustomerActivityService,
         private readonly adminNotificationsService: AdminNotificationsService,
         private readonly pdfService: PdfGeneratorService,
-        @Inject(MESSENGER_SERVICE)
-        private readonly messengerService: MessengerService,
+        private readonly outbound: OutboundDeliveriesService,
         private readonly filesService: FilesService,
         private readonly serviceForms: ServiceFormService,
         @InjectRepository(ServiceRequestAttachmentEntity)
@@ -501,20 +498,43 @@ export class ServiceRequestChannelWorkflowService {
             metadata: { serviceRequestId: request.id },
         });
 
-        request.signedConsentFileId = storedFile.id;
-        this.applyStatus(request, 'review_required');
-        const saved = await this.serviceRequestsRepo.save(request);
-        await this.linkStoredFile(saved.id, storedFile.id, 'signed_consent');
-
-        await this.addEvent(
-            saved,
-            'signed_received',
-            'client',
-            'Получено подписанное согласие на доступ АТОЛ',
-            {
-                signedConsentName: originalName,
-            },
-        );
+        let saved: ServiceRequestEntity;
+        try {
+            saved = await this.dataSource.transaction(async (manager) => {
+                const requests = manager.getRepository(ServiceRequestEntity);
+                const locked = await requests.findOne({
+                    where: { id: request.id },
+                    lock: { mode: 'pessimistic_write' },
+                });
+                if (!locked || locked.status !== 'draft') {
+                    throw new BadRequestException(
+                        'ATOL consent request is no longer accepting a file',
+                    );
+                }
+                locked.signedConsentFileId = storedFile.id;
+                this.applyStatus(locked, 'review_required');
+                const updated = await requests.save(locked);
+                await this.linkStoredFile(
+                    updated.id,
+                    storedFile.id,
+                    'signed_consent',
+                    manager,
+                );
+                await this.addEvent(
+                    updated,
+                    'signed_received',
+                    'client',
+                    'Получено подписанное согласие на доступ АТОЛ',
+                    { signedConsentName: originalName },
+                    manager,
+                );
+                await this.notifyOperators(updated, manager);
+                return updated;
+            });
+        } catch (error) {
+            await this.filesService.logicalDelete(storedFile.id);
+            throw error;
+        }
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -525,7 +545,6 @@ export class ServiceRequestChannelWorkflowService {
             description: `Получено подписанное согласие АТОЛ по заявке #${saved.id}`,
             serviceRequestId: saved.id,
         });
-        await this.notifyOperators(saved);
 
         return this.presentAtolConsent(saved);
     }
@@ -618,25 +637,56 @@ export class ServiceRequestChannelWorkflowService {
             createdByCustomerId: request.userId ?? undefined,
             metadata: { serviceRequestId: request.id },
         });
-        const previousFileId = request.paymentProofFileId;
-
-        let saved: ServiceRequestEntity;
+        let mutation: {
+            saved: ServiceRequestEntity;
+            previousFileId: number | null;
+        };
         try {
-            request.paymentProofFileId = storedFile.id;
-            saved = await this.serviceRequestsRepo.save(request);
+            mutation = await this.dataSource.transaction(async (manager) => {
+                const requests = manager.getRepository(ServiceRequestEntity);
+                const locked = await requests.findOne({
+                    where: { id: request.id },
+                    lock: { mode: 'pessimistic_write' },
+                });
+                if (!locked || locked.status !== 'waiting_payment') {
+                    throw new BadRequestException(
+                        'Service request is no longer waiting for payment',
+                    );
+                }
+                const previousFileId = locked.paymentProofFileId;
+                locked.paymentProofFileId = storedFile.id;
+                const saved = await requests.save(locked);
+                await this.linkStoredFile(
+                    saved.id,
+                    storedFile.id,
+                    'payment_proof',
+                    manager,
+                );
+                await this.addEvent(
+                    saved,
+                    'payment_proof_attached',
+                    'client',
+                    'Клиент прикрепил платежное поручение',
+                    { storedFileId: storedFile.id },
+                    manager,
+                );
+                await this.adminNotificationsService.notify(
+                    'serviceRequests',
+                    `Клиент отправил платежное поручение по заявке #${saved.id}. Проверьте файл в админке.`,
+                    {
+                        dedupeKey: `service-request:${saved.id}:payment-proof:${storedFile.id}:staff`,
+                        sourceType: 'service_request',
+                        sourceId: saved.id,
+                        manager,
+                    },
+                );
+                return { saved, previousFileId };
+            });
         } catch (error) {
             await this.filesService.logicalDelete(storedFile.id);
             throw error;
         }
-        await this.linkStoredFile(saved.id, storedFile.id, 'payment_proof');
-
-        await this.addEvent(
-            saved,
-            'payment_proof_attached',
-            'client',
-            'Клиент прикрепил платежное поручение',
-            { storedFileId: storedFile.id },
-        );
+        const { saved, previousFileId } = mutation;
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -647,10 +697,6 @@ export class ServiceRequestChannelWorkflowService {
             description: `Получено платежное поручение по заявке #${saved.id}`,
             serviceRequestId: saved.id,
         });
-        await this.adminNotificationsService.notify(
-            'serviceRequests',
-            `Клиент отправил платежное поручение по заявке #${saved.id}. Проверьте файл в админке.`,
-        );
         if (previousFileId && previousFileId !== storedFile.id) {
             await this.filesService.logicalDelete(previousFileId);
         }
@@ -742,6 +788,9 @@ export class ServiceRequestChannelWorkflowService {
                     .save(saved);
                 submitted = true;
             }
+            if (submitted) {
+                await this.notifyOperators(saved, manager);
+            }
 
             return { request: saved, step, submitted };
         });
@@ -781,7 +830,6 @@ export class ServiceRequestChannelWorkflowService {
                 'client',
                 'Service request submitted to operator',
             );
-            await this.notifyOperators(mutation.request);
         }
 
         return this.present(mutation.request);
@@ -834,10 +882,12 @@ export class ServiceRequestChannelWorkflowService {
             }
 
             this.applyStatus(request, 'invoice_required');
+            const saved = await manager
+                .getRepository(ServiceRequestEntity)
+                .save(request);
+            await this.notifyOperators(saved, manager);
             return {
-                request: await manager
-                    .getRepository(ServiceRequestEntity)
-                    .save(request),
+                request: saved,
                 confirmed: true,
             };
         });
@@ -859,7 +909,6 @@ export class ServiceRequestChannelWorkflowService {
                 description: `Клиент согласился со стоимостью ${mutation.request.calculatedPrice ?? 0} руб.`,
                 serviceRequestId: mutation.request.id,
             });
-            await this.notifyOperators(mutation.request);
         }
 
         return this.present(mutation.request);
@@ -870,20 +919,52 @@ export class ServiceRequestChannelWorkflowService {
         invoiceStoredFileId: number,
         operatorStaffId: number,
     ) {
-        const request = await this.requireRequest(id);
-        request.invoiceStoredFileId = invoiceStoredFileId;
-        this.applyStatus(request, 'waiting_payment');
-        request.responsibleOperatorStaffId = operatorStaffId;
-        const saved = await this.serviceRequestsRepo.save(request);
-        await this.linkStoredFile(saved.id, invoiceStoredFileId, 'invoice');
-
-        await this.addEvent(
-            saved,
-            'invoice_attached',
-            `staff:${operatorStaffId}`,
-            'Оператор прикрепил счет',
-            { storedFileId: invoiceStoredFileId },
-        );
+        const saved = await this.dataSource.transaction(async (manager) => {
+            const requests = manager.getRepository(ServiceRequestEntity);
+            const request = await requests.findOne({
+                where: { id },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!request)
+                throw new NotFoundException('Service request was not found');
+            request.invoiceStoredFileId = invoiceStoredFileId;
+            this.applyStatus(request, 'waiting_payment');
+            request.responsibleOperatorStaffId = operatorStaffId;
+            const updated = await requests.save(request);
+            await this.linkStoredFile(
+                updated.id,
+                invoiceStoredFileId,
+                'invoice',
+                manager,
+            );
+            await this.addEvent(
+                updated,
+                'invoice_attached',
+                `staff:${operatorStaffId}`,
+                'Оператор прикрепил счет',
+                { storedFileId: invoiceStoredFileId },
+                manager,
+            );
+            if (updated.platform === 'telegram' || updated.platform === 'max') {
+                await this.outbound.enqueue(
+                    {
+                        dedupeKey: `service-request:${updated.id}:invoice:${invoiceStoredFileId}:customer`,
+                        platform: updated.platform,
+                        recipientChatId: updated.chatId,
+                        kind: 'document',
+                        audience: 'customer',
+                        sourceType: 'service_request',
+                        sourceId: updated.id,
+                        storedFileId: invoiceStoredFileId,
+                        payload: {
+                            caption: `Счет по заявке #${updated.id} готов. Статус заявки: ожидает оплаты.\n\nПосле оплаты отправьте сюда PDF-файл или фотографию платежного поручения. Оператор проверит документ и подтвердит оплату.`,
+                        },
+                    },
+                    { manager },
+                );
+            }
+            return updated;
+        });
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -895,7 +976,6 @@ export class ServiceRequestChannelWorkflowService {
             serviceRequestId: saved.id,
         });
 
-        await this.notifyClientAboutInvoice(saved);
         return this.getRequestDetails(saved.id);
     }
 
@@ -906,21 +986,53 @@ export class ServiceRequestChannelWorkflowService {
         operatorComment: string | undefined,
         operatorStaffId: number,
     ) {
-        const request = await this.requireRequest(id);
-        this.applyStatus(request, 'scheduled');
-        request.visitAddress = visitAddress;
-        request.visitTime = visitTime ? new Date(visitTime) : null;
-        request.operatorComment = operatorComment ?? null;
-        request.responsibleOperatorStaffId = operatorStaffId;
-        const saved = await this.serviceRequestsRepo.save(request);
-
-        await this.addEvent(
-            saved,
-            'visit_scheduled',
-            `staff:${operatorStaffId}`,
-            'Назначен визит',
-            { visitAddress, visitTime, operatorComment },
-        );
+        const saved = await this.dataSource.transaction(async (manager) => {
+            const requests = manager.getRepository(ServiceRequestEntity);
+            const request = await requests.findOne({
+                where: { id },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!request)
+                throw new NotFoundException('Service request was not found');
+            this.applyStatus(request, 'scheduled');
+            request.visitAddress = visitAddress;
+            request.visitTime = visitTime ? new Date(visitTime) : null;
+            request.operatorComment = operatorComment ?? null;
+            request.responsibleOperatorStaffId = operatorStaffId;
+            const updated = await requests.save(request);
+            await this.addEvent(
+                updated,
+                'visit_scheduled',
+                `staff:${operatorStaffId}`,
+                'Назначен визит',
+                { visitAddress, visitTime, operatorComment },
+                manager,
+            );
+            if (updated.platform === 'telegram' || updated.platform === 'max') {
+                const timeText = updated.visitTime
+                    ? ` Время: ${updated.visitTime.toLocaleString('ru-RU')}.`
+                    : '';
+                const commentText = updated.operatorComment
+                    ? ` ${updated.operatorComment}`
+                    : '';
+                await this.outbound.enqueue(
+                    {
+                        dedupeKey: `service-request:${updated.id}:visit:v${updated.version}:customer`,
+                        platform: updated.platform,
+                        recipientChatId: updated.chatId,
+                        kind: 'text',
+                        audience: 'customer',
+                        sourceType: 'service_request',
+                        sourceId: updated.id,
+                        payload: {
+                            text: `По заявке #${updated.id}: приходите по адресу ${visitAddress}.${timeText}${commentText}`,
+                        },
+                    },
+                    { manager },
+                );
+            }
+            return updated;
+        });
         await this.activityService.add({
             userId: saved.userId,
             organizationId: saved.organizationId,
@@ -931,17 +1043,6 @@ export class ServiceRequestChannelWorkflowService {
             description: `Назначен визит: ${visitAddress}`,
             serviceRequestId: saved.id,
         });
-
-        const timeText = saved.visitTime
-            ? ` Время: ${saved.visitTime.toLocaleString('ru-RU')}.`
-            : '';
-        const commentText = saved.operatorComment
-            ? ` ${saved.operatorComment}`
-            : '';
-        await this.notifyClient(
-            saved,
-            `По заявке #${saved.id}: приходите по адресу ${visitAddress}.${timeText}${commentText}`,
-        );
 
         return this.getRequestDetails(saved.id);
     }
@@ -1158,46 +1259,21 @@ export class ServiceRequestChannelWorkflowService {
         return request.serviceTypeCode === 'fn_replacement';
     }
 
-    private async notifyOperators(request: ServiceRequestEntity) {
+    private async notifyOperators(
+        request: ServiceRequestEntity,
+        manager?: EntityManager,
+    ) {
         const message = this.formatOperatorMessage(request);
-        await this.adminNotificationsService.notify('serviceRequests', message);
-    }
-
-    private async notifyClient(request: ServiceRequestEntity, message: string) {
-        if (request.platform === 'web') {
-            return;
-        }
-
-        await this.messengerService.sendMessage(request.chatId, message, {
-            platform: request.platform,
-        });
-    }
-
-    private async notifyClientAboutInvoice(request: ServiceRequestEntity) {
-        if (request.platform === 'web') {
-            return;
-        }
-
-        const message = `Счет по заявке #${request.id} готов. Статус заявки: ожидает оплаты.\n\nПосле оплаты отправьте сюда PDF-файл или фотографию платежного поручения. Оператор проверит документ и подтвердит оплату.`;
-        if (request.invoiceStoredFileId) {
-            const { file, stream } = await this.filesService.open(
-                request.invoiceStoredFileId,
-            );
-            await this.messengerService.sendMessage(request.chatId, message, {
-                platform: request.platform,
-            });
-            await this.messengerService.sendDocument(
-                request.chatId,
-                {
-                    source: stream,
-                    filename: file.originalName || `invoice_${request.id}.pdf`,
-                },
-                { platform: request.platform },
-            );
-            return;
-        }
-
-        throw new Error('Invoice file metadata is missing');
+        await this.adminNotificationsService.notify(
+            'serviceRequests',
+            message,
+            {
+                dedupeKey: `service-request:${request.id}:${request.status}:v${request.version}:staff`,
+                sourceType: 'service_request',
+                sourceId: request.id,
+                manager,
+            },
+        );
     }
 
     private formatOperatorMessage(request: ServiceRequestEntity) {
@@ -1222,9 +1298,13 @@ export class ServiceRequestChannelWorkflowService {
         actor: string,
         message?: string,
         payload?: Record<string, unknown>,
+        manager?: EntityManager,
     ) {
-        await this.eventsRepo.save(
-            this.eventsRepo.create({
+        const repository = manager
+            ? manager.getRepository(ServiceRequestEventEntity)
+            : this.eventsRepo;
+        await repository.save(
+            repository.create({
                 serviceRequestId: request.id,
                 type,
                 actor,
@@ -1264,10 +1344,14 @@ export class ServiceRequestChannelWorkflowService {
         serviceRequestId: number,
         storedFileId: number,
         kind: ServiceRequestAttachmentKind,
+        manager?: EntityManager,
     ) {
-        await this.requestAttachments.delete({ serviceRequestId, kind });
-        await this.requestAttachments.save(
-            this.requestAttachments.create({
+        const repository = manager
+            ? manager.getRepository(ServiceRequestAttachmentEntity)
+            : this.requestAttachments;
+        await repository.delete({ serviceRequestId, kind });
+        await repository.save(
+            repository.create({
                 serviceRequestId,
                 storedFileId,
                 kind,

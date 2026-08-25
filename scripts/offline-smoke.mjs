@@ -19,6 +19,7 @@ const child = spawn(process.execPath, ['dist/src/main.js'], {
         PORT: String(port),
         NODE_ENV: 'test',
         BOT_POLLING_ENABLED: 'false',
+        OUTBOUND_DELIVERY_WORKER_ENABLED: 'false',
         MAX_BOT_TOKEN: '',
         SERVE_BUILT_UI: 'true',
     },

@@ -91,6 +91,9 @@ main { max-width: 1540px; margin: 0 auto; padding: 20px; }
 .composer-actions { justify-content: flex-end; margin-top: 8px; }
 .file-picker { min-height: 36px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .file-picker input { display: none; }
+.delivery-statuses { display: grid; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.delivery-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.delivery-status small { flex-basis: 100%; color: var(--danger); }
 
 .customer-card { padding: 14px; display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 12px; }
 .customer-context { display: grid; align-content: start; gap: 10px; }

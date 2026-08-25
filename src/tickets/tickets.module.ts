@@ -8,10 +8,18 @@ import { UsersModule } from 'src/users/users.module';
 import { MessengerModule } from 'src/messenger/messenger.module';
 import { AdminNotificationsModule } from 'src/admin/admin-notifications.module';
 import { FilesModule } from 'src/files/files.module';
+import { OutboundDeliveriesModule } from 'src/outbound-deliveries/outbound-deliveries.module';
 
 @Module({
-    imports: [TypeOrmModule.forFeature([TicketEntity, TicketMessageEntity]), UsersModule, MessengerModule, AdminNotificationsModule, FilesModule],
+    imports: [
+        TypeOrmModule.forFeature([TicketEntity, TicketMessageEntity]),
+        UsersModule,
+        MessengerModule,
+        AdminNotificationsModule,
+        FilesModule,
+        OutboundDeliveriesModule,
+    ],
     providers: [TicketsService],
     exports: [TicketsService],
 })
-export class TicketsModule { }
+export class TicketsModule {}

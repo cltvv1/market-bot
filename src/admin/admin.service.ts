@@ -1,9 +1,7 @@
-import { Readable } from 'node:stream';
 import { randomBytes } from 'crypto';
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Not, In } from 'typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, In, IsNull, Not, Repository } from 'typeorm';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 import type {
     RegistrationRequestPriority,
@@ -19,8 +17,6 @@ import { OfdSubscriptionEntity } from 'src/assets/entities/ofd-subscription.enti
 import { EquipmentKitEntity } from 'src/assets/entities/equipment-kit.entity';
 import { CustomerActivityEntity } from 'src/customer-activity/entities/customer-activity.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
-import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
-import type { MessengerService } from 'src/messenger/messenger.types';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { ServiceRequestEntity } from 'src/service-requests/entities/service-request.entity';
 import type {
@@ -34,6 +30,7 @@ import type { AdminPrincipal } from './admin-auth.types';
 import { FilesService } from 'src/files/files.service';
 // prettier-ignore
 import { OrganizationContactEntity } from 'src/integrations/entities/organization-contact.entity';
+import { OutboundDeliveriesService } from 'src/outbound-deliveries/outbound-deliveries.service';
 
 export type AdminStatusFilter = 'all' | 'new' | 'in_work' | 'processed';
 
@@ -69,9 +66,9 @@ export class AdminService {
         @InjectRepository(OrganizationContactEntity)
         private readonly organizationContactsRepo: Repository<OrganizationContactEntity>,
         private readonly serviceRequestsService: ServiceRequestsService,
-        @Inject(MESSENGER_SERVICE)
-        private readonly messengerService: MessengerService,
         private readonly filesService: FilesService,
+        private readonly outbound: OutboundDeliveriesService,
+        private readonly dataSource: DataSource,
     ) {}
 
     async getNotificationBindings(adminId: number) {
@@ -638,8 +635,11 @@ export class AdminService {
                   chatId: ticket.userChatId,
               })
             : null;
+        const deliveries = ticket
+            ? await this.outbound.listForSource('ticket', ticket.id)
+            : [];
 
-        return { ticket, messages, context };
+        return { ticket, messages, context, deliveries };
     }
 
     async getServiceRequestDetails(id: number) {
@@ -703,27 +703,41 @@ export class AdminService {
         text: string,
         operatorId = 'admin-panel',
     ) {
-        const ticket = await this.ticketsRepo.findOne({ where: { id } });
-        if (!ticket) {
-            return null;
-        }
-
-        if (ticket.platform !== 'web') {
-            await this.messengerService.sendMessage(ticket.userChatId, text, {
-                platform: ticket.platform,
+        const saved = await this.dataSource.transaction(async (manager) => {
+            const tickets = manager.getRepository(TicketEntity);
+            const ticket = await tickets.findOne({
+                where: { id },
+                lock: { mode: 'pessimistic_write' },
             });
-        }
-
-        await this.ticketMessagesRepo.save(
-            this.ticketMessagesRepo.create({
-                ticketId: id,
-                sender: 'operator',
-                authorId: operatorId,
-                source: 'admin-panel',
-                text,
-            }),
-        );
-
+            if (!ticket) return null;
+            const messages = manager.getRepository(TicketMessageEntity);
+            const message = await messages.save(
+                messages.create({
+                    ticketId: id,
+                    sender: 'operator',
+                    authorId: operatorId,
+                    source: 'admin-panel',
+                    text,
+                }),
+            );
+            if (ticket.platform === 'telegram' || ticket.platform === 'max') {
+                await this.outbound.enqueue(
+                    {
+                        dedupeKey: `ticket-message:${message.id}:customer`,
+                        platform: ticket.platform,
+                        recipientChatId: ticket.userChatId,
+                        kind: 'text',
+                        audience: 'customer',
+                        sourceType: 'ticket',
+                        sourceId: ticket.id,
+                        payload: { text },
+                    },
+                    { manager },
+                );
+            }
+            return message;
+        });
+        if (!saved) return null;
         return this.getTicket(id);
     }
 
@@ -739,10 +753,6 @@ export class AdminService {
         },
         operatorId = 'admin-panel',
     ) {
-        const ticket = await this.ticketsRepo.findOne({ where: { id } });
-        if (!ticket) {
-            return null;
-        }
         const storedFile = await this.filesService.saveBuffer({
             purpose:
                 media.messageType === 'image'
@@ -758,44 +768,61 @@ export class AdminService {
             originalName: media.fileName,
             mimeType: media.mimeType,
         });
-
-        if (ticket.platform !== 'web') {
-            const file = {
-                source: Readable.from(media.buffer),
-                filename: media.fileName,
-            };
-            const options = {
-                platform: ticket.platform,
-                caption: media.text || undefined,
-            };
-
-            if (media.messageType === 'image') {
-                await this.messengerService.sendImage(
-                    ticket.userChatId,
-                    file,
-                    options,
+        try {
+            const saved = await this.dataSource.transaction(async (manager) => {
+                const tickets = manager.getRepository(TicketEntity);
+                const ticket = await tickets.findOne({
+                    where: { id },
+                    lock: { mode: 'pessimistic_write' },
+                });
+                if (!ticket) return null;
+                const messages = manager.getRepository(TicketMessageEntity);
+                const message = await messages.save(
+                    messages.create({
+                        ticketId: id,
+                        sender: 'operator',
+                        authorId: operatorId,
+                        source: 'admin-panel',
+                        messageType: media.messageType,
+                        text: media.text || media.fileName,
+                        storedFileId: storedFile.id,
+                    }),
                 );
-            } else {
-                await this.messengerService.sendDocument(
-                    ticket.userChatId,
-                    file,
-                    options,
-                );
+                if (
+                    ticket.platform === 'telegram' ||
+                    ticket.platform === 'max'
+                ) {
+                    await this.outbound.enqueue(
+                        {
+                            dedupeKey: `ticket-message:${message.id}:customer`,
+                            platform: ticket.platform,
+                            recipientChatId: ticket.userChatId,
+                            kind:
+                                media.messageType === 'image'
+                                    ? 'image'
+                                    : 'document',
+                            audience: 'customer',
+                            sourceType: 'ticket',
+                            sourceId: ticket.id,
+                            storedFileId: storedFile.id,
+                            payload: {
+                                filename: media.fileName,
+                                caption: media.text || undefined,
+                            },
+                        },
+                        { manager },
+                    );
+                }
+                return message;
+            });
+            if (!saved) {
+                await this.filesService.logicalDelete(storedFile.id);
+                return null;
             }
+        } catch (error) {
+            await this.filesService.logicalDelete(storedFile.id);
+            throw error;
         }
-
-        await this.ticketMessagesRepo.save(
-            this.ticketMessagesRepo.create({
-                ticketId: id,
-                sender: 'operator',
-                authorId: operatorId,
-                source: 'admin-panel',
-                messageType: media.messageType,
-                text: media.text || media.fileName,
-                storedFileId: storedFile.id,
-            }),
-        );
-
         return this.getTicket(id);
     }
 

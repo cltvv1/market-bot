@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import type { DataSource } from 'typeorm';
 import testDataSource from '../src/database/test-data-source';
 import { AdminUserEntity } from '../src/admin/entities/admin-user.entity';
@@ -39,6 +40,8 @@ import { InboundCommandsService } from '../src/inbound-commands/inbound-commands
 import { UserDialogStateEntity } from '../src/userContext/entities/user-dialog-state.entity';
 import { UserContextService } from '../src/userContext/user-context.service';
 import { StaleServiceRequestChannelCommandException } from '../src/service-requests/service-request-channel-workflow.service';
+import { OutboundDeliveryEntity } from '../src/outbound-deliveries/entities/outbound-delivery.entity';
+import { OutboundDeliveriesService } from '../src/outbound-deliveries/outbound-deliveries.service';
 
 const testIdentity = {
     platform: 'web' as const,
@@ -55,6 +58,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     let channelWorkflow: ServiceRequestChannelWorkflowService;
     let inboundCommands: InboundCommandsService;
     let userContext: UserContextService;
+    let outbound: OutboundDeliveriesService;
     let storedFileSequence = 0;
 
     const messenger: jest.Mocked<MessengerService> = {
@@ -145,6 +149,10 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         userContext = new UserContextService(
             dataSource.getRepository(UserDialogStateEntity),
         );
+        outbound = new OutboundDeliveriesService(
+            dataSource.getRepository(OutboundDeliveryEntity),
+            dataSource,
+        );
         const organizationsService = new OrganizationsService(
             dataSource.getRepository(OrganizationEntity),
             dataSource.getRepository(OrganizationMemberEntity),
@@ -186,10 +194,10 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             dataSource.getRepository(TicketEntity),
             dataSource.getRepository(TicketMessageEntity),
             usersService,
-            messenger,
             notifications as unknown as AdminNotificationsService,
             files as unknown as FilesService,
             dataSource,
+            outbound,
         );
         channelWorkflow = new ServiceRequestChannelWorkflowService(
             dataSource.getRepository(ServiceTypeEntity),
@@ -200,7 +208,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             activityService,
             notifications as unknown as AdminNotificationsService,
             pdf as unknown as PdfGeneratorService,
-            messenger,
+            outbound,
             files as unknown as FilesService,
             formService,
             dataSource.getRepository(ServiceRequestAttachmentEntity),
@@ -219,7 +227,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             auditService,
             notifications as unknown as AdminNotificationsService,
             dataSource,
-            messenger,
+            outbound,
             channelWorkflow,
         );
     });
@@ -417,13 +425,18 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     );
 
     it('keeps FN price confirmation and invoice/payment/visit transitions', async () => {
+        const requestIdentity = {
+            ...testIdentity,
+            platform: 'telegram' as const,
+            chatId: 'invoice-characterization-client',
+        };
         const operator = await dataSource.getRepository(AdminUserEntity).save({
             login: 'workflow-operator',
             displayName: 'Workflow operator',
             passwordHash: 'test-only',
         });
         const started = await serviceRequestsService.start(
-            testIdentity,
+            requestIdentity,
             'fn_replacement',
         );
         for (const answer of [
@@ -433,7 +446,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             '+7 999 222-33-44',
         ]) {
             await serviceRequestsService.answer(
-                testIdentity,
+                requestIdentity,
                 started.request.id,
                 answer,
             );
@@ -448,12 +461,12 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         });
 
         const confirmed = await serviceRequestsService.confirmPrice(
-            testIdentity,
+            requestIdentity,
             started.request.id,
         );
         expect(confirmed.request.status).toBe('invoice_required');
         await serviceRequestsService.confirmPrice(
-            testIdentity,
+            requestIdentity,
             started.request.id,
         );
         expect(notifications.notify).toHaveBeenCalledTimes(1);
@@ -464,12 +477,77 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             originalName: 'invoice.pdf',
             mimeType: 'application/pdf',
         });
+        jest.spyOn(outbound, 'enqueue').mockRejectedValueOnce(
+            new Error('forced enqueue rollback'),
+        );
+        await expect(
+            serviceRequestsService.attachInvoice(
+                started.request.id,
+                invoice.id,
+                operator.id,
+            ),
+        ).rejects.toThrow('forced enqueue rollback');
+        const rolledBack = await dataSource
+            .getRepository(ServiceRequestEntity)
+            .findOneByOrFail({ id: started.request.id });
+        expect(rolledBack.invoiceStoredFileId).toBeNull();
+        expect(rolledBack.status).toBe('invoice_required');
+
+        messenger.sendDocument.mockClear();
         const invoiced = await serviceRequestsService.attachInvoice(
             started.request.id,
             invoice.id,
             operator.id,
         );
         expect(invoiced.request.status).toBe('waiting_payment');
+        const invoiceDeliveries = await dataSource
+            .getRepository(OutboundDeliveryEntity)
+            .findBy({
+                sourceType: 'service_request',
+                sourceId: String(started.request.id),
+            });
+        expect(invoiceDeliveries).toEqual([
+            expect.objectContaining({
+                kind: 'document',
+                status: 'pending',
+                storedFileId: invoice.id,
+            }),
+        ]);
+        expect(messenger.sendDocument).not.toHaveBeenCalled();
+
+        const messagesBeforeStaffReply = await dataSource
+            .getRepository(ServiceRequestMessageEntity)
+            .countBy({ serviceRequestId: started.request.id });
+        jest.spyOn(outbound, 'enqueue').mockRejectedValueOnce(
+            new Error('forced customer enqueue rollback'),
+        );
+        await expect(
+            serviceRequestsService.addStaffMessage(
+                operator.id,
+                started.request.id,
+                'Проверяем доставку',
+                'customer',
+            ),
+        ).rejects.toThrow('forced customer enqueue rollback');
+        expect(
+            await dataSource
+                .getRepository(ServiceRequestMessageEntity)
+                .countBy({ serviceRequestId: started.request.id }),
+        ).toBe(messagesBeforeStaffReply);
+
+        const staffMessage = await serviceRequestsService.addStaffMessage(
+            operator.id,
+            started.request.id,
+            'Проверяем доставку',
+            'customer',
+        );
+        expect(
+            await dataSource
+                .getRepository(OutboundDeliveryEntity)
+                .findOneByOrFail({
+                    dedupeKey: `service-request-message:${staffMessage.id}:customer`,
+                }),
+        ).toMatchObject({ status: 'pending', audience: 'customer' });
 
         await expect(
             serviceRequestsService.transitionByStaff(
@@ -481,7 +559,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
 
         // prettier-ignore
         const paymentProof =
-            await serviceRequestsService.attachPaymentProof(testIdentity, {
+            await serviceRequestsService.attachPaymentProof(requestIdentity, {
                 buffer: Buffer.from('%PDF-1.7 payment'),
                 fileName: 'payment.pdf',
                 mimeType: 'application/pdf',

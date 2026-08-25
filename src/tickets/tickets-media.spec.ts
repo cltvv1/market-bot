@@ -29,8 +29,8 @@ describe('TicketsService media persistence', () => {
         messages as never,
         {} as never,
         {} as never,
-        {} as never,
         files as never,
+        {} as never,
         {} as never,
     );
 

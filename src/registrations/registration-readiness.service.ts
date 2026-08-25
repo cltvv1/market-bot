@@ -34,6 +34,16 @@ export interface RegistrationClientIdentity {
     userId?: number;
 }
 
+type RegistrationHandoffResult =
+    | {
+          denied: true;
+          requirements: Array<{
+              kind: RegistrationRequirementKind;
+              status: RegistrationRequirementEntity['status'];
+          }>;
+      }
+    | { denied: false; registration: RegistrationRequestEntity };
+
 const labels: Record<RegistrationRequirementKind, string> = {
     kkt_serial: 'заводской номер ККТ',
     fiscal_drive_serial: 'номер фискального накопителя',
@@ -886,68 +896,34 @@ export class RegistrationReadinessService {
         staffId: number,
         engineerId?: number,
     ) {
+        return this.handoffWithAction(
+            registrationId,
+            staffId,
+            undefined,
+            engineerId,
+        );
+    }
+
+    async handoffWithAction(
+        registrationId: number,
+        staffId: number,
+        onAllowed?: (
+            registration: RegistrationRequestEntity,
+            manager: EntityManager,
+        ) => Promise<void>,
+        engineerId?: number,
+    ) {
         const result = await this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOne(
-                RegistrationRequestEntity,
-                {
-                    where: { id: registrationId },
-                    lock: { mode: 'pessimistic_write' },
-                },
-            );
-            if (!registration)
-                throw new NotFoundException('Registration was not found');
-            await this.recomputeWithManager(manager, registration);
-            if (registration.readiness !== 'ready') {
-                const pending = await manager.find(
-                    RegistrationRequirementEntity,
-                    { where: { registrationId } },
-                );
-                return {
-                    denied: true as const,
-                    requirements: pending
-                        .filter(
-                            (item) =>
-                                !['verified', 'not_required'].includes(
-                                    item.status,
-                                ),
-                        )
-                        .map((item) => ({
-                            kind: item.kind,
-                            status: item.status,
-                        })),
-                };
-            }
-            if (registration.handedOffAt)
-                return { denied: false as const, registration };
-            if (engineerId) {
-                const rows = await manager.query<Array<{ id: number }>>(
-                    `SELECT u.id FROM admin_users u JOIN admin_user_roles r ON r."userId"=u.id WHERE u.id=$1 AND u."isActive"=true AND r.role='engineer'`,
-                    [engineerId],
-                );
-                if (!rows.length)
-                    throw new BadRequestException(
-                        'Active engineer was not found',
-                    );
-            }
-            registration.assignedEngineerId =
-                engineerId ?? registration.assignedEngineerId;
-            registration.handedOffAt = new Date();
-            registration.status = 'processed';
-            await manager.save(registration);
-            await this.audit.record(
-                {
-                    actorType: 'staff',
-                    actorStaffId: staffId,
-                    action: 'registration.handoff.allowed',
-                    targetType: 'registration',
-                    targetId: registrationId,
-                    metadata: {
-                        assignedEngineerId: registration.assignedEngineerId,
-                    },
-                },
+            const handoff = await this.handoffWithManager(
                 manager,
+                registrationId,
+                staffId,
+                engineerId,
             );
-            return { denied: false as const, registration };
+            if (!handoff.denied && onAllowed) {
+                await onAllowed(handoff.registration, manager);
+            }
+            return handoff;
         });
         if (result.denied) {
             await this.audit.record({
@@ -967,6 +943,66 @@ export class RegistrationReadinessService {
             });
         }
         return result.registration;
+    }
+
+    async handoffWithManager(
+        manager: EntityManager,
+        registrationId: number,
+        staffId: number,
+        engineerId?: number,
+    ): Promise<RegistrationHandoffResult> {
+        const registration = await manager.findOne(RegistrationRequestEntity, {
+            where: { id: registrationId },
+            lock: { mode: 'pessimistic_write' },
+        });
+        if (!registration)
+            throw new NotFoundException('Registration was not found');
+        await this.recomputeWithManager(manager, registration);
+        if (registration.readiness !== 'ready') {
+            const pending = await manager.find(RegistrationRequirementEntity, {
+                where: { registrationId },
+            });
+            return {
+                denied: true,
+                requirements: pending
+                    .filter(
+                        (item) =>
+                            !['verified', 'not_required'].includes(item.status),
+                    )
+                    .map((item) => ({
+                        kind: item.kind,
+                        status: item.status,
+                    })),
+            };
+        }
+        if (registration.handedOffAt) return { denied: false, registration };
+        if (engineerId) {
+            const rows = await manager.query<Array<{ id: number }>>(
+                `SELECT u.id FROM admin_users u JOIN admin_user_roles r ON r."userId"=u.id WHERE u.id=$1 AND u."isActive"=true AND r.role='engineer'`,
+                [engineerId],
+            );
+            if (!rows.length)
+                throw new BadRequestException('Active engineer was not found');
+        }
+        registration.assignedEngineerId =
+            engineerId ?? registration.assignedEngineerId;
+        registration.handedOffAt = new Date();
+        registration.status = 'processed';
+        await manager.save(registration);
+        await this.audit.record(
+            {
+                actorType: 'staff',
+                actorStaffId: staffId,
+                action: 'registration.handoff.allowed',
+                targetType: 'registration',
+                targetId: registrationId,
+                metadata: {
+                    assignedEngineerId: registration.assignedEngineerId,
+                },
+            },
+            manager,
+        );
+        return { denied: false, registration };
     }
 
     async recompute(registrationId: number) {
