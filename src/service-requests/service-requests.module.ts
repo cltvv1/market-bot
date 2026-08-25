@@ -22,6 +22,11 @@ import { ServiceRequestMessageEntity } from './entities/service-request-message.
 import { ServiceFormService } from './service-form.service';
 import { PublicServiceRequestsController } from './public-service-requests.controller';
 import { OutboundDeliveriesModule } from 'src/outbound-deliveries/outbound-deliveries.module';
+import {
+    DraftServiceRequestUploadGuard,
+    MessageServiceRequestUploadGuard,
+    PublicServiceRequestUploadGuard,
+} from './service-request-upload.guard';
 
 @Module({
     imports: [
@@ -50,6 +55,9 @@ import { OutboundDeliveriesModule } from 'src/outbound-deliveries/outbound-deliv
         ServiceRequestsService,
         ServiceRequestChannelWorkflowService,
         ServiceFormService,
+        DraftServiceRequestUploadGuard,
+        MessageServiceRequestUploadGuard,
+        PublicServiceRequestUploadGuard,
     ],
     exports: [ServiceRequestsService, TypeOrmModule],
 })

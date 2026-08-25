@@ -13,6 +13,7 @@ import {
     UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { multipartOptionsForPurpose } from 'src/files/multipart-options';
 import type { Response } from 'express';
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClientIdParamDto } from 'src/client/dto/client-api.dto';
@@ -27,6 +28,10 @@ import {
     SubmitServiceRequestDto,
     UpdateServiceRequestDraftDto,
 } from './dto/canonical-service-request.dto';
+import {
+    DraftServiceRequestUploadGuard,
+    MessageServiceRequestUploadGuard,
+} from './service-request-upload.guard';
 
 @Controller('api/client/service-requests')
 @ApiTags('service-requests')
@@ -101,7 +106,13 @@ export class ServiceRequestsController {
 
     @Post('drafts/:id/attachments')
     @ApiOperation({ summary: 'Upload a validated draft attachment' })
-    @UseInterceptors(FileInterceptor('file'))
+    @UseGuards(DraftServiceRequestUploadGuard)
+    @UseInterceptors(
+        FileInterceptor(
+            'file',
+            multipartOptionsForPurpose('service-attachment'),
+        ),
+    )
     @RateLimit('public-form', 20, 600)
     addAttachment(
         @CurrentWebSession() session: WebSessionPrincipal,
@@ -168,7 +179,13 @@ export class ServiceRequestsController {
 
     @Post(':id/messages/attachments')
     @ApiOperation({ summary: 'Attach a file to the customer conversation' })
-    @UseInterceptors(FileInterceptor('file'))
+    @UseGuards(MessageServiceRequestUploadGuard)
+    @UseInterceptors(
+        FileInterceptor(
+            'file',
+            multipartOptionsForPurpose('service-attachment'),
+        ),
+    )
     @RateLimit('public-form', 20, 600)
     addMessageAttachment(
         @CurrentWebSession() session: WebSessionPrincipal,

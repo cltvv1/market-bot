@@ -65,7 +65,7 @@ export class AdminAuthService implements OnApplicationBootstrap {
             where: { login: login.trim().toLowerCase(), isActive: true },
             relations: { roleAssignments: true },
         });
-        const valid = verifyPasswordHash(password, user?.passwordHash);
+        const valid = await verifyPasswordHash(password, user?.passwordHash);
         if (!user || !valid) return null;
 
         const token = randomBytes(32).toString('base64url');
@@ -157,6 +157,7 @@ export class AdminAuthService implements OnApplicationBootstrap {
             throw new ConflictException('Staff login already exists');
         }
 
+        const passwordHash = await createPasswordHash(input.password);
         return this.dataSource.transaction(async (manager) => {
             const userRepo = manager.getRepository(AdminUserEntity);
             const roleRepo = manager.getRepository(AdminUserRoleEntity);
@@ -164,7 +165,7 @@ export class AdminAuthService implements OnApplicationBootstrap {
                 userRepo.create({
                     login,
                     displayName: input.displayName.trim(),
-                    passwordHash: createPasswordHash(input.password),
+                    passwordHash,
                     isActive: true,
                 }),
             );
@@ -233,7 +234,7 @@ export class AdminAuthService implements OnApplicationBootstrap {
     async resetPassword(userId: number, password: string) {
         const user = await this.requireUser(userId);
         assertStrongPassword(password, user.login);
-        user.passwordHash = createPasswordHash(password);
+        user.passwordHash = await createPasswordHash(password);
         await this.users.save(user);
         await this.revokeAllSessions(user.id);
         return { ok: true };

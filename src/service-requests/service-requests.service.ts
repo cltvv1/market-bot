@@ -463,11 +463,7 @@ export class ServiceRequestsService {
         id: number,
         file: { buffer: Buffer; originalName?: string; mimeType?: string },
     ) {
-        const request = await this.requireOwnedRequest(session.userId, id);
-        if (request.status !== 'draft')
-            throw new BadRequestException(
-                'Attachments can only be changed before submission',
-            );
+        await this.assertWebDraftAttachmentUploadAccess(session, id);
         const stored = await this.files.saveBuffer({
             purpose: 'service-attachment',
             buffer: file.buffer,
@@ -660,7 +656,10 @@ export class ServiceRequestsService {
         id: number,
         file: { buffer: Buffer; originalName?: string; mimeType?: string },
     ) {
-        const request = await this.requireOwnedRequest(session.userId, id);
+        const request = await this.assertWebMessageAttachmentUploadAccess(
+            session,
+            id,
+        );
         return this.storeCustomerMessageAttachment(
             request,
             file,
@@ -731,16 +730,46 @@ export class ServiceRequestsService {
         token: string,
         file: { buffer: Buffer; originalName?: string; mimeType?: string },
     ) {
-        const request = await this.requests.findOne({
-            where: { publicTokenHash: this.hashToken(token) },
-        });
-        if (!request)
-            throw new NotFoundException('Service request was not found');
+        const request =
+            await this.assertPublicMessageAttachmentUploadAccess(token);
         return this.storeCustomerMessageAttachment(
             request,
             file,
             request.userId,
         );
+    }
+
+    async assertWebDraftAttachmentUploadAccess(
+        session: WebSessionPrincipal,
+        id: number,
+    ) {
+        const request = await this.requireOwnedRequest(session.userId, id);
+        if (request.status !== 'draft') {
+            throw new BadRequestException(
+                'Attachments can only be changed before submission',
+            );
+        }
+        return request;
+    }
+
+    async assertWebMessageAttachmentUploadAccess(
+        session: WebSessionPrincipal,
+        id: number,
+    ) {
+        const request = await this.requireOwnedRequest(session.userId, id);
+        this.assertMessageAttachmentStatus(request);
+        return request;
+    }
+
+    async assertPublicMessageAttachmentUploadAccess(token: string) {
+        const request = await this.requests.findOne({
+            where: { publicTokenHash: this.hashToken(token) },
+        });
+        if (!request) {
+            throw new NotFoundException('Service request was not found');
+        }
+        this.assertMessageAttachmentStatus(request);
+        return request;
     }
 
     async getAdminDetails(id: number) {
@@ -960,11 +989,7 @@ export class ServiceRequestsService {
         file: { buffer: Buffer; originalName?: string; mimeType?: string },
         customerId?: number,
     ) {
-        if (['draft', 'closed', 'cancelled'].includes(request.status)) {
-            throw new BadRequestException(
-                'Attachments are not accepted in the current status',
-            );
-        }
+        this.assertMessageAttachmentStatus(request);
         const stored = await this.files.saveBuffer({
             purpose: 'service-attachment',
             buffer: file.buffer,
@@ -1221,6 +1246,14 @@ export class ServiceRequestsService {
         if (!request)
             throw new NotFoundException('Service request was not found');
         return request;
+    }
+
+    private assertMessageAttachmentStatus(request: ServiceRequestEntity) {
+        if (['draft', 'closed', 'cancelled'].includes(request.status)) {
+            throw new BadRequestException(
+                'Attachments are not accepted in the current status',
+            );
+        }
     }
 
     private async assertCashRegister(

@@ -19,13 +19,7 @@ export function configureApplication(
 ) {
     const config = app.get(ConfigService);
     const expressApp = app.getHttpAdapter().getInstance() as Express;
-    const trustProxy = config.get<string>('TRUST_PROXY');
-    if (trustProxy) {
-        expressApp.set(
-            'trust proxy',
-            /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy,
-        );
-    }
+    expressApp.set('trust proxy', config.get<number>('TRUST_PROXY') ?? 0);
 
     app.use(helmet({ contentSecurityPolicy: false }));
     app.use(json({ limit: config.get<string>('HTTP_JSON_LIMIT') || '256kb' }));

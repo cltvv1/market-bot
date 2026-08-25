@@ -132,6 +132,9 @@
     "typescript-eslint": "^8.20.0",
     "vite": "^6.1.0"
   },
+  "overrides": {
+    "multer": "2.2.0"
+  },
   "jest": {
     "moduleFileExtensions": [
       "js",
