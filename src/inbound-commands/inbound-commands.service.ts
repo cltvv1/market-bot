@@ -8,6 +8,9 @@ import type {
     InboundCommandOutcome,
 } from './inbound-commands.types';
 
+const INTERRUPTED_COMMAND_ERROR =
+    'Interrupted or indeterminate execution; automatic replay disabled';
+
 @Injectable()
 export class InboundCommandsService {
     private readonly logger = new Logger(InboundCommandsService.name);
@@ -55,28 +58,36 @@ export class InboundCommandsService {
                     return { status: 'failed', command };
                 }
 
-                const now = new Date();
                 if (command) {
-                    // The previous worker disappeared before completing this command.
-                    command.attemptCount += 1;
-                    command.processingStartedAt = now;
-                    command.error = null;
-                } else {
-                    command = commands.create({
-                        platform: commandInput.platform,
-                        externalUpdateId: commandInput.externalUpdateId,
-                        chatId: commandInput.chatId,
-                        userId: commandInput.userId ?? null,
-                        commandType: commandInput.commandType,
-                        payload: commandInput.payload ?? null,
-                        status: 'processing',
-                        attemptCount: 1,
-                        processingStartedAt: now,
-                        processedAt: null,
-                        error: null,
-                        resultMetadata: null,
-                    });
+                    // Holding the same dialog lock proves the previous session ended.
+                    // Its domain result is indeterminate, so replay must fail closed.
+                    command.status = 'failed';
+                    command.error = INTERRUPTED_COMMAND_ERROR;
+                    command.resultMetadata = {
+                        ...(command.resultMetadata ?? {}),
+                        interrupted: true,
+                        automaticReplay: false,
+                    };
+                    command = await commands.save(command);
+                    await queryRunner.commitTransaction();
+                    return { status: 'failed', command };
                 }
+
+                const now = new Date();
+                command = commands.create({
+                    platform: commandInput.platform,
+                    externalUpdateId: commandInput.externalUpdateId,
+                    chatId: commandInput.chatId,
+                    userId: commandInput.userId ?? null,
+                    commandType: commandInput.commandType,
+                    payload: commandInput.payload ?? null,
+                    status: 'processing',
+                    attemptCount: 1,
+                    processingStartedAt: now,
+                    processedAt: null,
+                    error: null,
+                    resultMetadata: null,
+                });
                 command = await commands.save(command);
                 await queryRunner.commitTransaction();
             } catch (error) {

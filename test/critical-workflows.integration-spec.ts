@@ -673,6 +673,129 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         ).toBe(1);
     });
 
+    it('fails closed when an interrupted command may already have mutated a registration', async () => {
+        await dataSource.getRepository(RegistrationFieldEntity).save([
+            { name: 'orgName', label: 'Организация', step: 2 },
+            { name: 'phone', label: 'Телефон', step: 3 },
+        ]);
+        const chatId = 'interrupted-registration-client';
+        const registration = await registrationsService.createRegistration(
+            chatId,
+            'telegram',
+        );
+        await registrationsService.saveFieldValue(
+            chatId,
+            'ООО После первой попытки',
+            'telegram',
+        );
+
+        const input = {
+            platform: 'telegram' as const,
+            externalUpdateId: 'update:interrupted-registration-answer-1',
+            chatId,
+            commandType: 'telegram.registration.answer',
+            payload: { kind: 'text' },
+        };
+        await dataSource.getRepository(InboundCommandEntity).save({
+            ...input,
+            userId: null,
+            status: 'processing',
+            attemptCount: 1,
+            processingStartedAt: new Date(),
+            processedAt: null,
+            error: null,
+            resultMetadata: null,
+        });
+
+        let handlerInvocations = 0;
+        const replayHandler = async () => {
+            handlerInvocations += 1;
+            return registrationsService.saveFieldValue(
+                chatId,
+                '+7 999 000-00-00',
+                'telegram',
+            );
+        };
+
+        const firstReplay = await inboundCommands.execute(input, replayHandler);
+        const secondReplay = await inboundCommands.execute(
+            input,
+            replayHandler,
+        );
+
+        expect(firstReplay.status).toBe('failed');
+        expect(secondReplay.status).toBe('failed');
+        expect(handlerInvocations).toBe(0);
+
+        const persistedRegistration = await dataSource
+            .getRepository(RegistrationRequestEntity)
+            .findOneByOrFail({ id: registration.id });
+        expect(persistedRegistration).toMatchObject({
+            orgName: 'ООО После первой попытки',
+            phone: null,
+            currentStep: 3,
+        });
+
+        const persistedCommand = await dataSource
+            .getRepository(InboundCommandEntity)
+            .findOneByOrFail({
+                platform: input.platform,
+                externalUpdateId: input.externalUpdateId,
+            });
+        expect(persistedCommand).toMatchObject({
+            status: 'failed',
+            attemptCount: 1,
+            processedAt: null,
+            resultMetadata: {
+                interrupted: true,
+                automaticReplay: false,
+            },
+        });
+        expect(persistedCommand.error).toContain(
+            'Interrupted or indeterminate execution',
+        );
+    });
+
+    it('moves an orphaned processing command to terminal failure without invoking its handler', async () => {
+        const input = {
+            platform: 'max' as const,
+            externalUpdateId: 'message:interrupted-lifecycle-1',
+            chatId: 'interrupted-lifecycle-client',
+            commandType: 'max.ticket.message',
+            payload: { kind: 'text' },
+        };
+        const processingStartedAt = new Date('2026-08-24T10:00:00.000Z');
+        const command = await dataSource
+            .getRepository(InboundCommandEntity)
+            .save({
+                ...input,
+                userId: null,
+                status: 'processing',
+                attemptCount: 1,
+                processingStartedAt,
+                processedAt: null,
+                error: null,
+                resultMetadata: null,
+            });
+        const handler = jest.fn().mockResolvedValue({ applied: true });
+
+        const outcome = await inboundCommands.execute(input, handler);
+
+        expect(outcome.status).toBe('failed');
+        expect(handler).not.toHaveBeenCalled();
+        const persisted = await dataSource
+            .getRepository(InboundCommandEntity)
+            .findOneByOrFail({ id: command.id });
+        expect(persisted.status).toBe('failed');
+        expect(persisted.processingStartedAt).toEqual(processingStartedAt);
+        expect(persisted.attemptCount).toBe(1);
+
+        await expect(
+            inboundCommands.execute(input, handler),
+        ).resolves.toMatchObject({ status: 'failed' });
+        expect(handler).not.toHaveBeenCalled();
+    });
+
     it('serializes parallel service-request answers and rejects a replayed callback state', async () => {
         const identity = {
             platform: 'telegram' as const,

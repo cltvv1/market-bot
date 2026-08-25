@@ -48,8 +48,11 @@ provider update
 The lock is keyed by `platform + chatId`; different dialogs remain concurrent.
 The command row is created or recovered before a handler runs. A duplicate with
 status `processed` never runs the handler again. A persisted `failed` command is
-not retried automatically. A command left in `processing` by a disappeared
-worker can be claimed after its PostgreSQL session lock is released.
+not retried automatically. A command left in `processing` after its PostgreSQL
+session lock is released is treated as an interrupted, indeterminate execution:
+it is moved to terminal `failed` and its handler is not replayed. The user must
+perform a new action with a new provider update ID if the intended change is
+still needed.
 
 Provider identities are intentionally small:
 
@@ -133,7 +136,11 @@ than the platform limit.
 
 | Scenario                                  | CH-R1 behaviour                                                                     |
 | ----------------------------------------- | ----------------------------------------------------------------------------------- |
-| Same provider update delivered twice      | One `InboundCommand` is processed; the second delivery is a no-op.                  |
+| Concurrent duplicate delivery             | Worker B waits for the dialog lock, then sees worker A's `processed` result.        |
+| Processed duplicate delivery              | The existing `processed` command is a no-op and its handler is not called.          |
+| Persisted failed command                  | The failure is returned and the handler is not retried automatically.               |
+| Interrupted `processing` command          | It becomes terminal `failed`; the indeterminate handler is never replayed.          |
+| New provider update ID                    | It is a new user action and may execute normally under the dialog lock.             |
 | Two commands in one dialog                | Per-dialog advisory lock gives deterministic serialization.                         |
 | Two starts of the same channel draft      | Transaction advisory lock plus partial unique index reuses one draft.               |
 | Two version-bound answers                 | One row-locked update succeeds; the other is stale and does not increment the step. |
@@ -159,6 +166,9 @@ The package adds characterization coverage for:
 - V2 callback construction/parsing and malformed data rejection;
 - Telegram stale callback safe rejection;
 - exact duplicate provider update execution once;
+- interrupted `processing` lifecycle fails closed without handler replay;
+- registration state already changed before a simulated crash is not changed
+  again by redelivery;
 - concurrent service-request answers and replay rejection;
 - concurrent service-request, registration and ticket draft creation;
 - duplicate registration answer handling;
@@ -182,16 +192,18 @@ Local verification completed for this branch:
 - `npm test -- --runInBand` passed: 21 suites, 97 tests;
 - `npm run lint:baseline` passed with no new lint debt;
 - isolated `npm run config:check` passed with polling disabled and fake tokens;
+- isolated PostgreSQL integration passed: 8 suites, 63 tests;
+- clean migrations, repeated migration run, `migration:show` and schema-drift
+  checks passed;
+- e2e passed: 2 suites, 7 tests;
+- offline Nest bootstrap, health/UI and browser smoke passed;
 - Prettier check for changed TypeScript files passed;
 - `git diff --check` passed.
 
-The normal local environment has no `TEST_DB_NAME`, and Docker Desktop's Linux
-engine is unavailable. The integration suite was retried with a fresh isolated
-test-DB name and temporary storage; it stopped at `ECONNREFUSED` for
-`localhost:5432`, before creating or changing that test database. Migration
-run, schema-drift, e2e and offline-smoke verification must be performed by
-isolated PostgreSQL CI or a configured local test DB; this report does not claim
-those checks passed locally.
+PostgreSQL checks used the dedicated `vitma_ch_r1_recovery_test` database and a
+temporary FileStorage root. The development database, production resources and
+real provider APIs were not used. Hosted CI for the final commit remains the
+authoritative cross-platform verification before merge.
 
 ## 12. Risks and limitations
 
@@ -199,8 +211,10 @@ those checks passed locally.
    commit before outbound presentation fails; the command can then be marked
    failed even though its domain result exists. Delivery retry/reconciliation is
    CH-R2 scope.
-2. Failed inbound commands have no operator retry UI yet. They are retained for
-   diagnostics and are not automatically replayed.
+2. Failed and interrupted inbound commands have no operator retry UI. They are
+   retained for diagnostics and are not automatically replayed. This can require
+   the user to repeat an action with a new provider update ID, which is preferred
+   to applying an indeterminate domain mutation twice.
 3. Provider-level deduplication cannot merge two distinct free-text messages
    that have different provider IDs but identical content. It serializes them;
    semantic deduplication would change business behaviour and is not in scope.
@@ -210,6 +224,10 @@ those checks passed locally.
    rollout.
 5. This package does not alter media storage or outbound delivery. Existing
    FileStorage and messenger presentation behaviour stays intact.
+
+CH-R1 therefore provides provider-update deduplication and fail-closed crash
+recovery, not a general exactly-once guarantee across domain mutation and
+outbound delivery.
 
 ## 13. Explicit exclusions
 
