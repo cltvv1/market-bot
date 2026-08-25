@@ -31,6 +31,7 @@ import { FilesService } from 'src/files/files.service';
 // prettier-ignore
 import { OrganizationContactEntity } from 'src/integrations/entities/organization-contact.entity';
 import { OutboundDeliveriesService } from 'src/outbound-deliveries/outbound-deliveries.service';
+import { StaffNotificationAuthorizationService } from 'src/outbound-deliveries/staff-notification-authorization.service';
 
 export type AdminStatusFilter = 'all' | 'new' | 'in_work' | 'processed';
 
@@ -68,6 +69,7 @@ export class AdminService {
         private readonly serviceRequestsService: ServiceRequestsService,
         private readonly filesService: FilesService,
         private readonly outbound: OutboundDeliveriesService,
+        private readonly notificationAuthorization: StaffNotificationAuthorizationService,
         private readonly dataSource: DataSource,
     ) {}
 
@@ -123,8 +125,11 @@ export class AdminService {
     ) {
         const admin = await this.adminUsersRepo.findOne({
             where: { id: adminId, isActive: true },
+            relations: { roleAssignments: true },
         });
         if (!admin) return null;
+
+        this.notificationAuthorization.assertCanEnablePreferences(admin, input);
 
         if (input.notifyRegistrations !== undefined) {
             admin.notifyRegistrations = input.notifyRegistrations;

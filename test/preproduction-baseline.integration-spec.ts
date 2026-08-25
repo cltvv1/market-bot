@@ -22,6 +22,7 @@ describe('pre-production database baseline', () => {
             { name: 'InitialPreproductionBaseline1787388476982' },
             { name: 'AddDurableInboundCommands1787577304950' },
             { name: 'AddDurableOutboundDeliveries1787664000000' },
+            { name: 'AuthorizeStaffNotifications1787750400000' },
         ]);
     });
 

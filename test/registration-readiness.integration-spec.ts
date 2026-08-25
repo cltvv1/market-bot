@@ -15,8 +15,11 @@ import type { FilesService } from '../src/files/files.service';
 import type { MessengerService } from '../src/messenger/messenger.types';
 import { OutboundDeliveryEntity } from '../src/outbound-deliveries/entities/outbound-delivery.entity';
 import { OutboundDeliveriesService } from '../src/outbound-deliveries/outbound-deliveries.service';
+import { StaffNotificationAuthorizationService } from '../src/outbound-deliveries/staff-notification-authorization.service';
 import { RegistrationFieldEntity } from '../src/registrations/entities/registration-field.entity';
 import { RegistrationsService } from '../src/registrations/registrations.service';
+import { ServiceRequestEntity } from '../src/service-requests/entities/service-request.entity';
+import { TicketEntity } from '../src/tickets/entities/ticket.entity';
 
 describe('KKT registration readiness on PostgreSQL', () => {
     let dataSource: DataSource;
@@ -86,6 +89,12 @@ describe('KKT registration readiness on PostgreSQL', () => {
             new AdminNotificationsService(
                 dataSource.getRepository(AdminUserEntity),
                 outbound,
+                new StaffNotificationAuthorizationService(
+                    dataSource.getRepository(AdminUserEntity),
+                    dataSource.getRepository(RegistrationRequestEntity),
+                    dataSource.getRepository(ServiceRequestEntity),
+                    dataSource.getRepository(TicketEntity),
+                ),
             ),
         );
     });

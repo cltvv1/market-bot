@@ -34,13 +34,13 @@ export class AdminUserEntity {
     @Column({ type: 'varchar', nullable: true })
     maxChatId: string | null;
 
-    @Column({ default: true })
+    @Column({ default: false })
     notifyRegistrations: boolean;
 
-    @Column({ default: true })
+    @Column({ default: false })
     notifyTickets: boolean;
 
-    @Column({ default: true })
+    @Column({ default: false })
     notifyServiceRequests: boolean;
 
     @Column({ type: 'varchar', nullable: true })
