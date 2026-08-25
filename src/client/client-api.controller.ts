@@ -12,6 +12,10 @@ import {
     UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {
+    multipartOptionsForPurpose,
+    multipartOptionsForPurposes,
+} from 'src/files/multipart-options';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { RegistrationsService } from 'src/registrations/registrations.service';
@@ -32,6 +36,7 @@ import {
 } from './dto/client-api.dto';
 import { RateLimit } from 'src/security/rate-limit';
 import { FilesService } from 'src/files/files.service';
+import { RegistrationEvidenceUploadGuard } from './registration-evidence-upload.guard';
 import { RegistrationReadinessService } from 'src/registrations/registration-readiness.service';
 
 interface UploadedMemoryFile {
@@ -131,7 +136,13 @@ export class ClientApiController {
 
     @Post('registrations/:id/requirements/:kind/evidence')
     @RateLimit('public-form', 20, 600)
-    @UseInterceptors(FileInterceptor('file'))
+    @UseGuards(RegistrationEvidenceUploadGuard)
+    @UseInterceptors(
+        FileInterceptor(
+            'file',
+            multipartOptionsForPurpose('registration-evidence'),
+        ),
+    )
     provideRegistrationEvidence(
         @CurrentWebSession() session: WebSessionPrincipal,
         @Param() params: RegistrationRequirementParamDto,
@@ -191,7 +202,20 @@ export class ClientApiController {
 
     @Post('tickets/media')
     @RateLimit('public-message', 60, 600)
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor(
+            'file',
+            multipartOptionsForPurposes(
+                [
+                    'ticket-image',
+                    'ticket-document',
+                    'ticket-audio',
+                    'ticket-video',
+                ],
+                3,
+            ),
+        ),
+    )
     async submitTicketMedia(
         @CurrentWebSession() session: WebSessionPrincipal,
         @UploadedFile() file: UploadedMemoryFile | undefined,

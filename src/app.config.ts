@@ -43,7 +43,12 @@ export const validationSchema = Joi.object({
         .default('vitma_web_session'),
     WEB_SESSION_TTL_DAYS: Joi.number().integer().min(1).max(365).default(30),
     CORS_ORIGINS: Joi.string().allow('').optional(),
-    TRUST_PROXY: Joi.string().allow('').optional(),
+    TRUST_PROXY: Joi.number().integer().min(0).max(3).default(0),
+    RATE_LIMIT_MAX_ENTRIES: Joi.number()
+        .integer()
+        .min(100)
+        .max(100_000)
+        .default(10_000),
     SWAGGER_ENABLED: Joi.boolean().optional(),
     HTTP_JSON_LIMIT: Joi.string()
         .pattern(/^\d+(kb|mb)$/i)

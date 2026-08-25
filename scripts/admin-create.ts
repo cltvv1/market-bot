@@ -88,6 +88,7 @@ async function main() {
             throw new Error('Display name must contain 2-120 characters');
         }
         assertStrongPassword(password, login);
+        const passwordHash = await createPasswordHash(password);
 
         await dataSource.initialize();
         const existing = await dataSource
@@ -102,7 +103,7 @@ async function main() {
                 manager.getRepository(AdminUserEntity).create({
                     login,
                     displayName,
-                    passwordHash: createPasswordHash(password),
+                    passwordHash,
                     isActive: true,
                 }),
             );

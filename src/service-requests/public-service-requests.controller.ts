@@ -7,10 +7,12 @@ import {
     Post,
     Res,
     UploadedFile,
+    UseGuards,
     UseInterceptors,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { multipartOptionsForPurpose } from 'src/files/multipart-options';
 import type { Response } from 'express';
 import { RateLimit } from 'src/security/rate-limit';
 import { ServiceRequestsService } from './service-requests.service';
@@ -19,6 +21,7 @@ import {
     PublicServiceRequestTokenParamDto,
     ServiceRequestMessageDto,
 } from './dto/canonical-service-request.dto';
+import { PublicServiceRequestUploadGuard } from './service-request-upload.guard';
 
 @Controller('api/public/service-requests')
 @ApiTags('service-requests-public')
@@ -46,7 +49,13 @@ export class PublicServiceRequestsController {
 
     @Post(':token/messages/attachments')
     @ApiOperation({ summary: 'Attach a file using an access token' })
-    @UseInterceptors(FileInterceptor('file'))
+    @UseGuards(PublicServiceRequestUploadGuard)
+    @UseInterceptors(
+        FileInterceptor(
+            'file',
+            multipartOptionsForPurpose('service-attachment'),
+        ),
+    )
     @RateLimit('public-form', 20, 600)
     addMessageAttachment(
         @Param() params: PublicServiceRequestTokenParamDto,

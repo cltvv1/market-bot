@@ -446,12 +446,10 @@ export class RegistrationReadinessService {
         kind: RegistrationRequirementKind,
         file: { buffer: Buffer; fileName?: string; mimeType?: string },
     ) {
-        const registration = await this.registrations.findOne({
-            where: { id: registrationId },
-        });
-        if (!registration)
-            throw new NotFoundException('Registration was not found');
-        this.assertOwner(registration, identity);
+        const registration = await this.assertEvidenceUploadAccess(
+            identity,
+            registrationId,
+        );
         await this.initializeIfMissing(registrationId);
         const requirement = await this.requirements.findOneByOrFail({
             registrationId,
@@ -525,6 +523,20 @@ export class RegistrationReadinessService {
             await this.files.logicalDelete(stored.id).catch(() => undefined);
             throw error;
         }
+    }
+
+    async assertEvidenceUploadAccess(
+        identity: RegistrationClientIdentity,
+        registrationId: number,
+    ) {
+        const registration = await this.registrations.findOne({
+            where: { id: registrationId },
+        });
+        if (!registration) {
+            throw new NotFoundException('Registration was not found');
+        }
+        this.assertOwner(registration, identity);
+        return registration;
     }
 
     async requestData(

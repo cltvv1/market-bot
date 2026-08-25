@@ -22,14 +22,17 @@ export class ApiErrorFilter implements ExceptionFilter {
         const context = host.switchToHttp();
         const request = context.getRequest<Request & { requestId?: string }>();
         const response = context.getResponse<Response>();
-        const status =
-            exception instanceof HttpException
-                ? exception.getStatus()
-                : HttpStatus.INTERNAL_SERVER_ERROR;
-        const payload =
-            exception instanceof HttpException
-                ? exception.getResponse()
-                : null;
+        const multipart = this.multipartError(exception);
+        const status = multipart
+            ? multipart.status
+            : exception instanceof HttpException
+              ? exception.getStatus()
+              : HttpStatus.INTERNAL_SERVER_ERROR;
+        const payload = multipart
+            ? multipart.payload
+            : exception instanceof HttpException
+              ? exception.getResponse()
+              : null;
 
         if (status >= 500) {
             this.logger.error(
@@ -50,7 +53,10 @@ export class ApiErrorFilter implements ExceptionFilter {
         });
     }
 
-    private normalize(status: number, payload: unknown): {
+    private normalize(
+        status: number,
+        payload: unknown,
+    ): {
         code: string;
         message: string;
         errors: ErrorDetail[];
@@ -101,5 +107,30 @@ export class ApiErrorFilter implements ExceptionFilter {
         if (status === 413) return 'PAYLOAD_TOO_LARGE';
         if (status === 429) return 'RATE_LIMITED';
         return status >= 500 ? 'INTERNAL_ERROR' : 'REQUEST_FAILED';
+    }
+
+    private multipartError(exception: unknown): {
+        status: number;
+        payload: { code: string; message: string; errors: never[] };
+    } | null {
+        if (
+            !exception ||
+            typeof exception !== 'object' ||
+            (exception as { name?: unknown }).name !== 'MulterError'
+        ) {
+            return null;
+        }
+        const code = (exception as { code?: unknown }).code;
+        const tooLarge = code === 'LIMIT_FILE_SIZE';
+        return {
+            status: tooLarge ? 413 : 400,
+            payload: {
+                code: tooLarge ? 'PAYLOAD_TOO_LARGE' : 'INVALID_MULTIPART',
+                message: tooLarge
+                    ? 'Uploaded file exceeds the configured size limit'
+                    : 'Multipart request does not match the upload contract',
+                errors: [],
+            },
+        };
     }
 }

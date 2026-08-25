@@ -76,11 +76,8 @@ describe('canonical service requests', () => {
 
     async function browser() {
         const agent = request.agent(app.getHttpServer());
-        await agent
-            .post('/api/client/session')
-            .set('X-Forwarded-For', `10.80.0.${++ip}`)
-            .send({})
-            .expect(201);
+        agent.set('X-Forwarded-For', `10.80.0.${++ip}`);
+        await agent.post('/api/client/session').send({}).expect(201);
         return agent;
     }
 

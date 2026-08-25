@@ -19,6 +19,10 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {
+    multipartOptionsForPurpose,
+    multipartOptionsForPurposes,
+} from 'src/files/multipart-options';
 import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { AdminService } from './admin.service';
@@ -556,7 +560,9 @@ export class AdminController {
 
     @Post('api/service-requests/:id/invoice-file')
     @RequirePermissions('serviceRequests.invoice')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor('file', multipartOptionsForPurpose('service-invoice')),
+    )
     async attachServiceRequestInvoiceFile(
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
@@ -1093,7 +1099,20 @@ export class AdminController {
 
     @Post('api/tickets/:id/media')
     @RequirePermissions('tickets.reply')
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(
+        FileInterceptor(
+            'file',
+            multipartOptionsForPurposes(
+                [
+                    'ticket-image',
+                    'ticket-document',
+                    'ticket-audio',
+                    'ticket-video',
+                ],
+                1,
+            ),
+        ),
+    )
     async sendTicketMedia(
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
