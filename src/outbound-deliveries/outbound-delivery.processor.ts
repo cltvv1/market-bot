@@ -15,6 +15,7 @@ import {
 } from 'src/messenger/messenger.types';
 import { OutboundDeliveryEntity } from './entities/outbound-delivery.entity';
 import { OutboundDeliveriesService } from './outbound-deliveries.service';
+import { StaffNotificationAuthorizationService } from './staff-notification-authorization.service';
 
 const MAX_ATTEMPTS = 4;
 const RETRY_DELAYS_MS = [30_000, 120_000, 600_000];
@@ -32,6 +33,7 @@ export class OutboundDeliveryProcessor
 
     constructor(
         private readonly outbound: OutboundDeliveriesService,
+        private readonly staffAuthorization: StaffNotificationAuthorizationService,
         private readonly files: FilesService,
         @Inject(MESSENGER_SERVICE)
         private readonly messenger: MessengerService,
@@ -157,6 +159,12 @@ export class OutboundDeliveryProcessor
     private async processClaimed(delivery: OutboundDeliveryEntity) {
         let providerResult: unknown;
         try {
+            const authorization =
+                await this.staffAuthorization.authorizeDelivery(delivery);
+            if (!authorization.authorized) {
+                await this.recordAuthorizationRevoked(delivery);
+                return;
+            }
             providerResult = await this.send(delivery);
         } catch (error) {
             await this.recordFailure(delivery, error);
@@ -253,6 +261,27 @@ export class OutboundDeliveryProcessor
         );
         this.logger.warn(
             `Outbound delivery ${delivery.id} attempt ${delivery.attemptCount} ${terminal ? 'failed terminally' : 'will retry'}`,
+        );
+    }
+
+    private async recordAuthorizationRevoked(delivery: OutboundDeliveryEntity) {
+        const now = new Date();
+        await this.outbound.repository.update(
+            {
+                id: delivery.id,
+                status: 'processing',
+                claimToken: delivery.claimToken!,
+            },
+            {
+                status: 'failed',
+                nextAttemptAt: now,
+                claimedAt: null,
+                claimToken: null,
+                lastError: 'Staff notification authorization revoked',
+            },
+        );
+        this.logger.warn(
+            `Outbound delivery ${delivery.id} failed terminally because staff authorization was revoked`,
         );
     }
 

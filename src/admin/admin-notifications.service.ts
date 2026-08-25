@@ -3,13 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, type EntityManager, Repository } from 'typeorm';
 import type { MessengerMessageOptions } from 'src/messenger/messenger.types';
 import { OutboundDeliveriesService } from 'src/outbound-deliveries/outbound-deliveries.service';
+import {
+    StaffNotificationAuthorizationService,
+    type StaffNotificationKind,
+} from 'src/outbound-deliveries/staff-notification-authorization.service';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 import { AdminUserEntity } from './entities/admin-user.entity';
 
-export type AdminNotificationKind =
-    | 'registrations'
-    | 'tickets'
-    | 'serviceRequests';
+export type AdminNotificationKind = StaffNotificationKind;
 
 export interface AdminNotificationContext {
     dedupeKey: string;
@@ -24,6 +25,7 @@ export class AdminNotificationsService {
         @InjectRepository(AdminUserEntity)
         private readonly adminUsersRepo: Repository<AdminUserEntity>,
         private readonly outbound: OutboundDeliveriesService,
+        private readonly authorization: StaffNotificationAuthorizationService,
     ) {}
 
     async linkChatByCode(
@@ -56,7 +58,10 @@ export class AdminNotificationsService {
         context: AdminNotificationContext,
         options?: Omit<MessengerMessageOptions, 'platform'>,
     ) {
-        const admins = await this.getRecipients(kind, context.manager);
+        const admins = await this.authorization.findAuthorizedRecipients(
+            kind,
+            context,
+        );
         await Promise.all(
             admins.flatMap((admin) => {
                 const recipients: Array<{
@@ -83,6 +88,7 @@ export class AdminNotificationsService {
                             recipientChatId: chatId,
                             kind: 'text',
                             audience: 'staff',
+                            recipientStaffId: admin.id,
                             sourceType: context.sourceType,
                             sourceId: context.sourceId,
                             payload: { text, ...options },
@@ -99,7 +105,10 @@ export class AdminNotificationsService {
         file: { storedFileId: number; filename: string; caption?: string },
         context: AdminNotificationContext,
     ) {
-        const admins = await this.getRecipients(kind, context.manager);
+        const admins = await this.authorization.findAuthorizedRecipients(
+            kind,
+            context,
+        );
         await Promise.all(
             admins.flatMap((admin) => {
                 const recipients: Array<{
@@ -126,6 +135,7 @@ export class AdminNotificationsService {
                             recipientChatId: chatId,
                             kind: 'document',
                             audience: 'staff',
+                            recipientStaffId: admin.id,
                             sourceType: context.sourceType,
                             sourceId: context.sourceId,
                             storedFileId: file.storedFileId,
@@ -139,26 +149,5 @@ export class AdminNotificationsService {
                 );
             }),
         );
-    }
-
-    private getRecipients(
-        kind: AdminNotificationKind,
-        manager?: EntityManager,
-    ) {
-        const repository = manager
-            ? manager.getRepository(AdminUserEntity)
-            : this.adminUsersRepo;
-        return repository.find({
-            where: {
-                isActive: true,
-                ...(kind === 'registrations'
-                    ? { notifyRegistrations: true }
-                    : {}),
-                ...(kind === 'tickets' ? { notifyTickets: true } : {}),
-                ...(kind === 'serviceRequests'
-                    ? { notifyServiceRequests: true }
-                    : {}),
-            },
-        });
     }
 }

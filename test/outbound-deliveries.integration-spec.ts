@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import type { DataSource } from 'typeorm';
 import { AdminNotificationsService } from '../src/admin/admin-notifications.service';
 import { AdminUserEntity } from '../src/admin/entities/admin-user.entity';
+import { AdminUserRoleEntity } from '../src/admin/entities/admin-user-role.entity';
 import testDataSource from '../src/database/test-data-source';
 import { StoredFileEntity } from '../src/files/entities/stored-file.entity';
 import type { FilesService } from '../src/files/files.service';
@@ -11,6 +12,9 @@ import type { MessengerService } from '../src/messenger/messenger.types';
 import { OutboundDeliveryEntity } from '../src/outbound-deliveries/entities/outbound-delivery.entity';
 import { OutboundDeliveryProcessor } from '../src/outbound-deliveries/outbound-delivery.processor';
 import { OutboundDeliveriesService } from '../src/outbound-deliveries/outbound-deliveries.service';
+import { StaffNotificationAuthorizationService } from '../src/outbound-deliveries/staff-notification-authorization.service';
+import { RegistrationRequestEntity } from '../src/registrations/entities/registration.entity';
+import { ServiceRequestEntity } from '../src/service-requests/entities/service-request.entity';
 import { TicketEntity } from '../src/tickets/entities/ticket.entity';
 import { TicketMessageEntity } from '../src/tickets/entities/ticket-message.entity';
 import { TicketsService } from '../src/tickets/tickets.service';
@@ -21,6 +25,7 @@ describe('durable outbound delivery on migrated PostgreSQL', () => {
     let dataSource: DataSource;
     let outbound: OutboundDeliveriesService;
     let processor: OutboundDeliveryProcessor;
+    let staffAuthorization: StaffNotificationAuthorizationService;
 
     const messenger: jest.Mocked<MessengerService> = {
         sendMessage: jest.fn().mockResolvedValue({ message_id: 101 }),
@@ -70,8 +75,15 @@ describe('durable outbound delivery on migrated PostgreSQL', () => {
             dataSource.getRepository(OutboundDeliveryEntity),
             dataSource,
         );
+        staffAuthorization = new StaffNotificationAuthorizationService(
+            dataSource.getRepository(AdminUserEntity),
+            dataSource.getRepository(RegistrationRequestEntity),
+            dataSource.getRepository(ServiceRequestEntity),
+            dataSource.getRepository(TicketEntity),
+        );
         processor = new OutboundDeliveryProcessor(
             outbound,
+            staffAuthorization,
             files as unknown as FilesService,
             messenger,
             config,
@@ -219,6 +231,7 @@ describe('durable outbound delivery on migrated PostgreSQL', () => {
         await outbound.enqueue(textIntent('concurrency:one', 1));
         const secondProcessor = new OutboundDeliveryProcessor(
             outbound,
+            staffAuthorization,
             files as unknown as FilesService,
             messenger,
             config,
@@ -330,7 +343,7 @@ describe('durable outbound delivery on migrated PostgreSQL', () => {
 
     it('creates independent durable rows for every staff recipient and platform', async () => {
         const admins = dataSource.getRepository(AdminUserEntity);
-        await admins.save([
+        const staff = await admins.save([
             admins.create({
                 login: 'staff-one',
                 displayName: 'Staff One',
@@ -349,12 +362,26 @@ describe('durable outbound delivery on migrated PostgreSQL', () => {
                 notifyTickets: true,
             }),
         ]);
-        const notifications = new AdminNotificationsService(admins, outbound);
+        await dataSource
+            .getRepository(AdminUserRoleEntity)
+            .save(
+                staff.map((admin) => ({ userId: admin.id, role: 'operator' })),
+            );
+        const ticket = await dataSource.getRepository(TicketEntity).save({
+            userChatId: 'staff-fanout-client',
+            platform: 'telegram',
+            isAnswered: false,
+        });
+        const notifications = new AdminNotificationsService(
+            admins,
+            outbound,
+            staffAuthorization,
+        );
 
         await notifications.notify('tickets', 'Новый вопрос', {
             dedupeKey: 'ticket:77:created',
             sourceType: 'ticket',
-            sourceId: 77,
+            sourceId: ticket.id,
         });
 
         const deliveries = await outbound.repository.find({
@@ -372,7 +399,7 @@ describe('durable outbound delivery on migrated PostgreSQL', () => {
 
     it('rolls ticket history and staff delivery back together', async () => {
         const admins = dataSource.getRepository(AdminUserEntity);
-        await admins.save(
+        const staff = await admins.save(
             admins.create({
                 login: 'ticket-staff',
                 displayName: 'Ticket Staff',
@@ -382,7 +409,15 @@ describe('durable outbound delivery on migrated PostgreSQL', () => {
                 notifyTickets: true,
             }),
         );
-        const notifications = new AdminNotificationsService(admins, outbound);
+        await dataSource.getRepository(AdminUserRoleEntity).save({
+            userId: staff.id,
+            role: 'operator',
+        });
+        const notifications = new AdminNotificationsService(
+            admins,
+            outbound,
+            staffAuthorization,
+        );
         const tickets = new TicketsService(
             dataSource.getRepository(TicketEntity),
             dataSource.getRepository(TicketMessageEntity),

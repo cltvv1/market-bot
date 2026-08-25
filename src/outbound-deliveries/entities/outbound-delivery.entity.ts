@@ -10,6 +10,7 @@ import {
     UpdateDateColumn,
 } from 'typeorm';
 import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
+import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 
 export type OutboundDeliveryPlatform = Exclude<UserPlatform, 'web'>;
@@ -37,6 +38,7 @@ export interface OutboundDeliveryPayload {
 @Index('UQ_outbound_deliveries_dedupe_key', ['dedupeKey'], { unique: true })
 @Index('IDX_outbound_deliveries_eligible', ['status', 'nextAttemptAt'])
 @Index('IDX_outbound_deliveries_source', ['sourceType', 'sourceId'])
+@Index('IDX_outbound_deliveries_recipient_staff', ['recipientStaffId'])
 @Check(
     'CK_outbound_deliveries_status',
     `"status" IN ('pending','processing','retrying','sent','failed')`,
@@ -44,6 +46,10 @@ export interface OutboundDeliveryPayload {
 @Check('CK_outbound_deliveries_platform', `"platform" IN ('telegram','max')`)
 @Check('CK_outbound_deliveries_kind', `"kind" IN ('text','document','image')`)
 @Check('CK_outbound_deliveries_audience', `"audience" IN ('customer','staff')`)
+@Check(
+    'CK_outbound_deliveries_customer_staff_identity',
+    `"audience" = 'staff' OR "recipientStaffId" IS NULL`,
+)
 @Check(
     'CK_outbound_deliveries_file_kind',
     `("kind" = 'text' AND "storedFileId" IS NULL) OR ("kind" IN ('document','image') AND "storedFileId" IS NOT NULL)`,
@@ -67,6 +73,16 @@ export class OutboundDeliveryEntity {
 
     @Column({ type: 'varchar', length: 20 })
     audience: OutboundDeliveryAudience;
+
+    @Column({ type: 'integer', nullable: true })
+    recipientStaffId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({
+        name: 'recipientStaffId',
+        foreignKeyConstraintName: 'FK_outbound_deliveries_recipient_staff',
+    })
+    recipientStaff: AdminUserEntity | null;
 
     @Column({ type: 'varchar', length: 100 })
     sourceType: string;

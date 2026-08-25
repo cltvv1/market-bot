@@ -79,6 +79,17 @@ export class OutboundDeliveriesService {
         ) {
             throw new Error('Outbound delivery identity is too long');
         }
+        const recipientStaffId = input.recipientStaffId ?? null;
+        if (
+            (input.audience === 'staff' &&
+                (!Number.isSafeInteger(recipientStaffId) ||
+                    Number(recipientStaffId) <= 0)) ||
+            (input.audience === 'customer' && recipientStaffId !== null)
+        ) {
+            throw new Error(
+                'Staff deliveries require one trusted staff identity and customer deliveries must not include one',
+            );
+        }
         if (input.kind === 'text') {
             if (!input.payload.text?.trim() || input.storedFileId) {
                 throw new Error(
@@ -96,6 +107,7 @@ export class OutboundDeliveriesService {
             recipientChatId,
             kind: input.kind,
             audience: input.audience,
+            recipientStaffId,
             sourceType,
             sourceId,
             payload: this.normalizePayload(input.payload),
@@ -121,6 +133,7 @@ export class OutboundDeliveriesService {
             existing.recipientChatId !== input.recipientChatId ||
             existing.kind !== input.kind ||
             existing.audience !== input.audience ||
+            existing.recipientStaffId !== input.recipientStaffId ||
             existing.storedFileId !== input.storedFileId ||
             existing.sourceType !== input.sourceType ||
             existing.sourceId !== input.sourceId ||

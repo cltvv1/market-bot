@@ -12,6 +12,7 @@ export interface EnqueueOutboundDeliveryInput {
     recipientChatId: string;
     kind: OutboundDeliveryKind;
     audience: OutboundDeliveryAudience;
+    recipientStaffId?: number;
     sourceType: string;
     sourceId: string | number;
     payload: OutboundDeliveryPayload;
