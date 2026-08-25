@@ -345,32 +345,25 @@ export class ClientWorkflowService {
     async openTicket(input: ClientIdentity): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        const activeTicket = await this.ticketsService.getActiveTicket(
-            input.chatId,
-            input.platform,
-        );
-        if (activeTicket?.text) {
+        const { ticket, created } =
+            await this.ticketsService.getOrCreateActiveTicket({
+                userChatId: input.chatId,
+                username: input.username,
+                name: input.name,
+                platform: input.platform,
+                userId: user.id,
+                organizationId,
+            });
+        if (!created && ticket.text) {
             return {
                 status: 'already_open',
                 message: 'Client already has an open ticket.',
-                data: activeTicket,
+                data: ticket,
             };
         }
 
-        const ticket =
-            activeTicket ??
-            (await this.ticketsService.createTicket(
-                input.chatId,
-                input.username,
-                input.name,
-                undefined,
-                input.platform,
-                user.id,
-                organizationId,
-            ));
-
         return {
-            status: activeTicket ? 'continued' : 'started',
+            status: created ? 'started' : 'continued',
             message: 'Ticket is ready for the first message.',
             data: ticket,
         };
@@ -382,21 +375,15 @@ export class ClientWorkflowService {
     ): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        let ticket = await this.ticketsService.getActiveTicket(
-            input.chatId,
-            input.platform,
-        );
-        if (!ticket) {
-            ticket = await this.ticketsService.createTicket(
-                input.chatId,
-                input.username,
-                input.name,
-                undefined,
-                input.platform,
-                user.id,
+        const { ticket, created } =
+            await this.ticketsService.getOrCreateActiveTicket({
+                userChatId: input.chatId,
+                username: input.username,
+                name: input.name,
+                platform: input.platform,
+                userId: user.id,
                 organizationId,
-            );
-        }
+            });
 
         const savedTicket = await this.ticketsService.saveTicketText(
             input.chatId,
@@ -410,7 +397,7 @@ export class ClientWorkflowService {
             };
         }
 
-        if (!ticket.text) {
+        if (created || !ticket.text) {
             await this.ticketsService.notifyOperatorsAboutNewTicket(
                 savedTicket,
             );
@@ -440,21 +427,14 @@ export class ClientWorkflowService {
     ): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        let ticket = await this.ticketsService.getActiveTicket(
-            input.chatId,
-            input.platform,
-        );
-        if (!ticket) {
-            ticket = await this.ticketsService.createTicket(
-                input.chatId,
-                input.username,
-                input.name,
-                undefined,
-                input.platform,
-                user.id,
-                organizationId,
-            );
-        }
+        await this.ticketsService.getOrCreateActiveTicket({
+            userChatId: input.chatId,
+            username: input.username,
+            name: input.name,
+            platform: input.platform,
+            userId: user.id,
+            organizationId,
+        });
 
         const savedTicket = await this.ticketsService.saveTicketMedia(
             input.chatId,

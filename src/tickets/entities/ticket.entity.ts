@@ -1,7 +1,17 @@
-import { Column, Entity, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import {
+    Column,
+    CreateDateColumn,
+    Entity,
+    Index,
+    PrimaryGeneratedColumn,
+} from 'typeorm';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 
 @Entity('tickets')
+@Index('UQ_tickets_active_client', ['platform', 'userChatId'], {
+    unique: true,
+    where: `"isAnswered" = false`,
+})
 export class TicketEntity {
     @PrimaryGeneratedColumn()
     id: number;

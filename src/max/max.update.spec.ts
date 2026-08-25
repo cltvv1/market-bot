@@ -53,6 +53,13 @@ describe('MaxUpdate media handling', () => {
         sendImage: jest.fn().mockResolvedValue(undefined),
         sendDocument: jest.fn().mockResolvedValue(undefined),
     };
+    const inboundCommands = {
+        execute: jest.fn(async (_input, handler: () => Promise<unknown>) => ({
+            status: 'processed' as const,
+            command: {},
+            result: await handler(),
+        })),
+    };
     const update = new MaxUpdate(
         { get: jest.fn().mockReturnValue(false) } as never,
         {} as never,
@@ -65,6 +72,7 @@ describe('MaxUpdate media handling', () => {
         files as never,
         access as never,
         messenger,
+        inboundCommands as never,
     );
     const ctx = {
         chatId: 55,
@@ -186,6 +194,7 @@ describe('MaxUpdate media handling', () => {
             files as never,
             access as never,
             messenger,
+            inboundCommands as never,
             readiness as never,
         );
         const requestCtx = {

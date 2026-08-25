@@ -25,6 +25,10 @@ export type RegistrationRequestPriority = 'low' | 'normal' | 'high' | 'urgent';
 
 @Entity('registration_requests')
 @Index('IDX_registration_pdf_file', ['pdfFileId'])
+@Index('UQ_registration_requests_active_draft', ['platform', 'chatId'], {
+    unique: true,
+    where: `"status" = 'draft'`,
+})
 export class RegistrationRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;

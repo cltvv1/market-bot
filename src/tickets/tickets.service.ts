@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { TicketEntity } from './entities/ticket.entity';
 import {
     TicketMessageEntity,
@@ -29,6 +29,16 @@ export interface TicketMediaInput {
     buffer?: Buffer;
 }
 
+export interface CreateOrReuseTicketInput {
+    userChatId: string;
+    username?: string;
+    name?: string;
+    text?: string;
+    platform?: UserPlatform;
+    userId?: number;
+    organizationId?: number;
+}
+
 @Injectable()
 export class TicketsService {
     constructor(
@@ -42,6 +52,7 @@ export class TicketsService {
         private messengerService: MessengerService,
         private readonly adminNotificationsService: AdminNotificationsService,
         private readonly filesService: FilesService,
+        private readonly dataSource: DataSource,
     ) {}
 
     async createTicket(
@@ -53,28 +64,62 @@ export class TicketsService {
         userId?: number,
         organizationId?: number,
     ) {
-        const ticket = this.ticketRepo.create({
+        const { ticket } = await this.getOrCreateActiveTicket({
             userChatId,
+            username,
+            name,
+            text,
             platform,
             userId,
             organizationId,
-            username: username,
-            name: name,
-            text: text,
         });
-        const savedTicket = await this.ticketRepo.save(ticket);
+        return ticket;
+    }
 
-        if (text?.trim()) {
-            await this.addMessage(
-                savedTicket.id,
-                'user',
-                text.trim(),
-                userChatId,
-                'bot',
+    async getOrCreateActiveTicket(
+        input: CreateOrReuseTicketInput,
+    ): Promise<{ ticket: TicketEntity; created: boolean }> {
+        const platform = input.platform ?? 'telegram';
+        return this.dataSource.transaction(async (manager) => {
+            await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+                `ticket:${platform}:${input.userChatId}`,
+            ]);
+            const tickets = manager.getRepository(TicketEntity);
+            const existing = await tickets.findOne({
+                where: {
+                    userChatId: input.userChatId,
+                    platform,
+                    isAnswered: false,
+                },
+                order: { createdAt: 'DESC', id: 'DESC' },
+            });
+            if (existing) return { ticket: existing, created: false };
+
+            const ticket = await tickets.save(
+                tickets.create({
+                    userChatId: input.userChatId,
+                    platform,
+                    userId: input.userId,
+                    organizationId: input.organizationId,
+                    username: input.username,
+                    name: input.name,
+                    text: input.text,
+                }),
             );
-        }
-
-        return savedTicket;
+            if (input.text?.trim()) {
+                await manager.getRepository(TicketMessageEntity).save(
+                    manager.getRepository(TicketMessageEntity).create({
+                        ticketId: ticket.id,
+                        sender: 'user',
+                        text: input.text.trim(),
+                        authorId: input.userChatId,
+                        source: 'bot',
+                        messageType: 'text',
+                    }),
+                );
+            }
+            return { ticket, created: true };
+        });
     }
 
     async getActiveTicket(chatId: string, platform: UserPlatform = 'telegram') {

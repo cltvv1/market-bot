@@ -31,6 +31,7 @@ describe('TicketsService media persistence', () => {
         {} as never,
         {} as never,
         files as never,
+        {} as never,
     );
 
     beforeEach(() => jest.clearAllMocks());

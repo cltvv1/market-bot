@@ -2,7 +2,7 @@ import * as path from 'path';
 import { Readable } from 'node:stream';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Not, Repository } from 'typeorm';
+import { DataSource, In, Not, Repository } from 'typeorm';
 
 import { RegistrationRequestEntity } from './entities/registration.entity';
 import { RegistrationFieldEntity } from './entities/registration-field.entity';
@@ -31,6 +31,7 @@ export class RegistrationsService {
         private readonly adminNotificationsService: AdminNotificationsService,
         private readonly filesService: FilesService,
         private readonly readinessService: RegistrationReadinessService,
+        private readonly dataSource: DataSource,
     ) {}
 
     async getAllRegs() {
@@ -40,6 +41,7 @@ export class RegistrationsService {
     async getNotFilledReg(chatId: string, platform: UserPlatform = 'telegram') {
         const reg = await this.registrationRepo.findOne({
             where: { chatId, platform, status: 'draft' },
+            order: { createdAt: 'DESC', id: 'DESC' },
         });
 
         return reg;
@@ -59,18 +61,40 @@ export class RegistrationsService {
         userId?: number,
         organizationId?: number,
     ) {
-        const reg = this.registrationRepo.create({
-            chatId,
-            platform,
-            userId,
-            organizationId,
-            currentStep: 2,
-            status: 'draft',
-        });
-        await this.registrationRepo.save(reg);
-        await this.readinessService.initialize(reg.id);
+        let created = false;
+        const registration = await this.dataSource.transaction(
+            async (manager) => {
+                await manager.query(
+                    'SELECT pg_advisory_xact_lock(hashtext($1))',
+                    [`registration-draft:${platform}:${chatId}`],
+                );
+                const registrations = manager.getRepository(
+                    RegistrationRequestEntity,
+                );
+                const existing = await registrations.findOne({
+                    where: { chatId, platform, status: 'draft' },
+                    order: { createdAt: 'DESC', id: 'DESC' },
+                });
+                if (existing) return existing;
 
-        return reg;
+                created = true;
+                return registrations.save(
+                    registrations.create({
+                        chatId,
+                        platform,
+                        userId,
+                        organizationId,
+                        currentStep: 2,
+                        status: 'draft',
+                    }),
+                );
+            },
+        );
+        if (created) {
+            await this.readinessService.initialize(registration.id);
+        }
+
+        return registration;
     }
 
     async getAllFields() {
@@ -84,18 +108,24 @@ export class RegistrationsService {
         value: string,
         platform: UserPlatform = 'telegram',
     ) {
-        const reg = await this.getNotFilledReg(chatId, platform);
-        if (!reg) return null;
+        return this.dataSource.transaction(async (manager) => {
+            const reg = await manager
+                .getRepository(RegistrationRequestEntity)
+                .findOne({
+                    where: { chatId, platform, status: 'draft' },
+                    order: { createdAt: 'DESC', id: 'DESC' },
+                    lock: { mode: 'pessimistic_write' },
+                });
+            if (!reg) return null;
 
-        const field = await this.getFieldNameByStep(reg.currentStep);
-        if (!field) return reg;
-        if (field === 'equipmentPhoto') return reg;
+            const field = await this.getFieldNameByStep(reg.currentStep);
+            if (!field || field === 'equipmentPhoto') return reg;
 
-        reg[field] = value;
-        reg.currentStep++;
+            reg[field] = value;
+            reg.currentStep++;
 
-        await this.registrationRepo.save(reg);
-        return reg;
+            return manager.getRepository(RegistrationRequestEntity).save(reg);
+        });
     }
 
     async saveEquipmentPhoto(
@@ -132,15 +162,24 @@ export class RegistrationsService {
         chatId: string,
         platform: UserPlatform = 'telegram',
     ) {
-        const reg = await this.getNotFilledReg(chatId, platform);
-        if (!reg) return null;
-        if (
-            (await this.getFieldNameByStep(reg.currentStep)) !==
-            'equipmentPhoto'
-        )
-            return reg;
-        reg.currentStep++;
-        return this.registrationRepo.save(reg);
+        return this.dataSource.transaction(async (manager) => {
+            const reg = await manager
+                .getRepository(RegistrationRequestEntity)
+                .findOne({
+                    where: { chatId, platform, status: 'draft' },
+                    order: { createdAt: 'DESC', id: 'DESC' },
+                    lock: { mode: 'pessimistic_write' },
+                });
+            if (!reg) return null;
+            if (
+                (await this.getFieldNameByStep(reg.currentStep)) !==
+                'equipmentPhoto'
+            ) {
+                return reg;
+            }
+            reg.currentStep++;
+            return manager.getRepository(RegistrationRequestEntity).save(reg);
+        });
     }
 
     async fillRegistration(

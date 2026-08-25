@@ -1,5 +1,7 @@
 import { serviceButtons } from './keyboards/service.keyboard';
 import { TelegramUpdate } from './telegram.update';
+import { STALE_SERVICE_REQUEST_CALLBACK_MESSAGE } from 'src/inbound-commands/service-request-callback';
+import { StaleServiceRequestChannelCommandException } from 'src/service-requests/service-request-channel-workflow.service';
 
 describe('TelegramUpdate admin callbacks', () => {
     const registrations = {
@@ -19,6 +21,7 @@ describe('TelegramUpdate admin callbacks', () => {
     };
     const serviceRequests = {
         getLatestWaitingPaymentForClient: jest.fn(),
+        answer: jest.fn(),
     };
     const files = {
         getPolicy: jest.fn().mockReturnValue({ maxBytes: 20 * 1024 * 1024 }),
@@ -27,6 +30,13 @@ describe('TelegramUpdate admin callbacks', () => {
         authorize: jest.fn(),
         recordSuccess: jest.fn().mockResolvedValue(undefined),
         recordInvalid: jest.fn().mockResolvedValue(undefined),
+    };
+    const inboundCommands = {
+        execute: jest.fn(async (_input, handler: () => Promise<unknown>) => ({
+            status: 'processed' as const,
+            command: {},
+            result: await handler(),
+        })),
     };
     const update = new TelegramUpdate(
         registrations as never,
@@ -42,8 +52,10 @@ describe('TelegramUpdate admin callbacks', () => {
         {} as never,
         {} as never,
         {} as never,
+        inboundCommands as never,
     );
     const ctx = {
+        update: { update_id: 1001 },
         from: { id: 100 },
         chat: { id: 100 },
         callbackQuery: { data: 'regDone:42' },
@@ -93,6 +105,7 @@ describe('TelegramUpdate admin callbacks', () => {
             {} as never,
             {} as never,
             {} as never,
+            inboundCommands as never,
             readiness as never,
         );
         const token = '11111111-1111-4111-8111-111111111111';
@@ -173,6 +186,7 @@ describe('TelegramUpdate admin callbacks', () => {
             new Response(Buffer.from('%PDF-1.7 payment')),
         );
         const mediaCtx = {
+            update: { update_id: 1002 },
             from: { id: 100, first_name: 'Client' },
             chat: { id: 100 },
             message: {
@@ -207,5 +221,32 @@ describe('TelegramUpdate admin callbacks', () => {
         expect(tickets.getActiveTicket).not.toHaveBeenCalled();
 
         jest.restoreAllMocks();
+    });
+
+    it('rejects a replayed service-request callback without changing dialog state', async () => {
+        serviceRequests.answer.mockRejectedValue(
+            new StaleServiceRequestChannelCommandException(),
+        );
+        const callbackCtx = {
+            ...ctx,
+            update: { update_id: 1003 },
+            callbackQuery: {
+                id: 'callback-stale-1',
+                data: 'sra2:42:2:7:36',
+            },
+        };
+
+        await update.onServiceRequestButtonAnswer(callbackCtx as never);
+
+        expect(serviceRequests.answer).toHaveBeenCalledWith(
+            expect.objectContaining({ platform: 'telegram', chatId: '100' }),
+            42,
+            '36',
+            { expectedStep: 2, expectedVersion: 7 },
+        );
+        expect(contexts.set).not.toHaveBeenCalled();
+        expect(callbackCtx.answerCbQuery).toHaveBeenCalledWith(
+            STALE_SERVICE_REQUEST_CALLBACK_MESSAGE,
+        );
     });
 });

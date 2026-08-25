@@ -2,12 +2,13 @@ import * as path from 'path';
 import { randomBytes } from 'node:crypto';
 import {
     BadRequestException,
+    ConflictException,
     Inject,
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { CustomerActivityService } from 'src/customer-activity/customer-activity.service';
 import { MESSENGER_SERVICE } from 'src/messenger/messenger.types';
 import type { MessengerService } from 'src/messenger/messenger.types';
@@ -48,6 +49,17 @@ export interface ServiceRequestOperatorStateInput {
     operatorComment?: string | null;
 }
 
+export interface ServiceRequestChannelExpectation {
+    expectedStep?: number;
+    expectedVersion?: number;
+}
+
+export class StaleServiceRequestChannelCommandException extends ConflictException {
+    constructor() {
+        super('Service request callback is no longer current');
+    }
+}
+
 @Injectable()
 export class ServiceRequestChannelWorkflowService {
     constructor(
@@ -68,6 +80,7 @@ export class ServiceRequestChannelWorkflowService {
         private readonly serviceForms: ServiceFormService,
         @InjectRepository(ServiceRequestAttachmentEntity)
         private readonly requestAttachments: Repository<ServiceRequestAttachmentEntity>,
+        private readonly dataSource: DataSource,
     ) {}
 
     async ensureDefaultTypes() {
@@ -233,66 +246,80 @@ export class ServiceRequestChannelWorkflowService {
             identity.platform,
             identity.organizationId,
         );
-        await this.ensureDefaultTypes();
 
-        const serviceType = await this.serviceTypesRepo.findOne({
-            where: { code: serviceTypeCode, isActive: true },
-        });
-        if (!serviceType) {
-            throw new BadRequestException('Service type was not found');
-        }
-        const formVersionId = await this.getFormVersionId(serviceType);
-
-        const existing = await this.getLatestDraftForClient(identity, [
+        let created = false;
+        const { request, serviceType } = await this.withDraftLock(
+            identity,
             serviceTypeCode,
-        ]);
-        if (existing) {
-            return this.present(existing);
-        }
+            async (manager) => {
+                await this.ensureDefaultTypes();
+                const serviceType = await this.serviceTypesRepo.findOne({
+                    where: { code: serviceTypeCode, isActive: true },
+                });
+                if (!serviceType) {
+                    throw new BadRequestException('Service type was not found');
+                }
+                const requests = manager.getRepository(ServiceRequestEntity);
+                const existing = await requests.findOne({
+                    where: {
+                        chatId: identity.chatId,
+                        platform: identity.platform,
+                        serviceTypeCode: serviceType.code,
+                        status: 'draft',
+                    },
+                });
+                if (existing) return { request: existing, serviceType };
 
-        const request = await this.serviceRequestsRepo.save(
-            this.serviceRequestsRepo.create({
-                requestNumber: this.createRequestNumber(),
-                serviceTypeId: serviceType.id,
-                serviceTypeCode: serviceType.code,
-                serviceTypeTitle: serviceType.title,
+                created = true;
+                const formVersionId = await this.getFormVersionId(serviceType);
+                const request = await requests.save(
+                    requests.create({
+                        requestNumber: this.createRequestNumber(),
+                        serviceTypeId: serviceType.id,
+                        serviceTypeCode: serviceType.code,
+                        serviceTypeTitle: serviceType.title,
+                        userId: user.id,
+                        organizationId: identity.organizationId,
+                        platform: identity.platform,
+                        source: identity.platform,
+                        chatId: identity.chatId,
+                        status: 'draft',
+                        customerStatus: 'received',
+                        formVersionId,
+                        currentStep: 0,
+                        answers: {},
+                        contactSnapshot: {
+                            name: identity.name?.trim() || 'Клиент',
+                            messenger: {
+                                platform: identity.platform,
+                                chatId: identity.chatId,
+                            },
+                            preferredChannel: identity.platform,
+                        },
+                    }),
+                );
+                return { request, serviceType };
+            },
+        );
+
+        if (created) {
+            await this.addEvent(
+                request,
+                'created',
+                'client',
+                `Создана заявка: ${serviceType.title}`,
+            );
+            await this.activityService.add({
                 userId: user.id,
                 organizationId: identity.organizationId,
                 platform: identity.platform,
-                source: identity.platform,
                 chatId: identity.chatId,
-                status: 'draft',
-                customerStatus: 'received',
-                formVersionId,
-                currentStep: 0,
-                answers: {},
-                contactSnapshot: {
-                    name: identity.name?.trim() || 'Клиент',
-                    messenger: {
-                        platform: identity.platform,
-                        chatId: identity.chatId,
-                    },
-                    preferredChannel: identity.platform,
-                },
-            }),
-        );
-
-        await this.addEvent(
-            request,
-            'created',
-            'client',
-            `Создана заявка: ${serviceType.title}`,
-        );
-        await this.activityService.add({
-            userId: user.id,
-            organizationId: identity.organizationId,
-            platform: identity.platform,
-            chatId: identity.chatId,
-            type: 'service_request_created',
-            title: serviceType.title,
-            description: `Создана сервисная заявка #${request.id}`,
-            serviceRequestId: request.id,
-        });
+                type: 'service_request_created',
+                title: serviceType.title,
+                description: `Создана сервисная заявка #${request.id}`,
+                serviceRequestId: request.id,
+            });
+        }
 
         return this.present(request);
     }
@@ -309,57 +336,74 @@ export class ServiceRequestChannelWorkflowService {
             identity.platform,
             identity.organizationId,
         );
-        const serviceType = await this.ensureAtolConsentServiceType();
-        const formVersionId = await this.getFormVersionId(serviceType);
 
-        const existing = await this.getLatestAtolConsentDraft(identity);
-        if (existing) {
-            return this.presentAtolConsent(existing);
-        }
+        let created = false;
+        const { request, serviceType } = await this.withDraftLock(
+            identity,
+            'atol_consent',
+            async (manager) => {
+                const serviceType = await this.ensureAtolConsentServiceType();
+                const requests = manager.getRepository(ServiceRequestEntity);
+                const existing = await requests.findOne({
+                    where: {
+                        chatId: identity.chatId,
+                        platform: identity.platform,
+                        serviceTypeCode: serviceType.code,
+                        status: 'draft',
+                    },
+                });
+                if (existing) return { request: existing, serviceType };
 
-        const request = await this.serviceRequestsRepo.save(
-            this.serviceRequestsRepo.create({
-                requestNumber: this.createRequestNumber(),
-                serviceTypeId: serviceType.id,
-                serviceTypeCode: serviceType.code,
-                serviceTypeTitle: serviceType.title,
+                created = true;
+                const formVersionId = await this.getFormVersionId(serviceType);
+                const request = await requests.save(
+                    requests.create({
+                        requestNumber: this.createRequestNumber(),
+                        serviceTypeId: serviceType.id,
+                        serviceTypeCode: serviceType.code,
+                        serviceTypeTitle: serviceType.title,
+                        userId: user.id,
+                        organizationId: identity.organizationId,
+                        platform: identity.platform,
+                        source: identity.platform,
+                        chatId: identity.chatId,
+                        status: 'draft',
+                        customerStatus: 'received',
+                        formVersionId,
+                        currentStep: 0,
+                        answers: {},
+                        contactSnapshot: {
+                            name: identity.name?.trim() || 'Клиент',
+                            messenger: {
+                                platform: identity.platform,
+                                chatId: identity.chatId,
+                            },
+                            preferredChannel: identity.platform,
+                        },
+                    }),
+                );
+                return { request, serviceType };
+            },
+        );
+
+        if (created) {
+            await this.addEvent(
+                request,
+                'created',
+                'client',
+                'Создан черновик согласия на доступ АТОЛ',
+            );
+            await this.activityService.add({
                 userId: user.id,
                 organizationId: identity.organizationId,
                 platform: identity.platform,
-                source: identity.platform,
                 chatId: identity.chatId,
-                status: 'draft',
-                customerStatus: 'received',
-                formVersionId,
-                currentStep: 0,
-                answers: {},
-                contactSnapshot: {
-                    name: identity.name?.trim() || 'Клиент',
-                    messenger: {
-                        platform: identity.platform,
-                        chatId: identity.chatId,
-                    },
-                    preferredChannel: identity.platform,
-                },
-            }),
-        );
-
-        await this.addEvent(
-            request,
-            'created',
-            'client',
-            'Создан черновик согласия на доступ АТОЛ',
-        );
-        await this.activityService.add({
-            userId: user.id,
-            organizationId: identity.organizationId,
-            platform: identity.platform,
-            chatId: identity.chatId,
-            type: 'service_request_created',
-            title: serviceType.title,
-            description: `Создан черновик согласия АТОЛ #${request.id}`,
-            serviceRequestId: request.id,
-        });
+                type: 'service_request_created',
+                title: serviceType.title,
+                description: `Создан черновик согласия АТОЛ #${request.id}`,
+                serviceRequestId: request.id,
+            });
+        }
 
         return this.presentAtolConsent(request);
     }
@@ -633,102 +677,192 @@ export class ServiceRequestChannelWorkflowService {
         identity: ServiceRequestIdentity,
         requestId: number,
         value: string,
+        expectation?: ServiceRequestChannelExpectation,
     ) {
-        const request = await this.getClientRequest(identity, requestId);
-        if (request.status !== 'draft') {
-            throw new BadRequestException(
-                'Service request is not accepting answers',
-            );
-        }
+        await this.organizationsService.assertUserOrganization(
+            identity.chatId,
+            identity.platform,
+            identity.organizationId,
+        );
+        const mutation = await this.dataSource.transaction(async (manager) => {
+            const request = await manager
+                .getRepository(ServiceRequestEntity)
+                .findOne({
+                    where: { id: requestId },
+                    lock: { mode: 'pessimistic_write' },
+                });
+            if (
+                !request ||
+                request.chatId !== identity.chatId ||
+                request.platform !== identity.platform
+            ) {
+                throw new NotFoundException('Service request was not found');
+            }
+            if (request.status !== 'draft') {
+                throw new BadRequestException(
+                    'Service request is not accepting answers',
+                );
+            }
+            if (
+                (expectation?.expectedStep !== undefined &&
+                    request.currentStep !== expectation.expectedStep) ||
+                (expectation?.expectedVersion !== undefined &&
+                    request.version !== expectation.expectedVersion)
+            ) {
+                throw new StaleServiceRequestChannelCommandException();
+            }
 
-        const step = this.getCurrentStep(request);
-        if (!step) {
-            return this.present(request);
-        }
+            const step = this.getCurrentStep(request);
+            if (!step) {
+                return { request, step: null, submitted: false };
+            }
 
-        const normalizedValue = this.normalizeStepValue(step.key, value);
-        request.answers = {
-            ...(request.answers || {}),
-            [step.key]: normalizedValue,
-        };
-        request.currentStep += 1;
+            const normalizedValue = this.normalizeStepValue(step.key, value);
+            request.answers = {
+                ...(request.answers || {}),
+                [step.key]: normalizedValue,
+            };
+            request.currentStep += 1;
 
-        if (!this.getCurrentStep(request)) {
-            request.calculatedPrice = await this.calculatePrice(request);
-        }
+            if (!this.getCurrentStep(request)) {
+                request.calculatedPrice = await this.calculatePrice(request);
+            }
 
-        let saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(saved, 'answered', 'client', step.label, {
-            key: step.key,
-            value: normalizedValue,
+            let saved = await manager
+                .getRepository(ServiceRequestEntity)
+                .save(request);
+            let submitted = false;
+            if (
+                !this.getCurrentStep(saved) &&
+                !this.requiresClientConfirmation(saved)
+            ) {
+                this.applyStatus(saved, 'invoice_required');
+                saved = await manager
+                    .getRepository(ServiceRequestEntity)
+                    .save(saved);
+                submitted = true;
+            }
+
+            return { request: saved, step, submitted };
         });
+
+        if (!mutation.step) {
+            return this.present(mutation.request);
+        }
+
+        await this.addEvent(
+            mutation.request,
+            'answered',
+            'client',
+            mutation.step.label,
+            {
+                key: mutation.step.key,
+                value: this.answerAsString(
+                    mutation.request.answers[mutation.step.key],
+                ),
+            },
+        );
         await this.activityService.add({
-            userId: saved.userId,
-            organizationId: saved.organizationId,
-            platform: saved.platform,
-            chatId: saved.chatId,
+            userId: mutation.request.userId,
+            organizationId: mutation.request.organizationId,
+            platform: mutation.request.platform,
+            chatId: mutation.request.chatId,
             type: 'service_request_answered',
-            title: saved.serviceTypeTitle,
-            description: step.label,
-            serviceRequestId: saved.id,
-            payload: { key: step.key },
+            title: mutation.request.serviceTypeTitle,
+            description: mutation.step.label,
+            serviceRequestId: mutation.request.id,
+            payload: { key: mutation.step.key },
         });
 
-        if (
-            !this.getCurrentStep(saved) &&
-            !this.requiresClientConfirmation(saved)
-        ) {
-            this.applyStatus(saved, 'invoice_required');
-            saved = await this.serviceRequestsRepo.save(saved);
+        if (mutation.submitted) {
             await this.addEvent(
-                saved,
+                mutation.request,
                 'submitted',
                 'client',
                 'Service request submitted to operator',
             );
-            await this.notifyOperators(saved);
+            await this.notifyOperators(mutation.request);
         }
 
-        return this.present(saved);
+        return this.present(mutation.request);
     }
 
-    async confirmPrice(identity: ServiceRequestIdentity, requestId: number) {
-        const request = await this.getClientRequest(identity, requestId);
-        if (this.getCurrentStep(request)) {
-            throw new BadRequestException(
-                'Service request has unanswered questions',
-            );
-        }
-        if (request.status === 'invoice_required') {
-            return this.present(request);
-        }
-        if (request.status !== 'draft') {
-            throw new BadRequestException(
-                'Service request cannot be confirmed in its current state',
-            );
-        }
-
-        this.applyStatus(request, 'invoice_required');
-        const saved = await this.serviceRequestsRepo.save(request);
-        await this.addEvent(
-            saved,
-            'price_confirmed',
-            'client',
-            'Клиент согласился со стоимостью',
+    async confirmPrice(
+        identity: ServiceRequestIdentity,
+        requestId: number,
+        expectation?: ServiceRequestChannelExpectation,
+    ) {
+        await this.organizationsService.assertUserOrganization(
+            identity.chatId,
+            identity.platform,
+            identity.organizationId,
         );
-        await this.activityService.add({
-            userId: saved.userId,
-            organizationId: saved.organizationId,
-            platform: saved.platform,
-            chatId: saved.chatId,
-            type: 'service_request_price_confirmed',
-            title: saved.serviceTypeTitle,
-            description: `Клиент согласился со стоимостью ${saved.calculatedPrice ?? 0} руб.`,
-            serviceRequestId: saved.id,
-        });
-        await this.notifyOperators(saved);
+        const mutation = await this.dataSource.transaction(async (manager) => {
+            const request = await manager
+                .getRepository(ServiceRequestEntity)
+                .findOne({
+                    where: { id: requestId },
+                    lock: { mode: 'pessimistic_write' },
+                });
+            if (
+                !request ||
+                request.chatId !== identity.chatId ||
+                request.platform !== identity.platform
+            ) {
+                throw new NotFoundException('Service request was not found');
+            }
+            if (
+                (expectation?.expectedStep !== undefined &&
+                    request.currentStep !== expectation.expectedStep) ||
+                (expectation?.expectedVersion !== undefined &&
+                    request.version !== expectation.expectedVersion)
+            ) {
+                throw new StaleServiceRequestChannelCommandException();
+            }
+            if (this.getCurrentStep(request)) {
+                throw new BadRequestException(
+                    'Service request has unanswered questions',
+                );
+            }
+            if (request.status === 'invoice_required') {
+                return { request, confirmed: false };
+            }
+            if (request.status !== 'draft') {
+                throw new BadRequestException(
+                    'Service request cannot be confirmed in its current state',
+                );
+            }
 
-        return this.present(saved);
+            this.applyStatus(request, 'invoice_required');
+            return {
+                request: await manager
+                    .getRepository(ServiceRequestEntity)
+                    .save(request),
+                confirmed: true,
+            };
+        });
+
+        if (mutation.confirmed) {
+            await this.addEvent(
+                mutation.request,
+                'price_confirmed',
+                'client',
+                'Клиент согласился со стоимостью',
+            );
+            await this.activityService.add({
+                userId: mutation.request.userId,
+                organizationId: mutation.request.organizationId,
+                platform: mutation.request.platform,
+                chatId: mutation.request.chatId,
+                type: 'service_request_price_confirmed',
+                title: mutation.request.serviceTypeTitle,
+                description: `Клиент согласился со стоимостью ${mutation.request.calculatedPrice ?? 0} руб.`,
+                serviceRequestId: mutation.request.id,
+            });
+            await this.notifyOperators(mutation.request);
+        }
+
+        return this.present(mutation.request);
     }
 
     async attachInvoice(
@@ -889,6 +1023,19 @@ export class ServiceRequestChannelWorkflowService {
                 status: 'draft',
             },
             order: { createdAt: 'DESC', id: 'DESC' },
+        });
+    }
+
+    private async withDraftLock<T>(
+        identity: ServiceRequestIdentity,
+        serviceTypeCode: string,
+        handler: (manager: EntityManager) => Promise<T>,
+    ): Promise<T> {
+        return this.dataSource.transaction(async (manager) => {
+            await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+                `service-request-draft:${identity.platform}:${identity.chatId}:${serviceTypeCode}`,
+            ]);
+            return handler(manager);
         });
     }
 

@@ -71,6 +71,14 @@ export interface ServiceRequestContactSnapshot {
         where: '"submitIdempotencyKey" IS NOT NULL',
     },
 )
+@Index(
+    'UQ_service_requests_channel_active_draft',
+    ['platform', 'chatId', 'serviceTypeCode'],
+    {
+        unique: true,
+        where: `"status" = 'draft' AND "source" IN ('telegram', 'max')`,
+    },
+)
 export class ServiceRequestEntity {
     @PrimaryGeneratedColumn()
     id: number;
