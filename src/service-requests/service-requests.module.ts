@@ -21,6 +21,7 @@ import { ServiceRequestAttachmentEntity } from './entities/service-request-attac
 import { ServiceRequestMessageEntity } from './entities/service-request-message.entity';
 import { ServiceFormService } from './service-form.service';
 import { PublicServiceRequestsController } from './public-service-requests.controller';
+import { OutboundDeliveriesModule } from 'src/outbound-deliveries/outbound-deliveries.module';
 
 @Module({
     imports: [
@@ -42,6 +43,7 @@ import { PublicServiceRequestsController } from './public-service-requests.contr
         PdfModule,
         FilesModule,
         AuditModule,
+        OutboundDeliveriesModule,
     ],
     controllers: [ServiceRequestsController, PublicServiceRequestsController],
     providers: [

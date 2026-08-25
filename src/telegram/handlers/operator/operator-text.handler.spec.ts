@@ -5,7 +5,10 @@ describe('OperatorTextHandler', () => {
         getTalkingTo: jest.fn(),
     };
     const contexts = { set: jest.fn().mockResolvedValue(undefined) };
-    const tickets = { getActiveTicket: jest.fn() };
+    const tickets = {
+        getActiveTicket: jest.fn(),
+        enqueueOperatorText: jest.fn().mockResolvedValue(undefined),
+    };
     const access = { findAuthorizedStaff: jest.fn() };
     const handler = new OperatorTextHandler(
         users as never,
@@ -15,6 +18,7 @@ describe('OperatorTextHandler', () => {
     );
     const ctx = {
         chat: { id: 10 },
+        message: { text: 'Ответ оператора' },
         reply: jest.fn().mockResolvedValue(undefined),
         copyMessage: jest.fn().mockResolvedValue(undefined),
     };
@@ -33,7 +37,14 @@ describe('OperatorTextHandler', () => {
 
         await handler.handle(ctx as never);
 
-        expect(ctx.copyMessage).toHaveBeenCalledWith('20', expect.anything());
+        expect(tickets.enqueueOperatorText).toHaveBeenCalledWith(
+            5,
+            'Ответ оператора',
+            '10',
+            'bot',
+            expect.anything(),
+        );
+        expect(ctx.copyMessage).not.toHaveBeenCalled();
     });
 
     it.each([
@@ -50,6 +61,7 @@ describe('OperatorTextHandler', () => {
         await handler.handle(ctx as never);
 
         expect(ctx.copyMessage).not.toHaveBeenCalled();
+        expect(tickets.enqueueOperatorText).not.toHaveBeenCalled();
         expect(contexts.set).toHaveBeenCalledWith('10', { mode: 'IDLE' });
     });
 
@@ -63,5 +75,6 @@ describe('OperatorTextHandler', () => {
         await handler.handle(ctx as never);
 
         expect(ctx.copyMessage).not.toHaveBeenCalled();
+        expect(tickets.enqueueOperatorText).not.toHaveBeenCalled();
     });
 });

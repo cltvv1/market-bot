@@ -17,6 +17,7 @@ env:
   BOT_TOKEN: ci-offline-telegram-token
   BOT_POLLING_ENABLED: 'false'
   MAX_BOT_TOKEN: ''
+  OUTBOUND_DELIVERY_WORKER_ENABLED: 'false'
   DB_HOST: localhost
   DB_PORT: '5432'
   DB_NAME: vitma_ci_application

@@ -117,6 +117,19 @@ export interface TicketMessage extends BaseItem {
     storedFile?: { originalName?: string; mimeType: string };
 }
 
+export interface OutboundDelivery extends BaseItem {
+    kind: 'text' | 'document' | 'image';
+    audience: 'customer' | 'staff';
+    platform: 'telegram' | 'max';
+    recipient: string;
+    status: 'pending' | 'processing' | 'retrying' | 'sent' | 'failed';
+    attemptCount: number;
+    nextAttemptAt?: string;
+    lastAttemptAt?: string;
+    sentAt?: string;
+    lastError?: string;
+}
+
 // prettier-ignore
 export interface ServiceRequest extends BaseItem {
   requestNumber?: string;

@@ -1,4 +1,3 @@
-import { Readable } from 'node:stream';
 import {
     Inject,
     Injectable,
@@ -1296,34 +1295,13 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
         const storedMedia = await this.materializeTicketMedia(media);
-        await this.ticketService.addMediaMessage(
+        await this.ticketService.enqueueOperatorMedia(
             conversation.ticket.id,
-            'operator',
             storedMedia,
             chatId,
             'bot',
+            disconnectFromKeyboard(chatId),
         );
-        const file = {
-            source: Readable.from(storedMedia.buffer!),
-            filename: storedMedia.fileName || 'attachment',
-        };
-        const options = {
-            inlineKeyboard: disconnectFromKeyboard(chatId),
-            platform: 'max' as const,
-        };
-        if (storedMedia.messageType === 'image') {
-            await this.messengerService.sendImage(
-                conversation.targetChatId,
-                file,
-                options,
-            );
-        } else {
-            await this.messengerService.sendDocument(
-                conversation.targetChatId,
-                file,
-                options,
-            );
-        }
         return;
     }
 
@@ -1524,10 +1502,12 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        await this.messengerService.sendMessage(
-            conversation.targetChatId,
+        await this.ticketService.enqueueOperatorText(
+            conversation.ticket.id,
             text,
-            { inlineKeyboard: disconnectFromKeyboard(chatId), platform: 'max' },
+            chatId,
+            'bot',
+            disconnectFromKeyboard(chatId),
         );
     }
 

@@ -25,6 +25,7 @@ import { FilesModule } from './files/files.module';
 import { AuditModule } from './audit/audit.module';
 import { UiServingModule } from './ui/ui-serving.module';
 import { IntegrationsModule } from './integrations/integrations.module';
+import { OutboundDeliveriesModule } from './outbound-deliveries/outbound-deliveries.module';
 
 @Module({
   imports: [
@@ -79,7 +80,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
     TicketsModule,
     FilesModule,
     AuditModule,
-    UiServingModule, IntegrationsModule,
+    UiServingModule, IntegrationsModule, OutboundDeliveriesModule,
   ],
   controllers: [AppController],
   providers: [

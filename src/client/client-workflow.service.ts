@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { RegistrationsService } from 'src/registrations/registrations.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import { TicketsService } from 'src/tickets/tickets.service';
@@ -12,12 +12,9 @@ import type {
     StartSimpleServiceRequestInput,
 } from './client-workflow.types';
 import type { RegistrationField } from 'src/registrations/registration.types';
-import type { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
 
 @Injectable()
 export class ClientWorkflowService {
-    private readonly logger = new Logger(ClientWorkflowService.name);
-
     constructor(
         private readonly usersService: UsersService,
         private readonly registrationsService: RegistrationsService,
@@ -103,9 +100,7 @@ export class ClientWorkflowService {
                             status: 'not_found',
                             message: 'Registration request was not found.',
                         };
-                    const pdf =
-                        await this.registrationsService.finishReg(skipped);
-                    await this.notifyAdminsAboutRegistration(skipped, pdf);
+                    await this.registrationsService.finishReg(skipped);
                     return {
                         status: 'completed',
                         message: 'Registration request completed.',
@@ -148,8 +143,7 @@ export class ClientWorkflowService {
             };
         }
 
-        const pdf = await this.registrationsService.finishReg(registration);
-        await this.notifyAdminsAboutRegistration(registration, pdf);
+        await this.registrationsService.finishReg(registration);
 
         return {
             status: 'completed',
@@ -189,8 +183,7 @@ export class ClientWorkflowService {
             };
         }
 
-        const filePath = await this.registrationsService.finishReg(filled);
-        await this.notifyAdminsAboutRegistration(filled, filePath);
+        await this.registrationsService.finishReg(filled);
 
         return {
             status: 'completed',
@@ -259,8 +252,7 @@ export class ClientWorkflowService {
             };
         }
 
-        const pdf = await this.registrationsService.finishReg(registration);
-        await this.notifyAdminsAboutRegistration(registration, pdf);
+        await this.registrationsService.finishReg(registration);
 
         return {
             status: 'completed',
@@ -325,23 +317,6 @@ export class ClientWorkflowService {
         };
     }
 
-    private async notifyAdminsAboutRegistration(
-        registration: RegistrationRequestEntity,
-        pdf: Buffer,
-    ) {
-        try {
-            await this.registrationsService.notifyAdminsAboutNewReg(
-                registration,
-                pdf,
-            );
-        } catch (error) {
-            this.logger.error(
-                `Registration ${registration.id} was completed, but admin notification failed`,
-                error,
-            );
-        }
-    }
-
     async openTicket(input: ClientIdentity): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
@@ -375,15 +350,14 @@ export class ClientWorkflowService {
     ): Promise<ClientFlowResult> {
         const { user, organizationId } = await this.resolveClientContext(input);
 
-        const { ticket, created } =
-            await this.ticketsService.getOrCreateActiveTicket({
-                userChatId: input.chatId,
-                username: input.username,
-                name: input.name,
-                platform: input.platform,
-                userId: user.id,
-                organizationId,
-            });
+        await this.ticketsService.getOrCreateActiveTicket({
+            userChatId: input.chatId,
+            username: input.username,
+            name: input.name,
+            platform: input.platform,
+            userId: user.id,
+            organizationId,
+        });
 
         const savedTicket = await this.ticketsService.saveTicketText(
             input.chatId,
@@ -395,12 +369,6 @@ export class ClientWorkflowService {
                 status: 'not_found',
                 message: 'Ticket was not found.',
             };
-        }
-
-        if (created || !ticket.text) {
-            await this.ticketsService.notifyOperatorsAboutNewTicket(
-                savedTicket,
-            );
         }
 
         await this.activityService.add({
@@ -447,11 +415,6 @@ export class ClientWorkflowService {
                 message: 'Ticket was not found.',
             };
         }
-
-        await this.ticketsService.notifyOperatorsAboutTicketMessage(
-            savedTicket,
-            `Новое вложение в тикете #${savedTicket.id}: ${media.fileName || media.messageType}`,
-        );
 
         await this.activityService.add({
             userId: user.id,

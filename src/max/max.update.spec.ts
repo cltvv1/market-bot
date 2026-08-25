@@ -7,21 +7,21 @@ import {
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
 
 describe('MaxUpdate media handling', () => {
-    const addMediaMessage = jest.fn(
+    const enqueueOperatorMedia = jest.fn(
         (
             _ticketId: number,
-            _sender: string,
             _media: TicketMediaInput,
             _authorId: string,
             _source: string,
+            _keyboard: unknown,
         ): Promise<void> => {
-            void [_ticketId, _sender, _media, _authorId, _source];
+            void [_ticketId, _media, _authorId, _source, _keyboard];
             return Promise.resolve();
         },
     );
     const tickets = {
         getActiveTicket: jest.fn(),
-        addMediaMessage,
+        enqueueOperatorMedia,
     };
     const users = {
         getTalkingTo: jest.fn((chatId: string) =>
@@ -221,21 +221,37 @@ describe('MaxUpdate media handling', () => {
             externalUrl: 'https://media.test/photo',
         });
 
-        expect(tickets.addMediaMessage).toHaveBeenCalledWith(
+        expect(tickets.enqueueOperatorMedia).toHaveBeenCalledWith(
             8,
-            'operator',
             expect.objectContaining({
                 externalUrl: undefined,
             }),
             '55',
             'bot',
-        );
-        expect(Buffer.isBuffer(addMediaMessage.mock.calls[0][2].buffer)).toBe(
-            true,
-        );
-        expect(messenger.sendImage).toHaveBeenCalledWith(
-            '77',
             expect.anything(),
+        );
+        expect(
+            Buffer.isBuffer(enqueueOperatorMedia.mock.calls[0][1].buffer),
+        ).toBe(true);
+        expect(messenger.sendImage).not.toHaveBeenCalled();
+        expect(messenger.sendDocument).not.toHaveBeenCalled();
+        expect(messenger.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('does not call the provider while queuing operator media', async () => {
+        await update.handleMaxMedia(ctx, 'OPERATOR', {
+            messageType: 'document',
+            fileId: 'provider-document',
+            externalUrl: 'https://media.test/document',
+        });
+
+        expect(tickets.enqueueOperatorMedia).toHaveBeenCalledWith(
+            8,
+            expect.objectContaining({
+                buffer: expect.any(Buffer) as unknown,
+            }),
+            '55',
+            'bot',
             expect.anything(),
         );
         expect(messenger.sendMessage).not.toHaveBeenCalled();
@@ -248,7 +264,7 @@ describe('MaxUpdate media handling', () => {
             externalUrl: 'https://media.test/audio',
         });
 
-        expect(tickets.addMediaMessage).not.toHaveBeenCalled();
+        expect(tickets.enqueueOperatorMedia).not.toHaveBeenCalled();
         expect(messenger.sendImage).not.toHaveBeenCalled();
         expect(messenger.sendDocument).not.toHaveBeenCalled();
         expect(global.fetch).not.toHaveBeenCalled();

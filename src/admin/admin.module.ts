@@ -27,6 +27,7 @@ import { AuditModule } from 'src/audit/audit.module';
 import { OrganizationContactEntity } from 'src/integrations/entities/organization-contact.entity';
 import { OrganizationsModule } from 'src/organizations/organizations.module';
 import { RegistrationsModule } from 'src/registrations/registrations.module';
+import { OutboundDeliveriesModule } from 'src/outbound-deliveries/outbound-deliveries.module';
 
 @Module({
     imports: [
@@ -55,6 +56,7 @@ import { RegistrationsModule } from 'src/registrations/registrations.module';
         AuditModule,
         OrganizationsModule,
         RegistrationsModule,
+        OutboundDeliveriesModule,
     ],
     controllers: [AdminController],
     providers: [

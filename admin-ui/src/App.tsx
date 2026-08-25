@@ -18,7 +18,7 @@ import type {
     Admin, AdminRole, CustomerCard, EquipmentKit, IntegrationBridgeState,
     IntegrationExclusion, IntegrationRun, NotificationSettings, OpportunityDetail, OrganizationAccessRequest,
     OpportunityStatus, Priority, Registration, RegistrationDetails, RegistrationRequirement, ServiceAttachment, ServiceEvent,
-    ServiceMessage, ServiceOpportunity, ServiceRequest, Staff, Summary, Tab,
+    OutboundDelivery, ServiceMessage, ServiceOpportunity, ServiceRequest, Staff, Summary, Tab,
     Ticket, TicketMessage,
 } from './types';
 
@@ -968,15 +968,18 @@ function TicketDetail({
     const [data, setData] = useState<{
         ticket: Ticket;
         messages: TicketMessage[];
+        deliveries: OutboundDelivery[];
     }>();
     const [card, setCard] = useState<CustomerCard | null>(null);
     const [text, setText] = useState('');
     const [file, setFile] = useState<File>();
     const load = useCallback(
         () =>
-            api<{ ticket: Ticket; messages: TicketMessage[] }>(
-                `/admin/api/tickets/${id}`,
-            ).then(setData),
+            api<{
+                ticket: Ticket;
+                messages: TicketMessage[];
+                deliveries: OutboundDelivery[];
+            }>(`/admin/api/tickets/${id}`).then(setData),
         [id],
     );
     useEffect(() => {
@@ -1036,6 +1039,7 @@ function TicketDetail({
                 }
             />
             <div className="chat-body">
+                <DeliveryStatusList deliveries={data.deliveries} />
                 <div className="messages">
                     {data.messages?.map((message) => (
                         <Message key={message.id} message={message} />
@@ -2086,6 +2090,37 @@ function FieldGrid({ fields }: { fields: Array<[string, unknown]> }) {
 function Info({ label, value: input }: { label: string; value: unknown }) { const fileUrl = typeof input === 'string' && input.startsWith('/admin/api/') ? input : null; return <div className="info"><span>{label}</span><strong>{fileUrl ? <a className="button" href={fileUrl} target="_blank" rel="noreferrer"><ExternalLink size={16} />Открыть файл</a> : value(input)}</strong></div>; }
 function Empty({ text }: { text: string }) {
     return <div className="empty">{text}</div>;
+}
+function DeliveryStatusList({
+    deliveries,
+}: {
+    deliveries?: OutboundDelivery[];
+}) {
+    if (!deliveries?.length) return null;
+    const labels: Record<OutboundDelivery['status'], string> = {
+        pending: 'Ожидает отправки',
+        processing: 'Отправляется',
+        retrying: 'Повторная отправка',
+        sent: 'Отправлено',
+        failed: 'Ошибка доставки',
+    };
+    return (
+        <div className="delivery-statuses">
+            {deliveries.map((delivery) => (
+                <div className="delivery-status" key={delivery.id}>
+                    <Badge>{labels[delivery.status]}</Badge>
+                    <span>
+                        {delivery.audience === 'customer'
+                            ? 'Клиент'
+                            : 'Сотрудник'}{' '}
+                        · {delivery.platform} · {delivery.recipient} · попыток:{' '}
+                        {delivery.attemptCount}
+                    </span>
+                    {delivery.lastError && <small>{delivery.lastError}</small>}
+                </div>
+            ))}
+        </div>
+    );
 }
 function Badge({
     children,

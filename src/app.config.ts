@@ -6,6 +6,16 @@ export const validationSchema = Joi.object({
         .default('development'),
     BOT_TOKEN: Joi.string().required(),
     BOT_POLLING_ENABLED: Joi.boolean().default(true),
+    OUTBOUND_DELIVERY_WORKER_ENABLED: Joi.boolean().when('NODE_ENV', {
+        is: 'test',
+        then: Joi.boolean().default(false),
+        otherwise: Joi.boolean().default(true),
+    }),
+    OUTBOUND_DELIVERY_POLL_INTERVAL_MS: Joi.number()
+        .integer()
+        .min(1000)
+        .max(60000)
+        .default(5000),
     FILE_STORAGE_ROOT: Joi.string().default('storage'),
     DB_HOST: Joi.string().trim().min(1).required(),
     DB_PORT: Joi.number().port().required(),
