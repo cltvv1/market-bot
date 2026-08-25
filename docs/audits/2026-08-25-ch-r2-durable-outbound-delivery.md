@@ -121,6 +121,12 @@ intents in the same PostgreSQL transaction. A forced enqueue failure rolls the
 business mutation and intent back together. Provider calls never occur inside
 these request transactions.
 
+Registration completion uses the canonical manager-aware readiness handoff.
+The row lock, readiness and engineer validation, `status = processed`,
+`handedOffAt`, optional engineer assignment, allowed audit event and all
+per-recipient staff completion intents are committed in one transaction. A
+completion enqueue failure rolls the handoff mutation and audit back.
+
 Files are materialized in `StoredFile` before document intent creation. File
 creation failures and transaction failures use the existing logical-delete
 cleanup where the affected flow already owns the new file.
@@ -199,9 +205,9 @@ Moving them would change command UX without adding a durable business contract.
 
 Registration readiness data requests retain their specialized lifecycle. They
 already track open, delivered, delivery failure, answer and close state, and a
-generic conversion would risk their response-token semantics. Registration
-handoff completion fan-out uses durable rows, but its existing readiness
-transition remains a separate transaction.
+generic conversion would risk their response-token semantics. The separate
+registration completion path now atomically enqueues its durable staff fan-out
+inside the canonical handoff transaction.
 
 ## 16. Admin failure visibility and RBAC
 
@@ -249,6 +255,10 @@ PostgreSQL integration coverage proves:
 - independent staff recipient rows;
 - ticket history plus staff intent rollback/commit;
 - service request staff history plus customer intent rollback/commit;
+- registration handoff, allowed audit and completion staff intent atomic commit;
+- completion enqueue failure rolling the handoff and audit back;
+- repeated registration completion delivery deduplication;
+- readiness denial without a completion delivery intent;
 - token-bearing error redaction;
 - invoice intent creation independent of provider availability.
 
@@ -262,6 +272,9 @@ The migration is additive and follows `AddDurableInboundCommands1787577304950`.
 It does not edit either previous migration and does not use `synchronize`.
 There is no destructive backfill. Existing `StoredFile` rows can be referenced
 without changing storage providers.
+
+The atomic registration completion follow-up changes application transaction
+boundaries only. It does not change the migration or database schema.
 
 ## 21. Failure and recovery matrix
 

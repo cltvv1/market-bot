@@ -340,17 +340,23 @@ export class RegistrationsService {
         return stored;
     }
 
-    async notifyAdminsAboutRegDone(reg: RegistrationRequestEntity) {
-        const message = formatRegistrationDone(reg);
-        await this.adminNotificationsService.notify('registrations', message, {
-            dedupeKey: `registration:${reg.id}:completed`,
-            sourceType: 'registration',
-            sourceId: reg.id,
-        });
-    }
-
     async doReg(reg: RegistrationRequestEntity, staffId: number) {
-        return this.readinessService.handoff(reg.id, staffId);
+        return this.readinessService.handoffWithAction(
+            reg.id,
+            staffId,
+            async (registration, manager) => {
+                await this.adminNotificationsService.notify(
+                    'registrations',
+                    formatRegistrationDone(registration),
+                    {
+                        dedupeKey: `registration:${registration.id}:completed`,
+                        sourceType: 'registration',
+                        sourceId: registration.id,
+                        manager,
+                    },
+                );
+            },
+        );
     }
 
     private isRegistrationField(value: string): value is RegistrationField {

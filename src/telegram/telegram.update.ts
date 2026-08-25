@@ -634,7 +634,6 @@ export class TelegramUpdate {
             targetId: regId,
         });
         await ctx.deleteMessage(ctx.message?.message_id);
-        await this.regService.notifyAdminsAboutRegDone(reg);
     }
 
     @Action('actualTickets')
