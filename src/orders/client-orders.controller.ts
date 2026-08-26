@@ -4,7 +4,6 @@ import {
     Get,
     Headers,
     Param,
-    ParseIntPipe,
     Post,
     Query,
     Req,
@@ -16,7 +15,11 @@ import { CurrentWebSession } from 'src/web-session/web-session.decorators';
 import { WebSessionGuard } from 'src/web-session/web-session.guard';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import { WebMutationOriginGuard } from 'src/web-session/web-mutation-origin.guard';
-import { ClientOrderListQueryDto, SubmitOrderDto } from './dto/order.dto';
+import {
+    ClientOrderListQueryDto,
+    OrderIdParamDto,
+    SubmitOrderDto,
+} from './dto/order.dto';
 import { OrdersService } from './orders.service';
 
 @Controller('api/client/orders')
@@ -54,8 +57,8 @@ export class ClientOrdersController {
     @RateLimit('public-sensitive-read', 60, 60)
     get(
         @CurrentWebSession() session: WebSessionPrincipal,
-        @Param('id', ParseIntPipe) id: number,
+        @Param() params: OrderIdParamDto,
     ) {
-        return this.orders.getClient(session.userId, id);
+        return this.orders.getClient(session.userId, params.id);
     }
 }

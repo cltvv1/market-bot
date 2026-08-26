@@ -16,6 +16,11 @@ import { CatalogProductEntity } from '../src/catalog/entities/catalog-product.en
 import { OrderEventEntity } from '../src/orders/entities/order-event.entity';
 import { OrderLineEntity } from '../src/orders/entities/order-line.entity';
 import { OrderEntity } from '../src/orders/entities/order.entity';
+import {
+    ORDER_PAGE_NUMBER_MAX,
+    POSTGRES_INTEGER_MAX,
+} from '../src/orders/order.types';
+import { OrdersService } from '../src/orders/orders.service';
 import { OrganizationAccessRequestEntity } from '../src/organizations/entities/organization-access-request.entity';
 import { OrganizationMemberEntity } from '../src/organizations/entities/organization-member.entity';
 import { OrganizationEntity } from '../src/organizations/entities/organization.entity';
@@ -35,6 +40,7 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
     let app: INestApplication<App>;
     let dataSource: DataSource;
     let auth: AdminAuthService;
+    let orders: OrdersService;
     let ipCounter = 100;
     let keyCounter = 0;
 
@@ -47,6 +53,7 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
         await app.init();
         dataSource = app.get(DataSource);
         auth = app.get(AdminAuthService);
+        orders = app.get(OrdersService);
         jest.spyOn(app.get<Telegraf>(getBotToken()), 'stop').mockImplementation(
             () => undefined,
         );
@@ -456,6 +463,128 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
         ).toBe(0);
     });
 
+    it('bounds PostgreSQL integer identities before order queries', async () => {
+        const client = await browser();
+        const submitSpy = jest.spyOn(orders, 'submit');
+        try {
+            for (const productId of [
+                POSTGRES_INTEGER_MAX + 1,
+                String(POSTGRES_INTEGER_MAX + 1),
+                '9007199254740992',
+            ]) {
+                submitSpy.mockClear();
+                await submit(
+                    client,
+                    individualBody([
+                        {
+                            productId: productId as unknown as number,
+                            quantity: 1,
+                        },
+                    ]),
+                ).expect(400);
+                expect(submitSpy).not.toHaveBeenCalled();
+            }
+
+            submitSpy.mockClear();
+            await submit(
+                client,
+                individualBody([
+                    { productId: POSTGRES_INTEGER_MAX, quantity: 1 },
+                ]),
+            ).expect(409);
+            expect(submitSpy).toHaveBeenCalledTimes(1);
+
+            for (const organizationId of [
+                POSTGRES_INTEGER_MAX + 1,
+                String(POSTGRES_INTEGER_MAX + 1),
+            ]) {
+                submitSpy.mockClear();
+                await submit(
+                    client,
+                    linkedBody(organizationId as unknown as number, [
+                        { productId: POSTGRES_INTEGER_MAX, quantity: 1 },
+                    ]),
+                ).expect(400);
+                expect(submitSpy).not.toHaveBeenCalled();
+            }
+
+            submitSpy.mockClear();
+            await submit(
+                client,
+                linkedBody(POSTGRES_INTEGER_MAX, [
+                    { productId: POSTGRES_INTEGER_MAX, quantity: 1 },
+                ]),
+            ).expect(404);
+            expect(submitSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            submitSpy.mockRestore();
+        }
+
+        expect(await dataSource.getRepository(OrderEntity).count()).toBe(0);
+        expect(await dataSource.getRepository(OrderLineEntity).count()).toBe(0);
+        expect(await dataSource.getRepository(OrderEventEntity).count()).toBe(
+            0,
+        );
+        expect(
+            await dataSource
+                .getRepository(AuditEventEntity)
+                .count({ where: { action: 'order.submitted' } }),
+        ).toBe(0);
+
+        const getClientSpy = jest.spyOn(orders, 'getClient');
+        try {
+            for (const id of [
+                'not-an-integer',
+                '0',
+                '-1',
+                String(POSTGRES_INTEGER_MAX + 1),
+            ]) {
+                getClientSpy.mockClear();
+                await client.agent
+                    .get(`/api/client/orders/${id}`)
+                    .set('X-Forwarded-For', client.ip)
+                    .expect(400);
+                expect(getClientSpy).not.toHaveBeenCalled();
+            }
+            getClientSpy.mockClear();
+            await client.agent
+                .get(`/api/client/orders/${POSTGRES_INTEGER_MAX}`)
+                .set('X-Forwarded-For', client.ip)
+                .expect(404);
+            expect(getClientSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            getClientSpy.mockRestore();
+        }
+
+        const sales = await staff('sales-id-bounds', ['sales_manager']);
+        const getAdminSpy = jest.spyOn(orders, 'getAdmin');
+        try {
+            await sales.agent
+                .get(`/admin/api/orders/${POSTGRES_INTEGER_MAX + 1}`)
+                .expect(400);
+            expect(getAdminSpy).not.toHaveBeenCalled();
+            await sales.agent
+                .get(`/admin/api/orders/${POSTGRES_INTEGER_MAX}`)
+                .expect(404);
+            expect(getAdminSpy).toHaveBeenCalledTimes(1);
+        } finally {
+            getAdminSpy.mockRestore();
+        }
+
+        for (const orderNumber of [
+            `VM-${POSTGRES_INTEGER_MAX}`,
+            `VM-${POSTGRES_INTEGER_MAX + 1}`,
+        ]) {
+            const response = await sales.agent
+                .get(
+                    `/admin/api/orders?search=${encodeURIComponent(orderNumber)}`,
+                )
+                .expect(200);
+            expect(response.body.total).toBe(0);
+            expect(response.body.items).toEqual([]);
+        }
+    });
+
     it('stores a manual organization snapshot without creating access or membership', async () => {
         const client = await browser();
         const catalogProduct = await product();
@@ -500,6 +629,112 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
                 .getRepository(OrganizationAccessRequestEntity)
                 .count(),
         ).toBe(0);
+    });
+
+    it('validates linked organization snapshot bounds and replays before live revalidation', async () => {
+        const client = await browser();
+        const linked = await organization(client);
+        const catalogProduct = await product();
+        const repository = dataSource.getRepository(OrganizationEntity);
+        const valid = {
+            name: 'ООО Витма Тест',
+            inn: '2460000000',
+            kpp: '246001001',
+            ogrn: '1022400000000',
+            legalAddress: 'Красноярск',
+            actualAddress: 'Красноярск',
+            taxSystem: 'ОСНО',
+        };
+        const invalidCases: Array<Partial<OrganizationEntity>> = [
+            { name: 'Н'.repeat(301) },
+            { legalAddress: 'А'.repeat(501) },
+            { taxSystem: 'Т'.repeat(101) },
+            { inn: 'invalid' },
+            { kpp: '123' },
+            { ogrn: '123' },
+        ];
+
+        for (const invalid of invalidCases) {
+            Object.assign(linked, valid, invalid);
+            await repository.save(linked);
+            await submit(
+                client,
+                linkedBody(linked.id, [
+                    { productId: catalogProduct.id, quantity: 1 },
+                ]),
+            )
+                .expect(409)
+                .expect(({ body }) => {
+                    expect(body.message).toBe(
+                        'Linked organization has incomplete or unsupported details',
+                    );
+                });
+        }
+
+        expect(await dataSource.getRepository(OrderEntity).count()).toBe(0);
+        expect(await dataSource.getRepository(OrderLineEntity).count()).toBe(0);
+        expect(await dataSource.getRepository(OrderEventEntity).count()).toBe(
+            0,
+        );
+        expect(
+            await dataSource
+                .getRepository(AuditEventEntity)
+                .count({ where: { action: 'order.submitted' } }),
+        ).toBe(0);
+
+        const name = 'Н'.repeat(300);
+        const address = 'А'.repeat(500);
+        const taxSystem = 'Т'.repeat(100);
+        Object.assign(linked, {
+            name: ` ${name} `,
+            inn: ' 2460000000 ',
+            kpp: ' 246001001 ',
+            ogrn: ' 1022400000000 ',
+            legalAddress: ` ${address} `,
+            actualAddress: ` ${address} `,
+            taxSystem: ` ${taxSystem} `,
+        });
+        await repository.save(linked);
+        const body = linkedBody(linked.id, [
+            { productId: catalogProduct.id, quantity: 1 },
+        ]);
+        const idempotencyKey = nextKey();
+        const created = await submit(client, body, idempotencyKey).expect(201);
+        expect(created.body.organization).toEqual({
+            id: linked.id,
+            name,
+            inn: '2460000000',
+            kpp: '246001001',
+            ogrn: '1022400000000',
+            legalAddress: address,
+            actualAddress: address,
+            taxSystem,
+        });
+
+        const stored = await dataSource
+            .getRepository(OrderEntity)
+            .findOneByOrFail({ id: created.body.id });
+        expect(stored.organizationNameSnapshot).toBe(name);
+        expect(stored.organizationLegalAddressSnapshot).toBe(address);
+        expect(stored.organizationActualAddressSnapshot).toBe(address);
+        expect(stored.organizationTaxSystemSnapshot).toBe(taxSystem);
+
+        linked.name = 'Н'.repeat(301);
+        linked.inn = 'invalid';
+        await repository.save(linked);
+        const replay = await submit(client, body, idempotencyKey).expect(201);
+        expect(replay.body.id).toBe(created.body.id);
+        expect(replay.body.organization.name).toBe(name);
+        expect(await dataSource.getRepository(OrderEntity).count()).toBe(1);
+        expect(await dataSource.getRepository(OrderLineEntity).count()).toBe(1);
+        expect(await dataSource.getRepository(OrderEventEntity).count()).toBe(
+            1,
+        );
+        expect(
+            await dataSource
+                .getRepository(AuditEventEntity)
+                .count({ where: { action: 'order.submitted' } }),
+        ).toBe(1);
     });
 
     it('accepts an individual order and rejects every organization shape on it', async () => {
@@ -817,6 +1052,28 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
             .get('/api/client/orders?status=unknown')
             .set('X-Forwarded-For', owner.ip)
             .expect(400);
+
+        const listClientSpy = jest.spyOn(orders, 'listClient');
+        try {
+            await owner.agent
+                .get(`/api/client/orders?page=${ORDER_PAGE_NUMBER_MAX}`)
+                .set('X-Forwarded-For', owner.ip)
+                .expect(200);
+            expect(listClientSpy).toHaveBeenCalledTimes(1);
+            listClientSpy.mockClear();
+            for (const page of [
+                ORDER_PAGE_NUMBER_MAX + 1,
+                '9007199254740992',
+            ]) {
+                await owner.agent
+                    .get(`/api/client/orders?page=${page}`)
+                    .set('X-Forwarded-For', owner.ip)
+                    .expect(400);
+            }
+            expect(listClientSpy).not.toHaveBeenCalled();
+        } finally {
+            listClientSpy.mockRestore();
+        }
     });
 
     it('exposes parameterized read-only admin search only to sales managers and superadmins', async () => {
@@ -853,6 +1110,27 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
             .expect(200);
         const root = await staff('root-orders', ['superadmin']);
         await root.agent.get('/admin/api/orders').expect(200);
+
+        const listAdminSpy = jest.spyOn(orders, 'listAdmin');
+        try {
+            await sales.agent
+                .get(`/admin/api/orders?page=${ORDER_PAGE_NUMBER_MAX}`)
+                .expect(200);
+            expect(listAdminSpy).toHaveBeenCalledTimes(1);
+            listAdminSpy.mockClear();
+            for (const page of [
+                ORDER_PAGE_NUMBER_MAX + 1,
+                '9007199254740992',
+            ]) {
+                await sales.agent
+                    .get(`/admin/api/orders?page=${page}`)
+                    .expect(400);
+            }
+            expect(listAdminSpy).not.toHaveBeenCalled();
+        } finally {
+            listAdminSpy.mockRestore();
+        }
+
         const operator = await staff('operator-orders', ['operator']);
         await operator.agent.get('/admin/api/orders').expect(403);
         const engineer = await staff('engineer-orders', ['engineer']);

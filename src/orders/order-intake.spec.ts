@@ -1,12 +1,15 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
+import { QueryFailedError } from 'typeorm';
 import type { SubmitOrderDto } from './dto/order.dto';
 import {
     calculateCatalogTotals,
     formatOrderNumber,
     multiplyMinorUnits,
+    normalizeLinkedOrganizationSnapshot,
     normalizeOrderSubmission,
     orderSubmissionFingerprint,
 } from './order-intake';
+import { isOrderPersistenceConflict } from './orders.service';
 
 const normalizeInn = (value: string) => value.replace(/\D/g, '');
 
@@ -175,5 +178,89 @@ describe('order intake helpers', () => {
             address: 'ул. Ленина, 1',
             comment: null,
         });
+    });
+
+    it('normalizes a boundary-valid linked organization snapshot', () => {
+        const name = 'Н'.repeat(300);
+        const address = 'А'.repeat(500);
+        const taxSystem = 'Т'.repeat(100);
+        expect(
+            normalizeLinkedOrganizationSnapshot(
+                {
+                    name: ` ${name} `,
+                    inn: ' 2460000000 ',
+                    kpp: ' 246001001 ',
+                    ogrn: ' 1022400000000 ',
+                    legalAddress: ` ${address} `,
+                    actualAddress: ` ${address} `,
+                    taxSystem: ` ${taxSystem} `,
+                },
+                normalizeInn,
+            ),
+        ).toEqual({
+            name,
+            inn: '2460000000',
+            kpp: '246001001',
+            ogrn: '1022400000000',
+            legalAddress: address,
+            actualAddress: address,
+            taxSystem,
+        });
+    });
+
+    it.each([
+        ['missing name', { name: null }],
+        ['oversized name', { name: 'Н'.repeat(301) }],
+        ['invalid INN', { inn: 'invalid' }],
+        ['invalid KPP', { kpp: '123' }],
+        ['invalid OGRN', { ogrn: '123' }],
+        ['oversized legal address', { legalAddress: 'А'.repeat(501) }],
+        ['oversized actual address', { actualAddress: 'А'.repeat(501) }],
+        ['oversized tax system', { taxSystem: 'Т'.repeat(101) }],
+    ])('rejects an unsupported linked snapshot: %s', (_case, override) => {
+        expect(() =>
+            normalizeLinkedOrganizationSnapshot(
+                {
+                    name: 'ООО Витма',
+                    inn: '2460000000',
+                    kpp: '246001001',
+                    ogrn: '1022400000000',
+                    legalAddress: 'Красноярск',
+                    actualAddress: 'Красноярск',
+                    taxSystem: 'ОСНО',
+                    ...override,
+                },
+                (value) => {
+                    const normalized = normalizeInn(value);
+                    if (![10, 12].includes(normalized.length)) {
+                        throw new BadRequestException();
+                    }
+                    return normalized;
+                },
+            ),
+        ).toThrow(ConflictException);
+    });
+
+    it('maps only controlled order persistence SQLSTATE values', () => {
+        for (const code of [
+            '22001',
+            '22003',
+            '23502',
+            '23503',
+            '23505',
+            '23514',
+        ]) {
+            expect(
+                isOrderPersistenceConflict(
+                    new QueryFailedError('query', [], { code }),
+                ),
+            ).toBe(true);
+        }
+        expect(
+            isOrderPersistenceConflict(
+                new QueryFailedError('query', [], { code: '42P01' }),
+            ),
+        ).toBe(false);
+        expect(isOrderPersistenceConflict(new Error('offline'))).toBe(false);
     });
 });

@@ -43,5 +43,7 @@ export type OrderEventVisibility = (typeof ORDER_EVENT_VISIBILITIES)[number];
 
 export const ORDER_PAGE_SIZE_DEFAULT = 20;
 export const ORDER_PAGE_SIZE_MAX = 100;
+export const ORDER_PAGE_NUMBER_MAX = 100_000;
 export const ORDER_ITEM_COUNT_MAX = 100;
 export const ORDER_ITEM_QUANTITY_MAX = 1000;
+export const POSTGRES_INTEGER_MAX = 2_147_483_647;

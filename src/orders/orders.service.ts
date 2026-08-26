@@ -24,12 +24,13 @@ import {
     calculateCatalogTotals,
     formatOrderNumber,
     multiplyMinorUnits,
+    normalizeLinkedOrganizationSnapshot,
     normalizeOrderSubmission,
     orderAdvisoryLockKey,
     orderSubmissionFingerprint,
     type NormalizedOrderSubmission,
 } from './order-intake';
-import { ORDER_PAGE_SIZE_DEFAULT } from './order.types';
+import { ORDER_PAGE_SIZE_DEFAULT, POSTGRES_INTEGER_MAX } from './order.types';
 
 interface OrderOrganizationSnapshot {
     organizationId: number | null;
@@ -219,7 +220,7 @@ export class OrdersService {
             });
             return this.presentDetail(order, false);
         } catch (error) {
-            if (this.isIntegrityConflict(error)) {
+            if (isOrderPersistenceConflict(error)) {
                 throw new ConflictException('Order could not be submitted');
             }
             throw error;
@@ -373,11 +374,6 @@ export class OrdersService {
             if (!membership?.organization) {
                 throw new NotFoundException('Organization was not found');
             }
-            if (!membership.organization.name?.trim()) {
-                throw new ConflictException(
-                    'Linked organization has incomplete details',
-                );
-            }
             return this.snapshotOrganization(membership.organization);
         }
         if (!input.organization) {
@@ -392,15 +388,13 @@ export class OrdersService {
     private snapshotOrganization(
         organization: OrganizationEntity,
     ): OrderOrganizationSnapshot {
+        const snapshot = normalizeLinkedOrganizationSnapshot(
+            organization,
+            (inn) => this.organizations.normalizeInn(inn),
+        );
         return {
             organizationId: organization.id,
-            name: organization.name?.trim() || null,
-            inn: organization.inn,
-            kpp: organization.kpp,
-            ogrn: organization.ogrn,
-            legalAddress: organization.legalAddress,
-            actualAddress: organization.actualAddress,
-            taxSystem: organization.taxSystem,
+            ...snapshot,
         };
     }
 
@@ -560,16 +554,20 @@ export class OrdersService {
         const match = /^VM-(\d+)$/i.exec(value);
         if (!match) return null;
         const id = Number(match[1]);
-        return Number.isSafeInteger(id) && id > 0 ? id : null;
+        return Number.isInteger(id) && id > 0 && id <= POSTGRES_INTEGER_MAX
+            ? id
+            : null;
     }
 
     private escapeLike(value: string) {
         return value.replace(/[\\%_]/g, (character) => `\\${character}`);
     }
+}
 
-    private isIntegrityConflict(error: unknown) {
-        if (!(error instanceof QueryFailedError)) return false;
-        const code = (error.driverError as { code?: string }).code;
-        return ['23502', '23503', '23505', '23514'].includes(code || '');
-    }
+export function isOrderPersistenceConflict(error: unknown) {
+    if (!(error instanceof QueryFailedError)) return false;
+    const code = (error.driverError as { code?: string }).code;
+    return ['22001', '22003', '23502', '23503', '23505', '23514'].includes(
+        code || '',
+    );
 }

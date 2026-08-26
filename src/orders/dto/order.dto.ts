@@ -21,8 +21,10 @@ import {
     ORDER_DELIVERY_TYPES,
     ORDER_ITEM_COUNT_MAX,
     ORDER_ITEM_QUANTITY_MAX,
+    ORDER_PAGE_NUMBER_MAX,
     ORDER_PAGE_SIZE_MAX,
     ORDER_STATUSES,
+    POSTGRES_INTEGER_MAX,
     type OrderCustomerType,
     type OrderDeliveryType,
     type OrderStatus,
@@ -123,6 +125,7 @@ export class OrderItemDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(POSTGRES_INTEGER_MAX)
     productId: number;
 
     @Type(() => Number)
@@ -140,6 +143,7 @@ export class SubmitOrderDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(POSTGRES_INTEGER_MAX)
     organizationId?: number;
 
     @IsOptional()
@@ -176,6 +180,7 @@ export class ClientOrderListQueryDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(ORDER_PAGE_NUMBER_MAX)
     page?: number;
 
     @IsOptional()
@@ -188,6 +193,14 @@ export class ClientOrderListQueryDto {
     @IsOptional()
     @IsIn(ORDER_STATUSES)
     status?: OrderStatus;
+}
+
+export class OrderIdParamDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(POSTGRES_INTEGER_MAX)
+    id: number;
 }
 
 export class AdminOrderListQueryDto extends ClientOrderListQueryDto {

@@ -229,6 +229,11 @@ All routes require the existing customer web session:
 | `GET` | `/api/client/orders/:id` | Read one owned order |
 
 List query parameters are `page`, `limit` (maximum 100), and optional `status`.
+External PostgreSQL integer identities are bounded at the HTTP boundary to
+`1..2,147,483,647`, including product IDs, linked organization IDs, and both
+client/admin order path parameters. Invalid and out-of-range path IDs are
+rejected before an order query. `page` has a separate hard maximum of `100,000`,
+keeping offset arithmetic safe and preventing meaningless unbounded offsets.
 Cross-customer detail access returns the same `404` shape as a missing order.
 
 Submission also requires a same-origin or explicitly configured browser origin
@@ -288,6 +293,18 @@ is escaped before `ILIKE` matching.
 
 DTO fields, arrays, free text, quantities, and pagination are bounded. The
 global whitelist/transform validation remains the outer HTTP boundary.
+
+A linked canonical Organization is normalized and validated against the
+immutable Order snapshot contract before aggregate insertion: required trimmed
+name up to 300 characters, normalized 10/12-digit INN, optional exact KPP/OGRN,
+addresses up to 500 characters, and tax system up to 100 characters. Unsupported
+live data fails with a safe `409` and no partial aggregate; it is never silently
+truncated and the Organization itself is not changed. Existing idempotent replay
+loads the saved order before consulting mutable live organization data.
+
+PostgreSQL `22001` and `22003` are mapped to the same controlled persistence
+conflict as a defensive fallback. Normal control flow rejects unrepresentable
+IDs and snapshot values before SQL execution.
 
 ## Migration
 

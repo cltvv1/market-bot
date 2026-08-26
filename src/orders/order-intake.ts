@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { SubmitOrderDto } from './dto/order.dto';
 import type { OrderCustomerType, OrderDeliveryType } from './order.types';
 
@@ -28,6 +28,16 @@ export interface NormalizedOrderSubmission {
     };
     comment: string | null;
     items: Array<{ productId: number; quantity: number }>;
+}
+
+export interface LinkedOrganizationSnapshotInput {
+    name: string | null;
+    inn: string | null;
+    kpp: string | null;
+    ogrn: string | null;
+    legalAddress: string | null;
+    actualAddress: string | null;
+    taxSystem: string | null;
 }
 
 export function normalizeOrderSubmission(
@@ -129,6 +139,41 @@ export function orderSubmissionFingerprint(input: NormalizedOrderSubmission) {
     return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
 }
 
+export function normalizeLinkedOrganizationSnapshot(
+    input: LinkedOrganizationSnapshotInput,
+    normalizeInn: (value: string) => string,
+): NonNullable<NormalizedOrderSubmission['organization']> {
+    const name = linkedText(input.name, 300);
+    if (!name) linkedOrganizationConflict();
+
+    let inn: string;
+    try {
+        if (typeof input.inn !== 'string') linkedOrganizationConflict();
+        inn = normalizeInn(input.inn);
+    } catch {
+        linkedOrganizationConflict();
+    }
+
+    const kpp = linkedText(input.kpp, 9);
+    const ogrn = linkedText(input.ogrn, 15);
+    if (
+        (kpp && !/^\d{9}$/.test(kpp)) ||
+        (ogrn && !/^(\d{13}|\d{15})$/.test(ogrn))
+    ) {
+        linkedOrganizationConflict();
+    }
+
+    return {
+        name,
+        inn,
+        kpp,
+        ogrn,
+        legalAddress: linkedText(input.legalAddress, 500),
+        actualAddress: linkedText(input.actualAddress, 500),
+        taxSystem: linkedText(input.taxSystem, 100),
+    };
+}
+
 export function orderAdvisoryLockKey(userId: number, idempotencyKey: string) {
     return createHash('sha256')
         .update(`${userId}:${idempotencyKey}`)
@@ -187,4 +232,18 @@ function normalizePhone(value: string) {
         throw new BadRequestException('Contact phone is invalid');
     }
     return `+${digits}`;
+}
+
+function linkedText(value: string | null, maxLength: number) {
+    if (value === null) return null;
+    if (typeof value !== 'string') linkedOrganizationConflict();
+    const normalized = value.trim();
+    if (normalized.length > maxLength) linkedOrganizationConflict();
+    return normalized || null;
+}
+
+function linkedOrganizationConflict(): never {
+    throw new ConflictException(
+        'Linked organization has incomplete or unsupported details',
+    );
 }
