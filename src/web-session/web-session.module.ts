@@ -5,6 +5,7 @@ import { CustomerWebSessionEntity } from './entities/customer-web-session.entity
 import { WebSessionController } from './web-session.controller';
 import { WebSessionGuard } from './web-session.guard';
 import { WebSessionService } from './web-session.service';
+import { WebMutationOriginGuard } from './web-mutation-origin.guard';
 
 @Global()
 @Module({
@@ -13,7 +14,7 @@ import { WebSessionService } from './web-session.service';
         UsersModule,
     ],
     controllers: [WebSessionController],
-    providers: [WebSessionService, WebSessionGuard],
-    exports: [WebSessionService, WebSessionGuard],
+    providers: [WebSessionService, WebSessionGuard, WebMutationOriginGuard],
+    exports: [WebSessionService, WebSessionGuard, WebMutationOriginGuard],
 })
 export class WebSessionModule {}

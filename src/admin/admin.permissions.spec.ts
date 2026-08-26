@@ -11,6 +11,7 @@ describe('admin permissions', () => {
         expect(getPermissions(['sales_manager'])).toEqual([
             'catalog.read',
             'catalog.manage',
+            'orders.read.all',
             'support.read',
             'support.manage',
             'knowledge.read',
@@ -27,6 +28,7 @@ describe('admin permissions', () => {
             'serviceRequests.close',
         );
         expect(getPermissions(['superadmin'])).toContain('catalog.manage');
+        expect(getPermissions(['superadmin'])).toContain('orders.read.all');
         expect(getPermissions(['superadmin'])).toContain('support.manage');
         expect(getPermissions(['superadmin'])).toContain('knowledge.manage');
     });
