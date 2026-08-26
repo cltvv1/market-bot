@@ -17,6 +17,31 @@ export const validationSchema = Joi.object({
         .max(60000)
         .default(5000),
     FILE_STORAGE_ROOT: Joi.string().default('storage'),
+    SUPPORT_FILE_MAX_BYTES: Joi.number()
+        .integer()
+        .min(1)
+        .max(1_073_741_824)
+        .default(536_870_912),
+    FILE_LIFECYCLE_TEMP_GRACE_MS: Joi.number()
+        .integer()
+        .min(60_000)
+        .default(3_600_000),
+    FILE_LIFECYCLE_PENDING_GRACE_MS: Joi.number()
+        .integer()
+        .min(60_000)
+        .default(3_600_000),
+    FILE_LIFECYCLE_ACTIVE_ORPHAN_GRACE_MS: Joi.number()
+        .integer()
+        .min(60_000)
+        .default(604_800_000),
+    FILE_LIFECYCLE_PURGE_GRACE_MS: Joi.number()
+        .integer()
+        .min(60_000)
+        .default(86_400_000),
+    FILE_LIFECYCLE_PHYSICAL_ORPHAN_GRACE_MS: Joi.number()
+        .integer()
+        .min(60_000)
+        .default(86_400_000),
     DB_HOST: Joi.string().trim().min(1).required(),
     DB_PORT: Joi.number().port().required(),
     DB_NAME: Joi.string().trim().min(1).required(),

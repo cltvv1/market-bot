@@ -367,7 +367,17 @@ describe('support and knowledge foundation on migrated PostgreSQL', () => {
             detail.body.products.map((item: { slug: string }) => item.slug),
         ).toEqual(['tlp300', 'tlp100']);
         expect(detail.body.versions).toHaveLength(1);
+        expect(detail.body.versions[0]).toMatchObject({
+            distributionMode: 'external',
+            externalUrl: 'https://downloads.example.test/1.0.zip',
+            hostedFile: null,
+        });
         expect(detail.body.versions[0]).not.toHaveProperty('storedFileId');
+        await request(app.getHttpServer())
+            .get(
+                `/api/support/resources/mertech-driver/versions/${current.body.id}/download`,
+            )
+            .expect(404);
         expect(
             await dataSource.getRepository(SupportResourceEntity).count(),
         ).toBe(1);

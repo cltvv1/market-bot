@@ -30,4 +30,23 @@ describe('application security configuration', () => {
             validationSchema.validate({ ...base, TRUST_PROXY: '4' }).error,
         ).toBeDefined();
     });
+
+    it('defaults and bounds hosted support file size', () => {
+        const value = validationSchema.validate(base).value as unknown as {
+            SUPPORT_FILE_MAX_BYTES: number;
+        };
+        expect(value.SUPPORT_FILE_MAX_BYTES).toBe(536_870_912);
+        expect(
+            validationSchema.validate({
+                ...base,
+                SUPPORT_FILE_MAX_BYTES: 1_073_741_824,
+            }).error,
+        ).toBeUndefined();
+        expect(
+            validationSchema.validate({
+                ...base,
+                SUPPORT_FILE_MAX_BYTES: 1_073_741_825,
+            }).error,
+        ).toBeDefined();
+    });
 });

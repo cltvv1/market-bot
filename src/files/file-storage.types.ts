@@ -8,6 +8,20 @@ export interface StoredObject {
     sha256: string;
 }
 
+export interface StorageEntry {
+    objectKey: string;
+    sizeBytes: number;
+    modifiedAt: Date;
+    kind: 'object' | 'temporary';
+}
+
+export class FileSizeLimitError extends Error {
+    constructor(readonly maxBytes: number) {
+        super('File exceeds the configured size limit');
+        this.name = 'FileSizeLimitError';
+    }
+}
+
 export interface FileStoragePort {
     write(
         objectKey: string,
@@ -18,6 +32,7 @@ export interface FileStoragePort {
     exists(objectKey: string): Promise<boolean>;
     checksum(objectKey: string): Promise<string>;
     remove(objectKey: string): Promise<void>;
+    listEntries(): AsyncIterable<StorageEntry>;
     resolveObjectKey(objectKey: string): string;
 }
 
@@ -33,7 +48,8 @@ export type FilePurpose =
     | 'generated-pdf'
     | 'signed-document'
     | 'payment-proof'
-    | 'service-attachment';
+    | 'service-attachment'
+    | 'support-resource';
 
 export interface SaveFileInput {
     purpose: FilePurpose;

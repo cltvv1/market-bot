@@ -73,3 +73,47 @@ export function isSafeHttpsUrl(value: string) {
         return false;
     }
 }
+
+export function publicUsableVersionExistsSql(resourceAlias: string) {
+    return `EXISTS (
+        SELECT 1
+        FROM "support_resource_versions" fs1_usable_version
+        LEFT JOIN "stored_files" fs1_usable_file
+          ON fs1_usable_file."id" = fs1_usable_version."storedFileId"
+        WHERE fs1_usable_version."resourceId" = ${resourceAlias}.id
+          AND fs1_usable_version."isPublished" = true
+          AND (
+            (
+              fs1_usable_version."distributionMode" = 'external'
+              AND fs1_usable_version."externalUrl" LIKE 'https://%'
+              AND fs1_usable_version."externalUrl" !~ '^https://[^/]*@'
+            )
+            OR
+            (
+              fs1_usable_version."distributionMode" = 'hosted'
+              AND fs1_usable_file."status" = 'active'
+              AND fs1_usable_file."purgedAt" IS NULL
+              AND fs1_usable_file."metadata" ->> 'purpose' = 'support-resource'
+              AND fs1_usable_file."metadata" ->> 'supportResourceId' = ${resourceAlias}.id::text
+              AND fs1_usable_file."metadata" ->> 'supportResourceVersionId' = fs1_usable_version.id::text
+              AND ${publicSupportKindCompatibilitySql(
+                  resourceAlias,
+                  'fs1_usable_file',
+              )}
+            )
+          )
+    )`;
+}
+
+export function publicSupportKindCompatibilitySql(
+    resourceAlias: string,
+    fileAlias: string,
+) {
+    const kind = `${fileAlias}."metadata" ->> 'detectedFileKind'`;
+    return `(
+        (${resourceAlias}.type IN ('manual','quick_start','datasheet','certificate') AND ${kind} = 'pdf')
+        OR (${resourceAlias}.type = 'firmware' AND ${kind} IN ('zip','seven_zip','rar','cab','gzip'))
+        OR (${resourceAlias}.type IN ('driver','utility','software','sdk') AND ${kind} IN ('zip','pe','msi','seven_zip','rar','cab','gzip'))
+        OR (${resourceAlias}.type = 'other' AND ${kind} IN ('pdf','zip','pe','msi','seven_zip','rar','cab','gzip'))
+    )`;
+}

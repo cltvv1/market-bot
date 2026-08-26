@@ -57,10 +57,10 @@ HTTP URLs, malformed URLs, and oversized URLs are rejected. VITMA does not
 fetch, proxy, or redirect through these URLs.
 
 Hosted versions reserve a nullable `storedFileId` foreign key to `stored_files`.
-Generic admin DTOs cannot set that ID, public DTOs never return it, and the
-current admin response exposes only a `hasStoredFile` boolean. Until FS-1 adds a
-trusted attachment command and support-file policy, hosted publication always
-fails closed with a controlled conflict.
+Generic admin DTOs cannot set that ID and public DTOs never return it. FS-1 now
+provides the raw streaming upload, trusted pending-to-active attachment,
+publication readiness, safe public metadata, and context-bound download path;
+see `2026-08-26-file-lifecycle-support-hosting.md`.
 
 ## Knowledge model
 
@@ -111,10 +111,9 @@ KB-1 persists slugs, publication state, and optional SEO text only. SSR, SSG,
 canonical tags, sitemap, robots directives, schema.org, and slug redirect
 history remain deferred to a separate web/SEO package.
 
-## Future FS-1 responsibilities
+## Implemented FS-1 boundary
 
-FS-1 must provide the trusted file command and lifecycle needed by hosted
-versions:
+FS-1 provides the trusted file command and lifecycle needed by hosted versions:
 
 - a dedicated support file purpose and MIME/content policy;
 - streamed large-file upload without whole-file memory buffering;
@@ -123,7 +122,7 @@ versions:
 - trusted `ResourceVersion -> StoredFile` attachment;
 - authorized public download streaming and `Content-Disposition`;
 - checksum metadata where useful;
-- range requests only if a demonstrated client requirement exists.
+- no range requests; those still require a demonstrated client need.
 
-CH-R3, Support binary storage, frontend support pages, Orders, Cart backend, and
-1C synchronization are not part of KB-1.
+Frontend support pages, Orders, Cart backend, and 1C synchronization remain
+outside KB-1 and FS-1.

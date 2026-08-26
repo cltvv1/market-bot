@@ -24,7 +24,10 @@ import { KnowledgeArticleSupportResourceEntity } from './entities/knowledge-arti
 import { KnowledgeArticleEntity } from './entities/knowledge-article.entity';
 import { ProductKnowledgeArticleEntity } from './entities/product-knowledge-article.entity';
 import { SupportResourceEntity } from './entities/support-resource.entity';
-import { CONTENT_PAGE_SIZE_DEFAULT } from './support-knowledge.types';
+import {
+    CONTENT_PAGE_SIZE_DEFAULT,
+    publicUsableVersionExistsSql,
+} from './support-knowledge.types';
 
 @Injectable()
 export class KnowledgeService {
@@ -296,14 +299,7 @@ export class KnowledgeService {
                 .innerJoinAndSelect('link.resource', 'resource')
                 .where('link.articleId = :articleId', { articleId })
                 .andWhere('resource.isPublished = true')
-                .andWhere(
-                    `EXISTS (
-                        SELECT 1
-                        FROM "support_resource_versions" "publishedVersion"
-                        WHERE "publishedVersion"."resourceId" = resource.id
-                          AND "publishedVersion"."isPublished" = true
-                    )`,
-                )
+                .andWhere(publicUsableVersionExistsSql('resource'))
                 .orderBy('link.sortOrder', 'ASC')
                 .addOrderBy('resource.title', 'ASC')
                 .addOrderBy('resource.id', 'ASC')
