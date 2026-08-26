@@ -53,6 +53,22 @@ const TERMINAL_STATUSES = new Set<StoredFileStatus>([
     'corrupt',
 ]);
 
+type FileLifecycleGraceSuffix =
+    | 'TEMP_GRACE_MS'
+    | 'PENDING_GRACE_MS'
+    | 'ACTIVE_ORPHAN_GRACE_MS'
+    | 'PURGE_GRACE_MS'
+    | 'PHYSICAL_ORPHAN_GRACE_MS';
+
+const FILE_LIFECYCLE_GRACE_DEFAULTS: Record<FileLifecycleGraceSuffix, number> =
+    {
+        TEMP_GRACE_MS: 3_600_000,
+        PENDING_GRACE_MS: 3_600_000,
+        ACTIVE_ORPHAN_GRACE_MS: 604_800_000,
+        PURGE_GRACE_MS: 86_400_000,
+        PHYSICAL_ORPHAN_GRACE_MS: 86_400_000,
+    };
+
 @Injectable()
 export class FileLifecycleService {
     constructor(
@@ -66,6 +82,7 @@ export class FileLifecycleService {
     ) {}
 
     async reconcile(options: FileLifecycleOptions = {}) {
+        this.validateGraceSettings();
         const apply = options.apply ?? false;
         const verifyChecksums = options.verifyChecksums ?? false;
         const now = options.now ?? new Date();
@@ -421,11 +438,7 @@ export class FileLifecycleService {
     private isOld(
         date: Date,
         now: Date,
-        suffix:
-            | 'TEMP_GRACE_MS'
-            | 'PENDING_GRACE_MS'
-            | 'ACTIVE_ORPHAN_GRACE_MS'
-            | 'PHYSICAL_ORPHAN_GRACE_MS',
+        suffix: Exclude<FileLifecycleGraceSuffix, 'PURGE_GRACE_MS'>,
     ) {
         return date.getTime() <= now.getTime() - this.grace(suffix);
     }
@@ -434,18 +447,25 @@ export class FileLifecycleService {
         return new Date(now.getTime() + this.grace('PURGE_GRACE_MS'));
     }
 
-    private grace(suffix: string) {
-        const defaults: Record<string, number> = {
-            TEMP_GRACE_MS: 3_600_000,
-            PENDING_GRACE_MS: 3_600_000,
-            ACTIVE_ORPHAN_GRACE_MS: 604_800_000,
-            PURGE_GRACE_MS: 86_400_000,
-            PHYSICAL_ORPHAN_GRACE_MS: 86_400_000,
-        };
-        return (
-            this.config.get<number>(`FILE_LIFECYCLE_${suffix}`) ??
-            defaults[suffix]
-        );
+    private validateGraceSettings() {
+        for (const suffix of Object.keys(
+            FILE_LIFECYCLE_GRACE_DEFAULTS,
+        ) as FileLifecycleGraceSuffix[]) {
+            this.grace(suffix);
+        }
+    }
+
+    private grace(suffix: FileLifecycleGraceSuffix) {
+        const key = `FILE_LIFECYCLE_${suffix}`;
+        const raw = this.config.get<string | number>(key);
+        if (raw === undefined || raw === null || raw === '') {
+            return FILE_LIFECYCLE_GRACE_DEFAULTS[suffix];
+        }
+        const value = typeof raw === 'number' ? raw : Number(raw);
+        if (!Number.isSafeInteger(value) || value < 60_000) {
+            throw new Error(`Invalid ${key}`);
+        }
+        return value;
     }
 
     private async acquireLock() {

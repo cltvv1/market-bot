@@ -2,6 +2,7 @@
 import * as fs from 'node:fs';
 import { Readable } from 'node:stream';
 import { type INestApplication, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { getBotToken } from 'nestjs-telegraf';
 import type { App } from 'supertest/types';
@@ -388,6 +389,87 @@ describe('file lifecycle reconciliation on migrated PostgreSQL', () => {
         ).toEqual(missingAt);
     });
 
+    it('normalizes CLI-like string durations before scheduling and applying a purge', async () => {
+        const fixedNow = new Date('2026-08-26T00:00:00.000Z');
+        const cliLifecycle = lifecycleWithConfig({
+            FILE_LIFECYCLE_TEMP_GRACE_MS: '3600000',
+            FILE_LIFECYCLE_PENDING_GRACE_MS: '3600000',
+            FILE_LIFECYCLE_ACTIVE_ORPHAN_GRACE_MS: '604800000',
+            FILE_LIFECYCLE_PURGE_GRACE_MS: '86400000',
+            FILE_LIFECYCLE_PHYSICAL_ORPHAN_GRACE_MS: '86400000',
+        });
+        const pending = await stored({
+            key: 'test/cli-string-duration',
+            status: 'pending',
+            createdAt: new Date(fixedNow.getTime() - 3_600_001),
+        });
+
+        const applied = await cliLifecycle.reconcile({
+            apply: true,
+            now: fixedNow,
+        });
+        expect(applied.pendingStale).toContainEqual(
+            expect.objectContaining({ fileId: pending.id }),
+        );
+        const rejected = await files.findOneByOrFail({ id: pending.id });
+        expect(rejected.status).toBe('rejected');
+        expect(rejected.purgeAfter).toBeInstanceOf(Date);
+        expect(rejected.purgeAfter?.getTime()).toBe(
+            fixedNow.getTime() + 86_400_000,
+        );
+        expect(await storage.exists(pending.objectKey)).toBe(true);
+
+        await cliLifecycle.reconcile({
+            apply: true,
+            now: new Date(fixedNow.getTime() + 86_400_000 - 1),
+        });
+        expect(await storage.exists(pending.objectKey)).toBe(true);
+        expect(
+            (await files.findOneByOrFail({ id: pending.id })).purgedAt,
+        ).toBeNull();
+
+        const purgeNow = new Date(fixedNow.getTime() + 86_400_000 + 1);
+        const purged = await cliLifecycle.reconcile({
+            apply: true,
+            now: purgeNow,
+        });
+        expect(purged.purged).toContainEqual(
+            expect.objectContaining({ fileId: pending.id }),
+        );
+        expect(await storage.exists(pending.objectKey)).toBe(false);
+        expect(
+            (await files.findOneByOrFail({ id: pending.id })).purgedAt,
+        ).toEqual(purgeNow);
+    });
+
+    it.each(['not-a-number', 'Infinity', '1.5', '-1'])(
+        'rejects invalid explicit lifecycle duration %s before mutation',
+        async (invalidPurgeGrace) => {
+            const fixedNow = new Date('2026-08-26T00:00:00.000Z');
+            const cliLifecycle = lifecycleWithConfig({
+                FILE_LIFECYCLE_PENDING_GRACE_MS: '3600000',
+                FILE_LIFECYCLE_PURGE_GRACE_MS: invalidPurgeGrace,
+            });
+            const pending = await stored({
+                key: `test/invalid-purge-grace-${invalidPurgeGrace}`,
+                status: 'pending',
+                createdAt: new Date(fixedNow.getTime() - 3_600_001),
+            });
+
+            await expect(
+                cliLifecycle.reconcile({ apply: true, now: fixedNow }),
+            ).rejects.toThrow('Invalid FILE_LIFECYCLE_PURGE_GRACE_MS');
+            expect(
+                await files.findOneByOrFail({ id: pending.id }),
+            ).toMatchObject({
+                status: 'pending',
+                deletedAt: null,
+                purgeAfter: null,
+            });
+            expect(await storage.exists(pending.objectKey)).toBe(true);
+        },
+    );
+
     it('verifies checksums, marks corruption, and never purges referenced files', async () => {
         const base = new Date('2026-08-26T00:00:00.000Z');
         const now = new Date(base.getTime() + 8 * 24 * 60 * 60 * 1000);
@@ -465,6 +547,16 @@ describe('file lifecycle reconciliation on migrated PostgreSQL', () => {
         );
         remove.mockRestore();
     });
+
+    function lifecycleWithConfig(values: Record<string, string>) {
+        return new FileLifecycleService(
+            dataSource,
+            files,
+            storage,
+            new ConfigService(values),
+            inspector,
+        );
+    }
 });
 
 function barrier(): { promise: Promise<void>; release: () => void } {

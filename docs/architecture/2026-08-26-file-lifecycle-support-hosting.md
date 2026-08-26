@@ -238,6 +238,12 @@ can be purged; FS-1 never overrides a live FK to reclaim bytes.
 | `FILE_LIFECYCLE_PURGE_GRACE_MS` | 24 hours | terminal physical purge |
 | `FILE_LIFECYCLE_PHYSICAL_ORPHAN_GRACE_MS` | 24 hours | untracked object removal |
 
+The standalone CLI receives environment values as strings, while the normal
+Nest runtime receives values normalized by config validation. Lifecycle
+durations are therefore normalized and validated again at the point of use so
+both paths have identical positive-integer millisecond semantics. An explicitly
+invalid value fails closed before reconciliation can mutate storage or rows.
+
 Dry-run reports `staleTemps`, `physicalOrphans`, `pendingStale`,
 `activeUnreferenced`, `missing`, `corrupt`, `purgeCandidates`, `purged`,
 `blockedByReference`, and `errors` without changing DB or storage. Apply holds a
