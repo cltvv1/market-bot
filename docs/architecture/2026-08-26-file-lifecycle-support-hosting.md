@@ -189,6 +189,13 @@ bytes with the expected stored SHA-256. A mismatch becomes `corrupt` with
 `corruptAt`; a successful check sets `lastVerifiedAt`. Public GET does not hash
 large files.
 
+The storage inventory is an advisory point-in-time snapshot. A snapshot miss is
+live-revalidated with `storage.exists` before it is reported. Apply mode then
+locks the `StoredFile` row and repeats the physical absence check before the
+`active -> missing` transition. This prevents a writer that stores bytes and
+inserts its active row concurrently with reconciliation from being marked
+missing by an older inventory snapshot.
+
 ## 12. Reconciliation classes and ordering
 
 `FileLifecycleService` is the single dry-run/apply implementation used by CLI

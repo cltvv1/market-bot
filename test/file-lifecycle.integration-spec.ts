@@ -159,6 +159,101 @@ describe('file lifecycle reconciliation on migrated PostgreSQL', () => {
         }
     });
 
+    it('does not mark a concurrently created file missing from a stale inventory snapshot', async () => {
+        const snapshotTaken = barrier();
+        const continueInventory = barrier();
+        const inventory = jest
+            .spyOn(storage, 'listEntries')
+            .mockImplementation(() =>
+                (async function* () {
+                    snapshotTaken.release();
+                    await continueInventory.promise;
+                    yield* [];
+                })(),
+            );
+        const content = Buffer.from('%PDF-1.4\nconcurrent file');
+
+        try {
+            const reconciliation = lifecycle.reconcile({ apply: true });
+            await snapshotTaken.promise;
+            const file = await filesService.saveBuffer({
+                purpose: 'service-attachment',
+                buffer: content,
+                originalName: 'concurrent.pdf',
+                mimeType: 'application/pdf',
+            });
+            continueInventory.release();
+
+            const report = await reconciliation;
+            const row = await files.findOneByOrFail({ id: file.id });
+            expect(report.missing).not.toContainEqual(
+                expect.objectContaining({ fileId: file.id }),
+            );
+            expect(row).toMatchObject({ status: 'active', missingAt: null });
+            expect(await storage.exists(file.objectKey)).toBe(true);
+
+            const opened = await filesService.open(file.id);
+            const chunks: Buffer[] = [];
+            for await (const chunk of opened.stream) {
+                chunks.push(Buffer.from(chunk as Uint8Array));
+            }
+            expect(Buffer.concat(chunks)).toEqual(content);
+        } finally {
+            continueInventory.release();
+            inventory.mockRestore();
+        }
+    });
+
+    it('rechecks physical absence under the row lock before marking missing', async () => {
+        const content = Buffer.from('late physical object');
+        const file = await stored({
+            key: 'test/appears-before-missing-lock',
+            physical: false,
+        });
+        const lockedCheckStarted = barrier();
+        const continueLockedCheck = barrier();
+        let targetChecks = 0;
+        const exists = jest
+            .spyOn(storage, 'exists')
+            .mockImplementation(async (objectKey) => {
+                if (objectKey !== file.objectKey) {
+                    return fs.existsSync(storage.resolveObjectKey(objectKey));
+                }
+                targetChecks += 1;
+                if (targetChecks === 1) return false;
+                if (targetChecks === 2) {
+                    lockedCheckStarted.release();
+                    await continueLockedCheck.promise;
+                }
+                return fs.existsSync(storage.resolveObjectKey(objectKey));
+            });
+
+        try {
+            const reconciliation = lifecycle.reconcile({ apply: true });
+            await lockedCheckStarted.promise;
+            await storage.write(
+                file.objectKey,
+                Readable.from(content),
+                content.length + 1,
+            );
+            continueLockedCheck.release();
+
+            const report = await reconciliation;
+            expect(targetChecks).toBe(2);
+            expect(report.missing).not.toContainEqual(
+                expect.objectContaining({ fileId: file.id }),
+            );
+            expect(await files.findOneByOrFail({ id: file.id })).toMatchObject({
+                status: 'active',
+                missingAt: null,
+            });
+            expect(await storage.exists(file.objectKey)).toBe(true);
+        } finally {
+            continueLockedCheck.release();
+            exists.mockRestore();
+        }
+    });
+
     it('keeps dry-run side-effect free and applies stale, orphan, and missing transitions repeatably', async () => {
         const base = new Date('2026-08-26T00:00:00.000Z');
         const now = new Date(base.getTime() + 8 * 24 * 60 * 60 * 1000);
@@ -371,3 +466,11 @@ describe('file lifecycle reconciliation on migrated PostgreSQL', () => {
         remove.mockRestore();
     });
 });
+
+function barrier(): { promise: Promise<void>; release: () => void } {
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    return { promise, release };
+}

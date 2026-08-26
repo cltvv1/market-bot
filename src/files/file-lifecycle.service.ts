@@ -180,11 +180,17 @@ export class FileLifecycleService {
         for (const file of files) {
             if (file.purgedAt) continue;
             const item = { fileId: file.id, objectKey: file.objectKey };
-            const exists = entries.get(file.objectKey)?.kind === 'object';
+            let exists = entries.get(file.objectKey)?.kind === 'object';
             if (file.status === 'active' && !exists) {
-                report.missing.push(item);
-                if (apply) await this.markMissing(file.id, now);
-                continue;
+                exists = await this.storage.exists(file.objectKey);
+                if (!exists) {
+                    if (!apply) {
+                        report.missing.push(item);
+                    } else if (await this.markMissing(file.id, now)) {
+                        report.missing.push(item);
+                    }
+                    continue;
+                }
             }
             if (file.status === 'active' && verifyChecksums && exists) {
                 try {
@@ -238,10 +244,25 @@ export class FileLifecycleService {
     }
 
     private markMissing(fileId: number, now: Date) {
-        return this.files.update(
-            { id: fileId, status: 'active' },
-            { status: 'missing', missingAt: now },
-        );
+        return this.dataSource.transaction(async (manager) => {
+            const file = await manager
+                .getRepository(StoredFileEntity)
+                .createQueryBuilder('file')
+                .setLock('pessimistic_write')
+                .where('file.id = :fileId', { fileId })
+                .getOne();
+            if (
+                !file ||
+                file.status !== 'active' ||
+                (await this.storage.exists(file.objectKey))
+            ) {
+                return false;
+            }
+            file.status = 'missing';
+            file.missingAt ??= now;
+            await manager.save(file);
+            return true;
+        });
     }
 
     private markCorrupt(fileId: number, now: Date) {
