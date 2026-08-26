@@ -15,6 +15,7 @@ import { UserEntity } from 'src/users/entities/user.entity';
 export type StoredFileStatus =
     | 'active'
     | 'missing'
+    | 'corrupt'
     | 'deleted'
     | 'pending'
     | 'rejected';
@@ -24,6 +25,7 @@ export type StoredFileStatus =
     unique: true,
 })
 @Index('IDX_stored_files_sha256', ['sha256'])
+@Index('IDX_stored_files_lifecycle', ['status', 'purgeAfter'])
 @Check(
     'CK_stored_files_object_key_relative',
     `left("objectKey", 1) NOT IN ('/', chr(92))
@@ -34,7 +36,7 @@ export type StoredFileStatus =
 @Check('CK_stored_files_size', `"sizeBytes" >= 0`)
 @Check(
     'CK_stored_files_status',
-    `"status" IN ('active','missing','deleted','pending','rejected')`,
+    `"status" IN ('active','missing','corrupt','deleted','pending','rejected')`,
 )
 export class StoredFileEntity {
     @PrimaryGeneratedColumn()
@@ -83,6 +85,24 @@ export class StoredFileEntity {
 
     @Column({ type: 'jsonb', nullable: true })
     metadata: Record<string, unknown> | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    deletedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    missingAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    lastVerifiedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    corruptAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    purgeAfter: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    purgedAt: Date | null;
 
     @CreateDateColumn()
     createdAt: Date;

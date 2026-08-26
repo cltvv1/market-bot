@@ -25,6 +25,7 @@ describe('pre-production database baseline', () => {
             { name: 'AuthorizeStaffNotifications1787750400000' },
             { name: 'AddCatalogFoundation1787836800000' },
             { name: 'AddSupportKnowledgeFoundation1787923200000' },
+            { name: 'HardenFileLifecycle1788009600000' },
         ]);
     });
 
@@ -166,5 +167,43 @@ describe('pre-production database baseline', () => {
                 [sha256],
             ),
         ).rejects.toThrow();
+    });
+
+    it('contains the reviewed StoredFile lifecycle columns and status', async () => {
+        const columns: Array<{ column_name: string }> = await dataSource.query(
+            `SELECT column_name
+             FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name = 'stored_files'
+               AND column_name = ANY($1::text[])
+             ORDER BY column_name`,
+            [
+                [
+                    'deletedAt',
+                    'missingAt',
+                    'lastVerifiedAt',
+                    'corruptAt',
+                    'purgeAfter',
+                    'purgedAt',
+                ],
+            ],
+        );
+        expect(columns.map((column) => column.column_name)).toEqual(
+            [
+                'corruptAt',
+                'deletedAt',
+                'lastVerifiedAt',
+                'missingAt',
+                'purgeAfter',
+                'purgedAt',
+            ].sort(),
+        );
+        const constraints: Array<{ definition: string }> =
+            await dataSource.query(
+                `SELECT pg_get_constraintdef(oid) AS definition
+                 FROM pg_constraint
+                 WHERE conname = 'CK_stored_files_status'`,
+            );
+        expect(constraints[0].definition).toContain('corrupt');
     });
 });

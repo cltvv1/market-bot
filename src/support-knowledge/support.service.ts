@@ -1,8 +1,10 @@
+import type { Readable } from 'node:stream';
 import {
     BadRequestException,
     ConflictException,
     Injectable,
     NotFoundException,
+    PayloadTooLargeException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { AuditService } from 'src/audit/audit.service';
@@ -10,6 +12,14 @@ import type { AdminPrincipal } from 'src/admin/admin-auth.types';
 import { normalizeCatalogAlias } from 'src/catalog/catalog.types';
 import { CatalogProductAliasEntity } from 'src/catalog/entities/catalog-product-alias.entity';
 import { CatalogProductEntity } from 'src/catalog/entities/catalog-product.entity';
+import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
+import { FilesService } from 'src/files/files.service';
+import {
+    assertSupportFileKindAllowed,
+    decodeSupportFilename,
+    isSupportFileKindAllowed,
+    type SupportFileKind,
+} from 'src/files/support-file-policy';
 import {
     DataSource,
     EntityManager,
@@ -36,6 +46,8 @@ import { SupportResourceEntity } from './entities/support-resource.entity';
 import {
     CONTENT_PAGE_SIZE_DEFAULT,
     isSafeHttpsUrl,
+    publicSupportKindCompatibilitySql,
+    publicUsableVersionExistsSql,
 } from './support-knowledge.types';
 
 @Injectable()
@@ -55,6 +67,7 @@ export class SupportService {
         @InjectRepository(ProductKnowledgeArticleEntity)
         private readonly productArticles: Repository<ProductKnowledgeArticleEntity>,
         private readonly audit: AuditService,
+        private readonly files: FilesService,
     ) {}
 
     async listPublicProducts(query: SupportProductListQueryDto) {
@@ -99,14 +112,7 @@ export class SupportService {
             .innerJoinAndSelect('link.resource', 'resource')
             .where('link.productId = :productId', { productId: product.id })
             .andWhere('resource.isPublished = true')
-            .andWhere(
-                `EXISTS (
-                    SELECT 1
-                    FROM "support_resource_versions" "publishedVersion"
-                    WHERE "publishedVersion"."resourceId" = resource.id
-                      AND "publishedVersion"."isPublished" = true
-                )`,
-            )
+            .andWhere(publicUsableVersionExistsSql('resource'))
             .orderBy('link.sortOrder', 'ASC')
             .addOrderBy('resource.type', 'ASC')
             .addOrderBy('resource.title', 'ASC')
@@ -178,6 +184,7 @@ export class SupportService {
                 .getMany(),
             this.versions.find({
                 where: { resourceId: resource.id, isPublished: true },
+                relations: { storedFile: true },
                 order: {
                     isCurrent: 'DESC',
                     sortOrder: 'ASC',
@@ -186,7 +193,21 @@ export class SupportService {
                 },
             }),
         ]);
-        if (!versions.length) {
+        const usableVersions = (
+            await Promise.all(
+                versions.map(async (version) => ({
+                    version,
+                    usable: await this.isPublicUsableVersion(
+                        version,
+                        true,
+                        resource.type,
+                    ),
+                })),
+            )
+        )
+            .filter((item) => item.usable)
+            .map((item) => item.version);
+        if (!usableVersions.length) {
             throw new NotFoundException('Support resource was not found');
         }
         return {
@@ -195,9 +216,37 @@ export class SupportService {
                 ...this.presentProduct(link.product),
                 compatibilityNote: link.compatibilityNote,
             })),
-            versions: versions.map((version) =>
-                this.presentPublicVersion(version),
+            versions: usableVersions.map((version) =>
+                this.presentPublicVersion(version, resource.slug),
             ),
+        };
+    }
+
+    async openPublicHostedDownload(resourceSlug: string, versionId: number) {
+        const version = await this.versions.findOne({
+            where: {
+                id: versionId,
+                isPublished: true,
+                resource: { slug: resourceSlug, isPublished: true },
+            },
+            relations: { resource: true, storedFile: true },
+        });
+        if (
+            !version ||
+            version.distributionMode !== 'hosted' ||
+            !(await this.isPublicUsableVersion(
+                version,
+                true,
+                version.resource.type,
+            )) ||
+            !version.storedFile
+        ) {
+            throw new NotFoundException('Support file was not found');
+        }
+        const opened = await this.files.open(version.storedFile.id);
+        return {
+            ...opened,
+            etag: `"${opened.file.sha256}"`,
         };
     }
 
@@ -330,6 +379,7 @@ export class SupportService {
             }),
             this.versions.find({
                 where: { resourceId: id },
+                relations: { storedFile: true },
                 order: { sortOrder: 'ASC', id: 'ASC' },
             }),
         ]);
@@ -463,8 +513,27 @@ export class SupportService {
                     .getRepository(SupportResourceVersionEntity)
                     .find({
                         where: { resourceId: id },
+                        relations: { storedFile: true },
                         order: { sortOrder: 'ASC', id: 'ASC' },
                     });
+                if (resource.isPublished) {
+                    const hasUsableVersion = (
+                        await Promise.all(
+                            versions.map((version) =>
+                                this.isPublicUsableVersion(
+                                    version,
+                                    true,
+                                    resource.type,
+                                ),
+                            ),
+                        )
+                    ).some(Boolean);
+                    if (!hasUsableVersion) {
+                        throw new ConflictException(
+                            'Published support resource must retain a usable version',
+                        );
+                    }
+                }
                 await this.recordAudit(
                     manager,
                     actor,
@@ -491,17 +560,31 @@ export class SupportService {
             const resources = manager.getRepository(SupportResourceEntity);
             const resource = await this.requireResource(resources, id);
             if (isPublished) {
-                const publishedVersionCount = await manager
+                const publishedVersions = await manager
                     .getRepository(SupportResourceVersionEntity)
-                    .countBy({ resourceId: id, isPublished: true });
+                    .find({
+                        where: { resourceId: id, isPublished: true },
+                        relations: { storedFile: true },
+                    });
                 if (!resource.slug || !resource.title || !resource.type) {
                     throw new ConflictException(
                         'Support resource is not ready for publication',
                     );
                 }
-                if (!publishedVersionCount) {
+                const hasUsableVersion = (
+                    await Promise.all(
+                        publishedVersions.map((version) =>
+                            this.isPublicUsableVersion(
+                                version,
+                                true,
+                                resource.type,
+                            ),
+                        ),
+                    )
+                ).some(Boolean);
+                if (!hasUsableVersion) {
                     throw new ConflictException(
-                        'A published resource version is required',
+                        'A usable published resource version is required',
                     );
                 }
             }
@@ -572,6 +655,108 @@ export class SupportService {
         });
     }
 
+    async uploadHostedVersionFile(
+        versionId: number,
+        source: Readable,
+        input: {
+            filename?: string;
+            contentType?: string;
+            contentLength?: string;
+            actor: AdminPrincipal;
+        },
+    ) {
+        const initial = await this.versions.findOne({
+            where: { id: versionId },
+            relations: { resource: true },
+        });
+        this.assertHostedUploadTarget(initial);
+        const originalName = decodeSupportFilename(input.filename);
+        const declaredSize = this.parseContentLength(input.contentLength);
+        const pending = await this.files.saveSupportStream({
+            source,
+            originalName,
+            declaredMime: input.contentType,
+            declaredSize,
+            resourceId: initial.resourceId,
+            versionId,
+            resourceType: initial.resource.type,
+            createdByStaffId: input.actor.id,
+        });
+        const attached = await this.dataSource.transaction(async (manager) => {
+            const version = await manager
+                .getRepository(SupportResourceVersionEntity)
+                .findOne({
+                    where: { id: versionId },
+                    lock: { mode: 'pessimistic_write' },
+                });
+            if (version) {
+                version.resource = await manager
+                    .getRepository(SupportResourceEntity)
+                    .findOneByOrFail({ id: version.resourceId });
+            }
+            const storedFile = await manager
+                .getRepository(StoredFileEntity)
+                .findOne({
+                    where: { id: pending.id },
+                    lock: { mode: 'pessimistic_write' },
+                });
+            if (!storedFile) return null;
+            if (
+                !version ||
+                !this.isHostedUploadTarget(version) ||
+                !this.isTrustedPendingFile(
+                    storedFile,
+                    version,
+                    input.actor.id,
+                ) ||
+                !(await this.files.exists(storedFile))
+            ) {
+                await this.files.rejectPending(storedFile, manager);
+                return null;
+            }
+            const detectedKind = storedFile.metadata
+                ?.detectedFileKind as SupportFileKind;
+            try {
+                assertSupportFileKindAllowed(
+                    detectedKind,
+                    version.resource.type,
+                );
+            } catch {
+                await this.files.rejectPending(storedFile, manager);
+                return null;
+            }
+            storedFile.status = 'active';
+            version.storedFileId = storedFile.id;
+            version.storedFile = storedFile;
+            await manager.getRepository(StoredFileEntity).save(storedFile);
+            await manager
+                .getRepository(SupportResourceVersionEntity)
+                .save(version);
+            await this.recordAudit(
+                manager,
+                input.actor,
+                'support.version.file.attach',
+                'support_resource_version',
+                version.id,
+                {
+                    resourceId: version.resourceId,
+                    versionId: version.id,
+                    storedFileId: storedFile.id,
+                    sha256: storedFile.sha256,
+                    detectedFileKind: detectedKind,
+                    sizeBytes: storedFile.sizeBytes,
+                },
+            );
+            return this.presentAdminVersion(version);
+        });
+        if (!attached) {
+            throw new ConflictException(
+                'The hosted version can no longer accept this file',
+            );
+        }
+        return attached;
+    }
+
     updateVersion(
         versionId: number,
         input: UpdateSupportResourceVersionDto,
@@ -631,7 +816,8 @@ export class SupportService {
             if (input.sortOrder !== undefined)
                 version.sortOrder = input.sortOrder;
             this.assertVersionShape(version);
-            if (version.isPublished) this.assertVersionPublishReady(version);
+            if (version.isPublished)
+                await this.assertVersionPublishReady(manager, version);
             version = await versions.save(version);
             await this.recordAudit(
                 manager,
@@ -659,7 +845,8 @@ export class SupportService {
                 SupportResourceVersionEntity,
             );
             const version = await this.requireVersion(versions, versionId);
-            if (isPublished) this.assertVersionPublishReady(version);
+            if (isPublished)
+                await this.assertVersionPublishReady(manager, version);
             if (version.isPublished !== isPublished) {
                 version.isPublished = isPublished;
                 await versions.save(version);
@@ -772,11 +959,38 @@ export class SupportService {
                     ? 'searchVersion.resourceId = resource.id AND searchVersion.isPublished = true'
                     : 'searchVersion.resourceId = resource.id',
             )
+            .leftJoin(
+                StoredFileEntity,
+                'searchStoredFile',
+                'searchStoredFile.id = searchVersion.storedFileId',
+            )
             .distinct(true);
         if (publicOnly) {
             builder
                 .andWhere('resource.isPublished = true')
-                .andWhere('searchVersion.id IS NOT NULL');
+                .andWhere('searchVersion.id IS NOT NULL')
+                .andWhere(
+                    `(
+                        (
+                            searchVersion.distributionMode = 'external'
+                            AND searchVersion.externalUrl LIKE 'https://%'
+                            AND searchVersion.externalUrl !~ '^https://[^/]*@'
+                        )
+                        OR
+                        (
+                            searchVersion.distributionMode = 'hosted'
+                            AND searchStoredFile.status = 'active'
+                            AND searchStoredFile.purgedAt IS NULL
+                            AND "searchStoredFile"."metadata" ->> 'purpose' = 'support-resource'
+                            AND "searchStoredFile"."metadata" ->> 'supportResourceId' = "resource"."id"::text
+                            AND "searchStoredFile"."metadata" ->> 'supportResourceVersionId' = "searchVersion"."id"::text
+                            AND ${publicSupportKindCompatibilitySql(
+                                'resource',
+                                '"searchStoredFile"',
+                            )}
+                        )
+                    )`,
+                );
         }
         if (query.product) {
             builder.andWhere('linkedProduct.slug = :productSlug', {
@@ -897,6 +1111,7 @@ export class SupportService {
             }),
             manager.getRepository(SupportResourceVersionEntity).find({
                 where: { resourceId: resource.id },
+                relations: { storedFile: true },
                 order: { sortOrder: 'ASC', id: 'ASC' },
             }),
         ]);
@@ -952,17 +1167,146 @@ export class SupportService {
         this.assertSafeOptionalUrl(version.externalUrl, 'externalUrl');
     }
 
-    private assertVersionPublishReady(version: SupportResourceVersionEntity) {
-        if (version.distributionMode === 'hosted') {
+    private async assertVersionPublishReady(
+        manager: EntityManager,
+        version: SupportResourceVersionEntity,
+    ) {
+        if (version.distributionMode === 'external') {
+            if (!version.externalUrl || !isSafeHttpsUrl(version.externalUrl)) {
+                throw new ConflictException(
+                    'A safe HTTPS externalUrl is required for publication',
+                );
+            }
+            return;
+        }
+        if (!version.storedFileId) {
             throw new ConflictException(
-                'Hosted support publication requires the future FS-1 attachment workflow',
+                'An attached hosted file is required for publication',
             );
         }
-        if (!version.externalUrl || !isSafeHttpsUrl(version.externalUrl)) {
+        const file = await manager.getRepository(StoredFileEntity).findOneBy({
+            id: version.storedFileId,
+        });
+        if (
+            !file ||
+            file.status !== 'active' ||
+            file.purgedAt ||
+            !this.isTrustedFileBinding(file, version) ||
+            !(await this.files.exists(file))
+        ) {
             throw new ConflictException(
-                'A safe HTTPS externalUrl is required for publication',
+                'The attached hosted file is not available for publication',
             );
         }
+        const resource = await manager
+            .getRepository(SupportResourceEntity)
+            .findOneBy({ id: version.resourceId });
+        const detectedFileKind = file.metadata?.detectedFileKind;
+        if (
+            !resource ||
+            typeof detectedFileKind !== 'string' ||
+            !isSupportFileKindAllowed(detectedFileKind, resource.type)
+        ) {
+            throw new ConflictException(
+                'The attached file is incompatible with the support resource type',
+            );
+        }
+    }
+
+    private assertHostedUploadTarget(
+        version: SupportResourceVersionEntity | null,
+    ): asserts version is SupportResourceVersionEntity & {
+        resource: SupportResourceEntity;
+    } {
+        if (!version) {
+            throw new NotFoundException(
+                'Support resource version was not found',
+            );
+        }
+        if (!this.isHostedUploadTarget(version)) {
+            throw new ConflictException(
+                'Only an unpublished hosted version without a file accepts upload',
+            );
+        }
+    }
+
+    private isHostedUploadTarget(version: SupportResourceVersionEntity) {
+        return (
+            version.distributionMode === 'hosted' &&
+            !version.isPublished &&
+            version.storedFileId === null
+        );
+    }
+
+    private isTrustedPendingFile(
+        file: StoredFileEntity,
+        version: SupportResourceVersionEntity,
+        actorStaffId: number,
+    ) {
+        return (
+            file.status === 'pending' &&
+            file.createdByStaffId === actorStaffId &&
+            file.metadata?.purpose === 'support-resource' &&
+            Number(file.metadata.supportResourceId) === version.resourceId &&
+            Number(file.metadata.supportResourceVersionId) === version.id &&
+            typeof file.metadata.detectedFileKind === 'string'
+        );
+    }
+
+    private isTrustedFileBinding(
+        file: StoredFileEntity,
+        version: SupportResourceVersionEntity,
+    ) {
+        return (
+            file.metadata?.purpose === 'support-resource' &&
+            Number(file.metadata.supportResourceId) === version.resourceId &&
+            Number(file.metadata.supportResourceVersionId) === version.id &&
+            typeof file.metadata.detectedFileKind === 'string'
+        );
+    }
+
+    private parseContentLength(value: string | undefined) {
+        if (value === undefined) return undefined;
+        if (!/^\d+$/.test(value)) {
+            throw new BadRequestException('Invalid Content-Length header');
+        }
+        const size = Number(value);
+        if (!Number.isSafeInteger(size) || size < 1) {
+            throw new BadRequestException('Invalid Content-Length header');
+        }
+        if (size > this.files.getSupportMaxBytes()) {
+            throw new PayloadTooLargeException(
+                'File exceeds the configured size limit',
+            );
+        }
+        return size;
+    }
+
+    private async isPublicUsableVersion(
+        version: SupportResourceVersionEntity,
+        checkPhysical: boolean,
+        resourceType?: SupportResourceEntity['type'],
+    ) {
+        if (!version.isPublished) return false;
+        if (version.distributionMode === 'external') {
+            return Boolean(
+                version.externalUrl && isSafeHttpsUrl(version.externalUrl),
+            );
+        }
+        const file = version.storedFile;
+        const detectedFileKind = file?.metadata?.detectedFileKind;
+        const compatible =
+            !resourceType ||
+            (typeof detectedFileKind === 'string' &&
+                isSupportFileKindAllowed(detectedFileKind, resourceType));
+        return Boolean(
+            file &&
+                file.status === 'active' &&
+                !file.purgedAt &&
+                this.isTrustedFileBinding(file, version) &&
+                compatible &&
+                (!checkPhysical || (await this.files.exists(file))),
+        );
     }
 
     private assertSafeOptionalUrl(
@@ -1048,7 +1392,22 @@ export class SupportService {
         };
     }
 
-    private presentPublicVersion(version: SupportResourceVersionEntity) {
+    private presentPublicVersion(
+        version: SupportResourceVersionEntity,
+        resourceSlug?: string,
+    ) {
+        const hostedFile =
+            version.distributionMode === 'hosted' &&
+            resourceSlug &&
+            version.storedFile?.status === 'active'
+                ? {
+                      filename: version.storedFile.originalName,
+                      mimeType: version.storedFile.mimeType,
+                      sizeBytes: version.storedFile.sizeBytes,
+                      sha256: version.storedFile.sha256,
+                      downloadUrl: `/api/support/resources/${encodeURIComponent(resourceSlug)}/versions/${version.id}/download`,
+                  }
+                : null;
         return {
             id: version.id,
             versionLabel: version.versionLabel,
@@ -1063,6 +1422,7 @@ export class SupportService {
                 isSafeHttpsUrl(version.externalUrl)
                     ? version.externalUrl
                     : null,
+            hostedFile,
             releaseNotesMarkdown: version.releaseNotesMarkdown,
             isCurrent: version.isCurrent,
         };
@@ -1073,6 +1433,19 @@ export class SupportService {
             ...this.presentPublicVersion(version),
             resourceId: version.resourceId,
             hasStoredFile: version.storedFileId !== null,
+            storedFile: version.storedFile
+                ? {
+                      id: version.storedFile.id,
+                      originalName: version.storedFile.originalName,
+                      mimeType: version.storedFile.mimeType,
+                      sizeBytes: version.storedFile.sizeBytes,
+                      sha256: version.storedFile.sha256,
+                      status: version.storedFile.status,
+                      lastVerifiedAt: version.storedFile.lastVerifiedAt,
+                      missingAt: version.storedFile.missingAt,
+                      corruptAt: version.storedFile.corruptAt,
+                  }
+                : null,
             isPublished: version.isPublished,
             sortOrder: version.sortOrder,
             createdAt: version.createdAt,

@@ -3,7 +3,7 @@ import { INestApplication, type LoggerService } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json, urlencoded } from 'express';
-import type { Express } from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 import { AdminAuthService } from './admin/admin-auth.service';
 import { ApiErrorFilter } from './common/http/api-error.filter';
@@ -22,12 +22,22 @@ export function configureApplication(
     expressApp.set('trust proxy', config.get<number>('TRUST_PROXY') ?? 0);
 
     app.use(helmet({ contentSecurityPolicy: false }));
-    app.use(json({ limit: config.get<string>('HTTP_JSON_LIMIT') || '256kb' }));
-    app.use(
-        urlencoded({
-            extended: false,
-            limit: config.get<string>('HTTP_URLENCODED_LIMIT') || '64kb',
-        }),
+    const jsonParser = json({
+        limit: config.get<string>('HTTP_JSON_LIMIT') || '256kb',
+    });
+    const urlencodedParser = urlencoded({
+        extended: false,
+        limit: config.get<string>('HTTP_URLENCODED_LIMIT') || '64kb',
+    });
+    app.use((request: Request, response: Response, next: NextFunction) =>
+        isRawSupportUpload(request)
+            ? next()
+            : jsonParser(request, response, next),
+    );
+    app.use((request: Request, response: Response, next: NextFunction) =>
+        isRawSupportUpload(request)
+            ? next()
+            : urlencodedParser(request, response, next),
     );
     app.use(
         (
@@ -70,6 +80,15 @@ export function configureApplication(
     app.useGlobalFilters(new ApiErrorFilter());
     configureSwagger(app, config);
     if (logger) app.useLogger(logger);
+}
+
+function isRawSupportUpload(request: { method: string; path: string }) {
+    return (
+        request.method === 'PUT' &&
+        /^\/admin\/api\/support\/resource-versions\/\d+\/file$/.test(
+            request.path,
+        )
+    );
 }
 
 function configureSwagger(app: INestApplication, config: ConfigService) {

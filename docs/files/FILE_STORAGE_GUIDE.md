@@ -23,6 +23,7 @@ the PostgreSQL constraint.
 | service invoice | 15 MB | PDF |
 | generated PDF / ATOL consent | 15 MB | server-generated PDF |
 | signed document | 20 MB | PDF, JPEG, PNG, WebP |
+| hosted support resource | 512 MB default | PDF, ZIP, PE/EXE, MSI, 7z, RAR, CAB, gzip/tgz by strict signature |
 
 Common PDF/image/archive/audio/video signatures are checked. This layer is not
 an antivirus scanner.
@@ -60,3 +61,20 @@ authorizes the registration, ticket or service request and then asks
 Security coverage includes `local-file-storage.provider.spec.ts`,
 `file-policies.spec.ts`, `registration-readiness.integration-spec.ts` and
 `preproduction-baseline.integration-spec.ts`.
+
+## Lifecycle maintenance
+
+`StoredFile` has explicit pending, active, missing, corrupt, deleted, rejected,
+and purged lifecycle timestamps. Domain removal calls idempotent
+`FilesService.logicalDelete`; it does not delete bytes inline.
+
+Run `npm run files:reconcile` for a deterministic dry-run. Use `--apply` only
+after reviewing the report, and add `--verify-checksums` when the maintenance
+window permits reading full objects. Defaults are one hour for stale temporary
+and pending data, seven days before an active unreferenced file is logically
+deleted, and 24 hours before tracked or physical-orphan purge. PostgreSQL FK
+inspection blocks physical deletion while any domain reference exists.
+
+Hosted Support uses a separate raw stream contract and never uses the legacy
+caller-MIME fallback. Full details and the deployment runbook are in
+`docs/architecture/2026-08-26-file-lifecycle-support-hosting.md`.

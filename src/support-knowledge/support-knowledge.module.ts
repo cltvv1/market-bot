@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AdminModule } from 'src/admin/admin.module';
 import { AuditModule } from 'src/audit/audit.module';
 import { CatalogProductEntity } from 'src/catalog/entities/catalog-product.entity';
+import { FilesModule } from 'src/files/files.module';
 import { AdminKnowledgeController } from './admin-knowledge.controller';
 import { AdminSupportController } from './admin-support.controller';
 import { KnowledgeArticleSupportResourceEntity } from './entities/knowledge-article-support-resource.entity';
@@ -31,6 +32,7 @@ import { SupportService } from './support.service';
         ]),
         AdminModule,
         AuditModule,
+        FilesModule,
     ],
     controllers: [
         PublicSupportController,

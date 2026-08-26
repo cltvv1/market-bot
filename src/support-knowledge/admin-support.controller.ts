@@ -2,14 +2,17 @@ import {
     Body,
     Controller,
     Get,
+    Headers,
     Param,
     ParseIntPipe,
     Patch,
     Post,
     Put,
     Query,
+    Req,
     UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
     CurrentAdmin,
     RequirePermissions,
@@ -19,6 +22,7 @@ import {
     AdminSessionGuard,
 } from 'src/admin/admin-auth.guard';
 import type { AdminPrincipal } from 'src/admin/admin-auth.types';
+import { RateLimit } from 'src/security/rate-limit';
 import {
     CreateSupportResourceDto,
     CreateSupportResourceVersionDto,
@@ -145,6 +149,25 @@ export class AdminSupportController {
         @CurrentAdmin() admin: AdminPrincipal,
     ) {
         return this.support.updateVersion(versionId, body, admin);
+    }
+
+    @Put('resource-versions/:versionId/file')
+    @RequirePermissions('support.manage')
+    @RateLimit('admin-support-file-upload', 20, 600)
+    uploadVersionFile(
+        @Param('versionId', ParseIntPipe) versionId: number,
+        @Req() request: Request,
+        @Headers('x-vitma-filename') filename: string | undefined,
+        @Headers('content-type') contentType: string | undefined,
+        @Headers('content-length') contentLength: string | undefined,
+        @CurrentAdmin() admin: AdminPrincipal,
+    ) {
+        return this.support.uploadHostedVersionFile(versionId, request, {
+            filename,
+            contentType,
+            contentLength,
+            actor: admin,
+        });
     }
 
     @Post('resource-versions/:versionId/publish')

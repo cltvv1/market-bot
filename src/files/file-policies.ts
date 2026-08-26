@@ -107,6 +107,38 @@ export const FILE_POLICIES: Record<FilePurpose, FilePolicy> = {
         false,
         true,
     ),
+    'support-resource': policy(
+        512 * MB,
+        [
+            'application/pdf',
+            'application/zip',
+            'application/octet-stream',
+            'application/vnd.microsoft.portable-executable',
+            'application/x-msdownload',
+            'application/x-msi',
+            'application/x-7z-compressed',
+            'application/vnd.rar',
+            'application/x-rar-compressed',
+            'application/vnd.ms-cab-compressed',
+            'application/x-cab',
+            'application/gzip',
+            'application/x-gzip',
+        ],
+        [
+            '.pdf',
+            '.zip',
+            '.exe',
+            '.msi',
+            '.7z',
+            '.rar',
+            '.cab',
+            '.gz',
+            '.tgz',
+            '.tar.gz',
+        ],
+        false,
+        true,
+    ),
 };
 
 function policy(
