@@ -2,6 +2,7 @@ import { Check, Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, 
 import { AdminSessionEntity } from 'src/admin/entities/admin-session.entity';
 import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 import { UserEntity } from 'src/users/entities/user.entity';
+import { CustomerWebSessionEntity } from 'src/web-session/entities/customer-web-session.entity';
 
 export type AuditActorType = 'staff' | 'customer' | 'system';
 export type AuditResult = 'success' | 'denied' | 'failure';
@@ -11,6 +12,7 @@ export type AuditResult = 'success' | 'denied' | 'failure';
 @Index('IDX_audit_events_actor_staff', ['actorStaffId'])
 @Index('IDX_audit_events_action', ['action'])
 @Index('IDX_audit_events_target', ['targetType', 'targetId'])
+@Index('IDX_audit_events_actor_web_session', ['actorWebSessionId'])
 @Check('CK_audit_events_actor_type', `"actorType" IN ('staff','customer','system')`)
 @Check('CK_audit_events_result', `"result" IN ('success','denied','failure')`)
 export class AuditEventEntity {
@@ -43,6 +45,19 @@ export class AuditEventEntity {
     @ManyToOne(() => AdminSessionEntity, { nullable: true, onDelete: 'SET NULL' })
     @JoinColumn({ name: 'actorSessionId', foreignKeyConstraintName: 'FK_audit_session' })
     actorSession: AdminSessionEntity | null;
+
+    @Column({ type: 'integer', nullable: true })
+    actorWebSessionId: number | null;
+
+    @ManyToOne(() => CustomerWebSessionEntity, {
+        nullable: true,
+        onDelete: 'SET NULL',
+    })
+    @JoinColumn({
+        name: 'actorWebSessionId',
+        foreignKeyConstraintName: 'FK_audit_web_session',
+    })
+    actorWebSession: CustomerWebSessionEntity | null;
 
     @Column({ type: 'varchar' })
     action: string;

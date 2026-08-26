@@ -32,6 +32,7 @@ export const ADMIN_PERMISSIONS = [
     'integrations.manage',
     'catalog.read',
     'catalog.manage',
+    'orders.read.all',
     'support.read',
     'support.manage',
     'knowledge.read',
@@ -72,6 +73,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[]> = {
     sales_manager: [
         'catalog.read',
         'catalog.manage',
+        'orders.read.all',
         'support.read',
         'support.manage',
         'knowledge.read',

@@ -28,6 +28,7 @@ import { IntegrationsModule } from './integrations/integrations.module';
 import { OutboundDeliveriesModule } from './outbound-deliveries/outbound-deliveries.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { SupportKnowledgeModule } from './support-knowledge/support-knowledge.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -82,7 +83,7 @@ import { SupportKnowledgeModule } from './support-knowledge/support-knowledge.mo
     TicketsModule,
     FilesModule,
     AuditModule,
-    UiServingModule, IntegrationsModule, OutboundDeliveriesModule, CatalogModule, SupportKnowledgeModule,
+    UiServingModule, IntegrationsModule, OutboundDeliveriesModule, CatalogModule, SupportKnowledgeModule, OrdersModule,
   ],
   controllers: [AppController],
   providers: [

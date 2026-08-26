@@ -9,6 +9,7 @@ export interface AuditInput {
     actorStaffId?: number;
     actorCustomerId?: number;
     actorSessionId?: number;
+    actorWebSessionId?: number;
     action: string;
     targetType: string;
     targetId?: string | number;
@@ -46,6 +47,7 @@ export class AuditService {
             actorStaffId: input.actorStaffId ?? null,
             actorCustomerId: input.actorCustomerId ?? null,
             actorSessionId: input.actorSessionId ?? null,
+            actorWebSessionId: input.actorWebSessionId ?? null,
             action: input.action,
             targetType: input.targetType,
             targetId: input.targetId === undefined ? null : String(input.targetId),
