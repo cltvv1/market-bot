@@ -24,6 +24,7 @@ describe('pre-production database baseline', () => {
             { name: 'AddDurableOutboundDeliveries1787664000000' },
             { name: 'AuthorizeStaffNotifications1787750400000' },
             { name: 'AddCatalogFoundation1787836800000' },
+            { name: 'AddSupportKnowledgeFoundation1787923200000' },
         ]);
     });
 
@@ -46,6 +47,13 @@ describe('pre-production database baseline', () => {
             'catalog_categories',
             'catalog_products',
             'catalog_product_aliases',
+            'product_support_profiles',
+            'support_resources',
+            'support_resource_versions',
+            'product_support_resources',
+            'knowledge_articles',
+            'product_knowledge_articles',
+            'knowledge_article_support_resources',
         ];
         const rows: Array<{ table_name: string }> = await dataSource.query(
             `SELECT table_name
