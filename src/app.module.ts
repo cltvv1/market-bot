@@ -26,6 +26,7 @@ import { AuditModule } from './audit/audit.module';
 import { UiServingModule } from './ui/ui-serving.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { OutboundDeliveriesModule } from './outbound-deliveries/outbound-deliveries.module';
+import { CatalogModule } from './catalog/catalog.module';
 
 @Module({
   imports: [
@@ -80,7 +81,7 @@ import { OutboundDeliveriesModule } from './outbound-deliveries/outbound-deliver
     TicketsModule,
     FilesModule,
     AuditModule,
-    UiServingModule, IntegrationsModule, OutboundDeliveriesModule,
+    UiServingModule, IntegrationsModule, OutboundDeliveriesModule, CatalogModule,
   ],
   controllers: [AppController],
   providers: [

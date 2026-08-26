@@ -23,6 +23,7 @@ describe('pre-production database baseline', () => {
             { name: 'AddDurableInboundCommands1787577304950' },
             { name: 'AddDurableOutboundDeliveries1787664000000' },
             { name: 'AuthorizeStaffNotifications1787750400000' },
+            { name: 'AddCatalogFoundation1787836800000' },
         ]);
     });
 
@@ -42,6 +43,9 @@ describe('pre-production database baseline', () => {
             'inbound_commands',
             'user_dialog_states',
             'outbound_deliveries',
+            'catalog_categories',
+            'catalog_products',
+            'catalog_product_aliases',
         ];
         const rows: Array<{ table_name: string }> = await dataSource.query(
             `SELECT table_name

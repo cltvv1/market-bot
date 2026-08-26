@@ -6,6 +6,7 @@ import {
     ForbiddenException,
     Get,
     Header,
+    Next,
     NotFoundException,
     Param,
     Post,
@@ -25,6 +26,7 @@ import {
 } from 'src/files/multipart-options';
 import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
+import type { NextFunction } from 'express';
 import { AdminService } from './admin.service';
 import { AdminAuthService } from './admin-auth.service';
 import {
@@ -1207,15 +1209,17 @@ export class AdminController {
     @PublicAdmin()
     getReactRoute(
         @Param('path') routePath: string | string[],
-        @Res({ passthrough: true }) response: Response,
+        @Res() response: Response,
+        @Next() next: NextFunction,
     ) {
         const parts = Array.isArray(routePath) ? routePath : [routePath];
         if (parts[0] === 'api') {
-            throw new NotFoundException('Admin API route not found');
+            next();
+            return;
         }
         response.type('text/html; charset=utf-8');
         response.setHeader('Cache-Control', 'no-store');
-        return this.getPage();
+        response.send(this.getPage());
     }
 
     private getCookie(request: Request, name: string) {

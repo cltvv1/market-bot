@@ -30,6 +30,8 @@ export const ADMIN_PERMISSIONS = [
     'opportunities.update',
     'integrations.read',
     'integrations.manage',
+    'catalog.read',
+    'catalog.manage',
     'audit.read',
 ] as const;
 
@@ -63,7 +65,7 @@ const OPERATOR_PERMISSIONS: AdminPermission[] = [
 export const ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[]> = {
     operator: OPERATOR_PERMISSIONS,
     engineer: ['serviceRequests.read.assigned', 'registrations.read.assigned'],
-    sales_manager: [],
+    sales_manager: ['catalog.read', 'catalog.manage'],
     superadmin: ADMIN_PERMISSIONS,
 };
 

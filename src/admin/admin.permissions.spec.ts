@@ -7,8 +7,14 @@ describe('admin permissions', () => {
         expect(permissions).toContain('serviceRequests.assign');
     });
 
-    it('does not grant service permissions to sales manager', () => {
-        expect(getPermissions(['sales_manager'])).toEqual([]);
+    it('grants catalog permissions but not service permissions to sales manager', () => {
+        expect(getPermissions(['sales_manager'])).toEqual([
+            'catalog.read',
+            'catalog.manage',
+        ]);
+        expect(getPermissions(['sales_manager'])).not.toContain(
+            'serviceRequests.read.all',
+        );
     });
 
     it('grants every permission to superadmin', () => {
@@ -16,5 +22,6 @@ describe('admin permissions', () => {
         expect(getPermissions(['superadmin'])).toContain(
             'serviceRequests.close',
         );
+        expect(getPermissions(['superadmin'])).toContain('catalog.manage');
     });
 });
