@@ -273,6 +273,8 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
         expect(tables.map((row) => row.table_name)).toEqual([
             'order_events',
             'order_lines',
+            'order_quote_lines',
+            'order_quotes',
             'orders',
         ]);
 
@@ -1076,7 +1078,7 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
         }
     });
 
-    it('exposes parameterized read-only admin search only to sales managers and superadmins', async () => {
+    it('exposes parameterized admin reads only to sales managers and superadmins', async () => {
         const client = await browser();
         const linked = await organization(client);
         const catalogProduct = await product();
@@ -1143,7 +1145,7 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
             .post(`/admin/api/orders/${created.body.id}/confirm`)
             .set('Origin', ORIGIN)
             .send({})
-            .expect(404);
+            .expect(400);
     });
 
     it('rolls back order, lines, timeline, and audit on a transactional audit failure', async () => {

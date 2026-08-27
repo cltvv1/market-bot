@@ -15,6 +15,7 @@ import {
     MaxLength,
     Min,
     ValidateNested,
+    ValidateIf,
 } from 'class-validator';
 import {
     ORDER_CUSTOMER_TYPES,
@@ -23,11 +24,14 @@ import {
     ORDER_ITEM_QUANTITY_MAX,
     ORDER_PAGE_NUMBER_MAX,
     ORDER_PAGE_SIZE_MAX,
+    ORDER_ASSIGNMENT_SCOPES,
+    ORDER_INTERNAL_COMMENT_MAX_LENGTH,
     ORDER_STATUSES,
     POSTGRES_INTEGER_MAX,
     type OrderCustomerType,
     type OrderDeliveryType,
     type OrderStatus,
+    type OrderAssignmentScope,
 } from '../order.types';
 
 const trim = ({ value }: { value: unknown }) =>
@@ -209,4 +213,60 @@ export class AdminOrderListQueryDto extends ClientOrderListQueryDto {
     @IsString()
     @MaxLength(200)
     search?: string;
+
+    @IsOptional()
+    @IsIn(ORDER_ASSIGNMENT_SCOPES)
+    scope?: OrderAssignmentScope;
+}
+
+export class OrderExpectedVersionDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(POSTGRES_INTEGER_MAX)
+    expectedVersion: number;
+}
+
+export class AssignOrderDto extends OrderExpectedVersionDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(POSTGRES_INTEGER_MAX)
+    managerId: number;
+}
+
+export class OrderQuoteLineDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(POSTGRES_INTEGER_MAX)
+    productId: number;
+
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(ORDER_ITEM_QUANTITY_MAX)
+    quantity: number;
+
+    @Transform(trim)
+    @ValidateIf((_object, value) => value !== null)
+    @IsString()
+    @Matches(/^\d+$/)
+    @MaxLength(20)
+    quotedUnitPriceMinor: string | null;
+}
+
+export class UpdateOrderQuoteDto extends OrderExpectedVersionDto {
+    @IsOptional()
+    @Transform(trim)
+    @IsString()
+    @MaxLength(ORDER_INTERNAL_COMMENT_MAX_LENGTH)
+    internalComment?: string | null;
+
+    @IsArray()
+    @ArrayMinSize(1)
+    @ArrayMaxSize(ORDER_ITEM_COUNT_MAX)
+    @ValidateNested({ each: true })
+    @Type(() => OrderQuoteLineDto)
+    lines: OrderQuoteLineDto[];
 }
