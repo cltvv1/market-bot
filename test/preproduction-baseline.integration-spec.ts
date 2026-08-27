@@ -27,6 +27,7 @@ describe('pre-production database baseline', () => {
             { name: 'AddSupportKnowledgeFoundation1787923200000' },
             { name: 'HardenFileLifecycle1788009600000' },
             { name: 'AddOrderIntakeFoundation1788096000000' },
+            { name: 'AddOrderSalesWorkspaceCore1788182400000' },
         ]);
     });
 

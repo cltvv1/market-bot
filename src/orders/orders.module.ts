@@ -10,6 +10,10 @@ import { ClientOrdersController } from './client-orders.controller';
 import { OrderEventEntity } from './entities/order-event.entity';
 import { OrderLineEntity } from './entities/order-line.entity';
 import { OrderEntity } from './entities/order.entity';
+import { OrderQuoteEntity } from './entities/order-quote.entity';
+import { OrderQuoteLineEntity } from './entities/order-quote-line.entity';
+import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
+import { AdminUserRoleEntity } from 'src/admin/entities/admin-user-role.entity';
 import { OrdersService } from './orders.service';
 
 @Module({
@@ -18,6 +22,10 @@ import { OrdersService } from './orders.service';
             OrderEntity,
             OrderLineEntity,
             OrderEventEntity,
+            OrderQuoteEntity,
+            OrderQuoteLineEntity,
+            AdminUserEntity,
+            AdminUserRoleEntity,
         ]),
         AdminModule,
         AuditModule,

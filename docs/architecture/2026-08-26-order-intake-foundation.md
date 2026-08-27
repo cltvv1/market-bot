@@ -386,3 +386,8 @@ production rollback decision must first preserve new order rows.
 5. Design a separate, isolated 1C adapter after the manual workflow is proven.
 
 None of those capabilities is implied to be complete by CO-2.
+
+CO-3A subsequently implements the assignment, review, quote, and confirmation
+core described in
+[`2026-08-27-order-sales-workspace-core.md`](./2026-08-27-order-sales-workspace-core.md)
+without changing the immutable CO-2 `OrderLine` contract.

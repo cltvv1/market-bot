@@ -22,7 +22,7 @@ import { OrderEntity } from './order.entity';
 @Index('IDX_order_events_order_created', ['orderId', 'createdAt', 'id'])
 @Check(
     'CK_order_events_type',
-    `"type" IN ('submitted','review_started','quote_updated','confirmed','invoice_issued','payment_proof_received','payment_confirmed','fulfilled','completed','cancelled')`,
+    `"type" IN ('submitted','manager_assigned','manager_reassigned','review_started','quote_updated','confirmed','invoice_issued','payment_proof_received','payment_confirmed','fulfilled','completed','cancelled')`,
 )
 @Check(
     'CK_order_events_statuses',

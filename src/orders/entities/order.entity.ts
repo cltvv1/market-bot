@@ -7,6 +7,7 @@ import {
     JoinColumn,
     ManyToOne,
     OneToMany,
+    OneToOne,
     PrimaryGeneratedColumn,
     UpdateDateColumn,
     VersionColumn,
@@ -20,6 +21,8 @@ import type {
 } from '../order.types';
 import { OrderEventEntity } from './order-event.entity';
 import { OrderLineEntity } from './order-line.entity';
+import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
+import { OrderQuoteEntity } from './order-quote.entity';
 
 @Entity('orders')
 @Index('UQ_orders_user_idempotency', ['createdByUserId', 'idempotencyKey'], {
@@ -30,6 +33,8 @@ import { OrderLineEntity } from './order-line.entity';
 @Index('IDX_orders_organization', ['organizationId'])
 @Index('IDX_orders_organization_inn', ['organizationInnSnapshot'])
 @Index('IDX_orders_created', ['createdAt', 'id'])
+@Index('IDX_orders_assigned_manager', ['assignedManagerId'])
+@Index('IDX_orders_workspace', ['status', 'assignedManagerId', 'createdAt'])
 @Check(
     'CK_orders_status',
     `"status" IN ('submitted','in_review','confirmed','waiting_payment','paid','fulfilled','completed','cancelled')`,
@@ -87,6 +92,22 @@ export class OrderEntity {
 
     @VersionColumn()
     version: number;
+
+    @Column({ type: 'integer', nullable: true })
+    assignedManagerId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'RESTRICT' })
+    @JoinColumn({
+        name: 'assignedManagerId',
+        foreignKeyConstraintName: 'FK_orders_assigned_manager',
+    })
+    assignedManager: AdminUserEntity | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    assignedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    confirmedAt: Date | null;
 
     @Column({ type: 'varchar', length: 32 })
     customerType: OrderCustomerType;
@@ -163,6 +184,9 @@ export class OrderEntity {
 
     @OneToMany(() => OrderEventEntity, (event) => event.order)
     events: OrderEventEntity[];
+
+    @OneToOne(() => OrderQuoteEntity, (quote) => quote.order)
+    quote: OrderQuoteEntity | null;
 
     @CreateDateColumn()
     createdAt: Date;

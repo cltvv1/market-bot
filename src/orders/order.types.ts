@@ -23,6 +23,8 @@ export type OrderDeliveryType = (typeof ORDER_DELIVERY_TYPES)[number];
 
 export const ORDER_EVENT_TYPES = [
     'submitted',
+    'manager_assigned',
+    'manager_reassigned',
     'review_started',
     'quote_updated',
     'confirmed',
@@ -47,3 +49,13 @@ export const ORDER_PAGE_NUMBER_MAX = 100_000;
 export const ORDER_ITEM_COUNT_MAX = 100;
 export const ORDER_ITEM_QUANTITY_MAX = 1000;
 export const POSTGRES_INTEGER_MAX = 2_147_483_647;
+
+export const ORDER_QUOTE_STATUSES = ['draft', 'confirmed'] as const;
+export type OrderQuoteStatus = (typeof ORDER_QUOTE_STATUSES)[number];
+
+export const ORDER_ASSIGNMENT_SCOPES = ['all', 'mine', 'unassigned'] as const;
+export type OrderAssignmentScope = (typeof ORDER_ASSIGNMENT_SCOPES)[number];
+
+export const ORDER_MONEY_MAX_MINOR_TEXT = '99999999999999999999';
+export const ORDER_MONEY_MAX_MINOR = BigInt(ORDER_MONEY_MAX_MINOR_TEXT);
+export const ORDER_INTERNAL_COMMENT_MAX_LENGTH = 2000;
