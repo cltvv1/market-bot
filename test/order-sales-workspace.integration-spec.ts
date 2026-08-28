@@ -425,7 +425,7 @@ describe('CO-3A sales workspace on migrated PostgreSQL', () => {
         ).expect(200);
     });
 
-    it('rejects disabled or ineligible assignment targets and post-confirm reassignment', async () => {
+    it('rejects disabled or ineligible targets and permits eligible post-confirm reassignment', async () => {
         const client = await browser();
         const item = await product();
         const created = await submit(client, [{ id: item.id }]);
@@ -473,15 +473,15 @@ describe('CO-3A sales workspace on migrated PostgreSQL', () => {
             root.agent,
             `/admin/api/orders/${created.body.id}/assign`,
             { expectedVersion: 3, managerId: eligible.user.id },
-        ).expect(409);
+        ).expect(201);
         expect(
             await dataSource
                 .getRepository(OrderEntity)
                 .findOneByOrFail({ id: created.body.id }),
         ).toMatchObject({
             status: 'confirmed',
-            version: 3,
-            assignedManagerId: root.user.id,
+            version: 4,
+            assignedManagerId: eligible.user.id,
         });
     });
 
@@ -832,7 +832,7 @@ describe('CO-3A sales workspace on migrated PostgreSQL', () => {
             manager.agent,
             `/admin/api/orders/${created.body.id}/assign`,
             { expectedVersion: 4, managerId: manager.user.id },
-        ).expect(409);
+        ).expect(201);
 
         const clientDetail = await client.agent
             .get(`/api/client/orders/${created.body.id}`)

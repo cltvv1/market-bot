@@ -1,5 +1,10 @@
 # CO-3B Order invoice and payment workflow
 
+> CO-3C continuation: fulfillment and completion are now implemented as the
+> later explicit transitions `paid -> fulfilled -> completed`. Invoice,
+> payment-proof, full-payment, and physical-file-availability semantics in this
+> document are unchanged.
+
 ## 1. Baseline
 
 CO-3B starts from `c7b069b99a4eef21e670cfbbad99816b92fc788f`, the

@@ -30,6 +30,8 @@ import {
     AdminOrderListQueryDto,
     AssignOrderDto,
     ConfirmOrderPaymentDto,
+    CompleteOrderDto,
+    FulfillOrderDto,
     OrderDocumentIdParamDto,
     OrderExpectedVersionDto,
     OrderIdParamDto,
@@ -162,6 +164,30 @@ export class AdminOrdersController {
             admin,
             request.requestId,
         );
+    }
+
+    @Post(':id/fulfill')
+    @RequirePermissions('orders.fulfill')
+    @RateLimit('admin-order-mutation', 120, 60)
+    fulfill(
+        @Param() params: OrderIdParamDto,
+        @Body() body: FulfillOrderDto,
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Req() request: Request & { requestId?: string },
+    ) {
+        return this.orders.fulfill(params.id, body, admin, request.requestId);
+    }
+
+    @Post(':id/complete')
+    @RequirePermissions('orders.complete')
+    @RateLimit('admin-order-mutation', 120, 60)
+    complete(
+        @Param() params: OrderIdParamDto,
+        @Body() body: CompleteOrderDto,
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Req() request: Request & { requestId?: string },
+    ) {
+        return this.orders.complete(params.id, body, admin, request.requestId);
     }
 
     @Get(':id/documents/:documentId/download')

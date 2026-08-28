@@ -1,5 +1,9 @@
 # CO-3A sales workspace core
 
+> CO-3C continuation: assignment now remains available through `fulfilled` and
+> uses phase-aware target permissions. A confirmed Quote and its lines remain
+> immutable throughout payment, fulfillment, and completion.
+
 ## 1. Baseline
 
 CO-3A starts from `origin/main` commit

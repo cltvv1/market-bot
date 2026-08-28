@@ -18,6 +18,8 @@ describe('admin permissions', () => {
             'orders.confirm',
             'orders.invoice',
             'orders.payment',
+            'orders.fulfill',
+            'orders.complete',
             'support.read',
             'support.manage',
             'knowledge.read',
@@ -38,7 +40,17 @@ describe('admin permissions', () => {
         expect(getPermissions(['superadmin'])).toContain('orders.confirm');
         expect(getPermissions(['superadmin'])).toContain('orders.invoice');
         expect(getPermissions(['superadmin'])).toContain('orders.payment');
+        expect(getPermissions(['superadmin'])).toContain('orders.fulfill');
+        expect(getPermissions(['superadmin'])).toContain('orders.complete');
         expect(getPermissions(['superadmin'])).toContain('support.manage');
         expect(getPermissions(['superadmin'])).toContain('knowledge.manage');
+    });
+
+    it('does not grant order workflow permissions to operator or engineer', () => {
+        for (const role of ['operator', 'engineer'] as const) {
+            const permissions = getPermissions([role]);
+            expect(permissions).not.toContain('orders.fulfill');
+            expect(permissions).not.toContain('orders.complete');
+        }
     });
 });

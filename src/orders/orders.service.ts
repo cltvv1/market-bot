@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { AuditService } from 'src/audit/audit.service';
-import { getPermissions } from 'src/admin/admin.permissions';
+import {
+    getPermissions,
+    type AdminPermission,
+} from 'src/admin/admin.permissions';
 import type { AdminPrincipal } from 'src/admin/admin-auth.types';
 import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 import { CatalogProductEntity } from 'src/catalog/entities/catalog-product.entity';
@@ -29,6 +32,8 @@ import type {
     AssignOrderDto,
     ClientOrderListQueryDto,
     ConfirmOrderPaymentDto,
+    CompleteOrderDto,
+    FulfillOrderDto,
     OrderExpectedVersionDto,
     SubmitOrderDto,
     UpdateOrderQuoteDto,
@@ -74,9 +79,14 @@ import {
     selectActiveInvoice,
 } from './order-payment';
 import {
+    normalizeCompletionCommand,
+    normalizeFulfillmentCommand,
+} from './order-fulfillment';
+import {
     ORDER_PAGE_SIZE_DEFAULT,
     POSTGRES_INTEGER_MAX,
     type OrderDocumentType,
+    type OrderStatus,
 } from './order.types';
 
 interface OrderOrganizationSnapshot {
@@ -367,6 +377,10 @@ export class OrdersService {
                         .orWhere(
                             `order.contactEmailSnapshot ILIKE :pattern ESCAPE '\\'`,
                             { pattern },
+                        )
+                        .orWhere(
+                            `order.realizationNumber ILIKE :pattern ESCAPE '\\'`,
+                            { pattern },
                         );
                 }),
             );
@@ -405,6 +419,8 @@ export class OrdersService {
                 events: true,
                 assignedManager: true,
                 paymentConfirmedByStaff: true,
+                fulfilledByStaff: true,
+                completedByStaff: true,
                 documents: {
                     storedFile: true,
                     uploadedByStaff: true,
@@ -439,6 +455,7 @@ export class OrdersService {
             const target = await this.requireEligibleManager(
                 manager,
                 input.managerId,
+                order.status,
             );
             if (order.assignedManagerId === target.id) {
                 return this.presentDetail(
@@ -981,6 +998,153 @@ export class OrdersService {
         });
     }
 
+    async fulfill(
+        id: number,
+        input: FulfillOrderDto,
+        actor: AdminPrincipal,
+        requestId?: string,
+    ) {
+        const commandTime = new Date();
+        return this.executeCommand(async (manager) => {
+            const order = await this.lockOrder(manager, id);
+            this.assertExpectedVersion(order, input.expectedVersion);
+            if (order.status !== 'paid') {
+                throw new ConflictException(
+                    'Order cannot be fulfilled in its current state',
+                );
+            }
+            this.assertAssignedManager(order, actor.id);
+            this.assertPaymentConfirmationBundle(order);
+            this.assertFulfillmentFieldsEmpty(order);
+            this.assertCompletionFieldsEmpty(order);
+            await this.requireConfirmedQuote(manager, order.id);
+            if (!(await this.currentInvoice(manager, order.id))) {
+                throw new ConflictException('Current invoice is missing');
+            }
+            const fulfillment = normalizeFulfillmentCommand(
+                input,
+                order.deliveryType,
+                order.paymentReceivedAt as Date,
+                commandTime,
+            );
+            await this.updateOrder(manager, order, {
+                status: 'fulfilled',
+                fulfilledAt: fulfillment.fulfilledAt,
+                fulfilledByStaffId: actor.id,
+                fulfillmentMethod: fulfillment.method,
+                fulfillmentRecipientName: fulfillment.recipientName,
+                fulfillmentCarrierName: fulfillment.carrierName,
+                fulfillmentTrackingNumber: fulfillment.trackingNumber,
+                fulfillmentComment: fulfillment.comment,
+            });
+            const customerMetadata = {
+                fulfillmentMethod: fulfillment.method,
+                fulfilledAt: fulfillment.fulfilledAt.toISOString(),
+                ...(fulfillment.carrierName
+                    ? { carrierName: fulfillment.carrierName }
+                    : {}),
+                ...(fulfillment.trackingNumber
+                    ? { trackingNumber: fulfillment.trackingNumber }
+                    : {}),
+            };
+            await this.recordStaffEvent(manager, order.id, actor.id, {
+                type: 'fulfilled',
+                fromStatus: 'paid',
+                toStatus: 'fulfilled',
+                visibility: 'customer',
+                metadata: customerMetadata,
+            });
+            await this.auditStaff(
+                manager,
+                actor,
+                'order.fulfilled',
+                order,
+                requestId,
+                {
+                    managerId: actor.id,
+                    fulfillmentMethod: fulfillment.method,
+                    fulfilledAt: fulfillment.fulfilledAt.toISOString(),
+                    hasCarrier: fulfillment.carrierName !== null,
+                    hasTrackingNumber: fulfillment.trackingNumber !== null,
+                },
+            );
+            return this.presentDetail(
+                await this.loadOrder(manager, order.id),
+                true,
+            );
+        });
+    }
+
+    async complete(
+        id: number,
+        input: CompleteOrderDto,
+        actor: AdminPrincipal,
+        requestId?: string,
+    ) {
+        const commandTime = new Date();
+        return this.executeCommand(async (manager) => {
+            const order = await this.lockOrder(manager, id);
+            this.assertExpectedVersion(order, input.expectedVersion);
+            if (order.status !== 'fulfilled') {
+                throw new ConflictException(
+                    'Order cannot be completed in its current state',
+                );
+            }
+            this.assertAssignedManager(order, actor.id);
+            this.assertPaymentConfirmationBundle(order);
+            this.assertFulfillmentBundle(order);
+            this.assertCompletionFieldsEmpty(order);
+            await this.requireConfirmedQuote(manager, order.id);
+            if (!(await this.currentInvoice(manager, order.id))) {
+                throw new ConflictException('Current invoice is missing');
+            }
+            const completion = normalizeCompletionCommand(
+                input,
+                order.customerType,
+                order.fulfilledAt as Date,
+                commandTime,
+            );
+            await this.updateOrder(manager, order, {
+                status: 'completed',
+                completedAt: commandTime,
+                completedByStaffId: actor.id,
+                realizationNumber: completion.realizationNumber,
+                realizationDate: completion.realizationDate,
+                finalDocumentsDeliveryMethod: completion.documentDeliveryMethod,
+                finalDocumentKinds: completion.documentKinds,
+                finalDocumentsDeliveredAt: completion.documentsDeliveredAt,
+                completionComment: completion.comment,
+            });
+            const metadata = {
+                realizationNumber: completion.realizationNumber,
+                realizationDate: completion.realizationDate,
+                documentDeliveryMethod: completion.documentDeliveryMethod,
+                documentKinds: completion.documentKinds,
+                documentsDeliveredAt:
+                    completion.documentsDeliveredAt?.toISOString() ?? null,
+            };
+            await this.recordStaffEvent(manager, order.id, actor.id, {
+                type: 'completed',
+                fromStatus: 'fulfilled',
+                toStatus: 'completed',
+                visibility: 'customer',
+                metadata,
+            });
+            await this.auditStaff(
+                manager,
+                actor,
+                'order.completed',
+                order,
+                requestId,
+                { ...metadata, managerId: actor.id },
+            );
+            return this.presentDetail(
+                await this.loadOrder(manager, order.id),
+                true,
+            );
+        });
+    }
+
     async openClientDocument(
         userId: number,
         orderId: number,
@@ -1371,6 +1535,7 @@ export class OrdersService {
     private async requireEligibleManager(
         manager: EntityManager,
         managerId: number,
+        status: OrderStatus,
     ) {
         const target = await manager.getRepository(AdminUserEntity).findOne({
             where: { id: managerId },
@@ -1380,10 +1545,81 @@ export class OrdersService {
         const permissions = getPermissions(
             target.roleAssignments.map((assignment) => assignment.role),
         );
-        if (!target.isActive || !permissions.includes('orders.review')) {
+        const required = this.assignmentPermissions(status);
+        if (
+            !target.isActive ||
+            !permissions.includes('orders.read.all') ||
+            !required.every((permission) => permissions.includes(permission))
+        ) {
             throw new ConflictException('Manager is not eligible');
         }
         return target;
+    }
+
+    private assignmentPermissions(status: OrderStatus): AdminPermission[] {
+        if (status === 'submitted' || status === 'in_review') {
+            return ['orders.review'];
+        }
+        if (status === 'confirmed' || status === 'waiting_payment') {
+            return ['orders.invoice', 'orders.payment'];
+        }
+        if (status === 'paid') return ['orders.fulfill'];
+        if (status === 'fulfilled') return ['orders.complete'];
+        throw new ConflictException(
+            'Order cannot be assigned in its current state',
+        );
+    }
+
+    private assertPaymentConfirmationBundle(order: OrderEntity) {
+        if (
+            order.paymentReceivedAt === null ||
+            order.paymentConfirmedAt === null ||
+            order.paymentConfirmedByStaffId === null ||
+            order.paymentConfirmationSource === null
+        ) {
+            throw new ConflictException(
+                'Order payment confirmation is inconsistent',
+            );
+        }
+    }
+
+    private assertFulfillmentFieldsEmpty(order: OrderEntity) {
+        if (
+            order.fulfilledAt !== null ||
+            order.fulfilledByStaffId !== null ||
+            order.fulfillmentMethod !== null ||
+            order.fulfillmentRecipientName !== null ||
+            order.fulfillmentCarrierName !== null ||
+            order.fulfillmentTrackingNumber !== null ||
+            order.fulfillmentComment !== null
+        ) {
+            throw new ConflictException('Order fulfillment is inconsistent');
+        }
+    }
+
+    private assertFulfillmentBundle(order: OrderEntity) {
+        if (
+            order.fulfilledAt === null ||
+            order.fulfilledByStaffId === null ||
+            order.fulfillmentMethod === null
+        ) {
+            throw new ConflictException('Order fulfillment is inconsistent');
+        }
+    }
+
+    private assertCompletionFieldsEmpty(order: OrderEntity) {
+        if (
+            order.completedAt !== null ||
+            order.completedByStaffId !== null ||
+            order.realizationNumber !== null ||
+            order.realizationDate !== null ||
+            order.finalDocumentsDeliveryMethod !== null ||
+            order.finalDocumentKinds !== null ||
+            order.finalDocumentsDeliveredAt !== null ||
+            order.completionComment !== null
+        ) {
+            throw new ConflictException('Order completion is inconsistent');
+        }
     }
 
     private async updateOrder(
@@ -1402,6 +1638,21 @@ export class OrdersService {
                 | 'paymentConfirmedByStaffId'
                 | 'paymentConfirmationSource'
                 | 'paymentConfirmationComment'
+                | 'fulfilledAt'
+                | 'fulfilledByStaffId'
+                | 'fulfillmentMethod'
+                | 'fulfillmentRecipientName'
+                | 'fulfillmentCarrierName'
+                | 'fulfillmentTrackingNumber'
+                | 'fulfillmentComment'
+                | 'completedAt'
+                | 'completedByStaffId'
+                | 'realizationNumber'
+                | 'realizationDate'
+                | 'finalDocumentsDeliveryMethod'
+                | 'finalDocumentKinds'
+                | 'finalDocumentsDeliveredAt'
+                | 'completionComment'
             >
         >,
     ) {
@@ -1646,6 +1897,8 @@ export class OrdersService {
                 events: true,
                 assignedManager: true,
                 paymentConfirmedByStaff: true,
+                fulfilledByStaff: true,
+                completedByStaff: true,
                 documents: {
                     storedFile: true,
                     uploadedByStaff: true,
@@ -1787,9 +2040,14 @@ export class OrdersService {
                       invoiceRevision: documentStats?.invoiceRevision ?? null,
                       paymentProofCount: documentStats?.paymentProofCount ?? 0,
                       paymentConfirmedAt: order.paymentConfirmedAt,
+                      fulfilledAt: order.fulfilledAt,
+                      completedAt: order.completedAt,
+                      realizationNumber: order.realizationNumber,
                   }
                 : {
                       confirmedQuote: this.presentClientConfirmedQuote(order),
+                      fulfilledAt: order.fulfilledAt,
+                      completedAt: order.completedAt,
                   }),
             createdAt: order.createdAt,
             updatedAt: order.updatedAt,
@@ -1925,6 +2183,35 @@ export class OrdersService {
                                 ),
                             }
                           : null,
+                      fulfillment: order.fulfilledAt
+                          ? {
+                                method: order.fulfillmentMethod,
+                                fulfilledAt: order.fulfilledAt,
+                                fulfilledByStaff: this.presentManager(
+                                    order.fulfilledByStaff,
+                                ),
+                                recipientName: order.fulfillmentRecipientName,
+                                carrierName: order.fulfillmentCarrierName,
+                                trackingNumber: order.fulfillmentTrackingNumber,
+                                comment: order.fulfillmentComment,
+                            }
+                          : null,
+                      completion: order.completedAt
+                          ? {
+                                completedAt: order.completedAt,
+                                completedByStaff: this.presentManager(
+                                    order.completedByStaff,
+                                ),
+                                realizationNumber: order.realizationNumber,
+                                realizationDate: order.realizationDate,
+                                documentDeliveryMethod:
+                                    order.finalDocumentsDeliveryMethod,
+                                documentKinds: order.finalDocumentKinds,
+                                documentsDeliveredAt:
+                                    order.finalDocumentsDeliveredAt,
+                                comment: order.completionComment,
+                            }
+                          : null,
                   }
                 : {
                       confirmedQuote: this.presentClientConfirmedQuote(
@@ -1947,6 +2234,27 @@ export class OrdersService {
                           ? {
                                 receivedAt: order.paymentReceivedAt,
                                 confirmedAt: order.paymentConfirmedAt,
+                            }
+                          : null,
+                      fulfillment: order.fulfilledAt
+                          ? {
+                                method: order.fulfillmentMethod,
+                                fulfilledAt: order.fulfilledAt,
+                                recipientName: order.fulfillmentRecipientName,
+                                carrierName: order.fulfillmentCarrierName,
+                                trackingNumber: order.fulfillmentTrackingNumber,
+                            }
+                          : null,
+                      completion: order.completedAt
+                          ? {
+                                completedAt: order.completedAt,
+                                realizationNumber: order.realizationNumber,
+                                realizationDate: order.realizationDate,
+                                documentDeliveryMethod:
+                                    order.finalDocumentsDeliveryMethod,
+                                documentKinds: order.finalDocumentKinds,
+                                documentsDeliveredAt:
+                                    order.finalDocumentsDeliveredAt,
                             }
                           : null,
                   }),
