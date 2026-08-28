@@ -44,25 +44,40 @@ describe('order invoice and payment rules', () => {
     it('normalizes payment timestamps with a small future tolerance', () => {
         const now = new Date('2026-08-27T05:00:00.000Z');
         expect(normalizePaymentReceivedAt(undefined, now)).toBe(now);
+        expect(normalizePaymentReceivedAt('2026-08-27T05:00:00Z', now)).toEqual(
+            new Date('2026-08-27T05:00:00.000Z'),
+        );
         expect(
-            normalizePaymentReceivedAt('2026-08-27T04:00:00.000Z', now),
-        ).toEqual(new Date('2026-08-27T04:00:00.000Z'));
+            normalizePaymentReceivedAt('2026-08-27T05:00:00.000Z', now),
+        ).toEqual(new Date('2026-08-27T05:00:00.000Z'));
+        expect(
+            normalizePaymentReceivedAt('2026-08-27T12:00:00+07:00', now),
+        ).toEqual(new Date('2026-08-27T05:00:00.000Z'));
         expect(
             normalizePaymentReceivedAt('2026-08-27T05:04:59.000Z', now),
         ).toEqual(new Date('2026-08-27T05:04:59.000Z'));
     });
 
-    it.each(['27.08.2026 05:00', 'not-a-date', '2026-08-27T05:06:00.000Z'])(
-        'rejects invalid or materially future timestamp %s',
-        (value) => {
-            expect(() =>
-                normalizePaymentReceivedAt(
-                    value,
-                    new Date('2026-08-27T05:00:00.000Z'),
-                ),
-            ).toThrow(BadRequestException);
-        },
-    );
+    it.each([
+        '2026-08-27',
+        '2026-08-27T05:00',
+        '2026-08-27T05:00:00',
+        '2026-08-27 05:00:00Z',
+        '2026-02-30T05:00:00Z',
+        '2026-08-27T05:00:00+25:00',
+        '2026-W35-4T05:00:00Z',
+        '2026-239T05:00:00Z',
+        '+002026-08-27T05:00:00Z',
+        'not-a-date',
+        '2026-08-27T05:05:01.000Z',
+    ])('rejects invalid or materially future timestamp %s', (value) => {
+        expect(() =>
+            normalizePaymentReceivedAt(
+                value,
+                new Date('2026-08-27T05:00:00.000Z'),
+            ),
+        ).toThrow(BadRequestException);
+    });
 
     it('maps document types to isolated file purposes', () => {
         expect(orderDocumentPurpose('invoice')).toBe('order-invoice');

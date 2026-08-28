@@ -7,7 +7,6 @@ import {
     IsEmail,
     IsIn,
     IsInt,
-    IsISO8601,
     IsNotEmpty,
     IsOptional,
     IsString,
@@ -17,7 +16,12 @@ import {
     Min,
     ValidateNested,
     ValidateIf,
+    ValidateBy,
 } from 'class-validator';
+import {
+    isExplicitPaymentTimestamp,
+    ORDER_PAYMENT_TIMESTAMP_MESSAGE,
+} from '../order-payment';
 import {
     ORDER_CUSTOMER_TYPES,
     ORDER_DELIVERY_TYPES,
@@ -288,7 +292,13 @@ export class ConfirmOrderPaymentDto extends OrderExpectedVersionDto {
     source: OrderPaymentSource;
 
     @IsOptional()
-    @IsISO8601({ strict: true, strictSeparator: true })
+    @ValidateBy({
+        name: 'isExplicitPaymentTimestamp',
+        validator: {
+            validate: (value: unknown) => isExplicitPaymentTimestamp(value),
+            defaultMessage: () => ORDER_PAYMENT_TIMESTAMP_MESSAGE,
+        },
+    })
     paymentReceivedAt?: string;
 
     @IsOptional()

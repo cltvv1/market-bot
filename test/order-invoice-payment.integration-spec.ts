@@ -690,6 +690,99 @@ describe('CO-3B invoice and payment workflow on migrated PostgreSQL', () => {
         ).toBe(0);
     });
 
+    it('requires an absolute payment timestamp without mutating rejected commands', async () => {
+        const fixture = await confirmedOrder('co3b-absolute-payment-time');
+        const invoiced = await uploadInvoice(
+            fixture.manager.agent,
+            fixture.orderId,
+            fixture.version,
+        ).expect(201);
+        const orderBefore = await dataSource
+            .getRepository(OrderEntity)
+            .findOneByOrFail({ id: fixture.orderId });
+        const documentsBefore = await dataSource
+            .getRepository(OrderDocumentEntity)
+            .find({
+                where: { orderId: fixture.orderId },
+                order: { id: 'ASC' },
+            });
+        const quoteBefore: unknown[] = await dataSource.query(
+            `SELECT * FROM "order_quotes" WHERE "orderId" = $1`,
+            [fixture.orderId],
+        );
+
+        for (const paymentReceivedAt of ['2026-08-27', '2026-08-27T05:00:00']) {
+            await fixture.manager.agent
+                .post(`/admin/api/orders/${fixture.orderId}/confirm-payment`)
+                .set('Origin', ORIGIN)
+                .send({
+                    expectedVersion: invoiced.body.version,
+                    source: 'bank_statement',
+                    paymentReceivedAt,
+                })
+                .expect(400);
+        }
+
+        expect(
+            await dataSource
+                .getRepository(OrderEntity)
+                .findOneByOrFail({ id: fixture.orderId }),
+        ).toMatchObject({
+            status: 'waiting_payment',
+            version: orderBefore.version,
+            paymentReceivedAt: null,
+            paymentConfirmedAt: null,
+            paymentConfirmedByStaffId: null,
+            paymentConfirmationSource: null,
+            paymentConfirmationComment: null,
+        });
+        expect(
+            await dataSource.getRepository(OrderDocumentEntity).find({
+                where: { orderId: fixture.orderId },
+                order: { id: 'ASC' },
+            }),
+        ).toEqual(documentsBefore);
+        expect(
+            await dataSource.query(
+                `SELECT * FROM "order_quotes" WHERE "orderId" = $1`,
+                [fixture.orderId],
+            ),
+        ).toEqual(quoteBefore);
+        expect(
+            await dataSource.getRepository(OrderEventEntity).count({
+                where: { orderId: fixture.orderId, type: 'payment_confirmed' },
+            }),
+        ).toBe(0);
+        expect(
+            await dataSource.getRepository(AuditEventEntity).count({
+                where: {
+                    targetId: String(fixture.orderId),
+                    action: 'order.payment.confirmed',
+                },
+            }),
+        ).toBe(0);
+
+        const paid = await fixture.manager.agent
+            .post(`/admin/api/orders/${fixture.orderId}/confirm-payment`)
+            .set('Origin', ORIGIN)
+            .send({
+                expectedVersion: invoiced.body.version,
+                source: 'bank_statement',
+                paymentReceivedAt: '2026-08-27T12:00:00+07:00',
+            })
+            .expect(201);
+        expect(paid.body.paymentConfirmation.receivedAt).toBe(
+            '2026-08-27T05:00:00.000Z',
+        );
+        expect(
+            (
+                await dataSource
+                    .getRepository(OrderEntity)
+                    .findOneByOrFail({ id: fixture.orderId })
+            ).paymentReceivedAt,
+        ).toEqual(new Date('2026-08-27T05:00:00.000Z'));
+    });
+
     it('denies RBAC, assignment, ownership, origin, and invalid content before attachment', async () => {
         const fixture = await confirmedOrder('co3b-security');
         const otherManager = await staff('co3b-other-manager', [

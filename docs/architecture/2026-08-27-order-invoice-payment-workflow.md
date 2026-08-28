@@ -77,8 +77,11 @@ refund, overpayment, split tender, payment schedule, or reconciliation ledger.
 
 The fixed sources are `bank_statement`, `payment_order`,
 `customer_confirmation`, and `other`. `paymentReceivedAt` is optional and
-defaults to command time. Explicit values must be strict ISO-8601 and cannot
-be materially in the future; a five-minute clock tolerance is allowed.
+defaults to command time. An explicit value must be a full RFC3339-style
+timestamp with seconds and an uppercase `T` plus either `Z` or a numeric
+`+/-HH:mm` offset. Date-only and timezone-less values are rejected. The value
+is normalized to one absolute instant before applying the five-minute future
+clock tolerance.
 
 ## 12. Order fields
 
@@ -92,9 +95,9 @@ complete confirmation record.
 
 Order documents use isolated purposes:
 
-| Purpose | Limit | Content |
-|---|---:|---|
-| `order-invoice` | 15 MiB | PDF only |
+| Purpose               |  Limit | Content                 |
+| --------------------- | -----: | ----------------------- |
+| `order-invoice`       | 15 MiB | PDF only                |
 | `order-payment-proof` | 20 MiB | PDF, JPEG, PNG, or WebP |
 
 They do not reuse `service-invoice` or `payment-proof`.
@@ -204,6 +207,13 @@ Append-only migration `1788268800000-AddOrderInvoicePaymentWorkflow.ts`
 follows CO-3A, adds nullable Order fields for existing rows, creates the new
 table and constraints, and expands the append-only OrderEvent type check. It
 does not synthesize documents or payment facts for old orders.
+
+`migration:revert` is supported only for a disposable test database. Once
+Order documents, invoice revisions, payment proofs, or paid Orders exist, an
+automatic production revert is data-destructive. Existing `invoice_replaced`
+events can also prevent restoration of the former OrderEvent check unless a
+separate data-preserving rollback procedure handles them first. The migration
+`down()` method is therefore not an operational production rollback plan.
 
 ## 28. Future 1C adapter
 
