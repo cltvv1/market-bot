@@ -70,4 +70,13 @@ describe('order time contracts', () => {
     ])('rejects invalid calendar date %s', (value) => {
         expect(isExplicitOrderCalendarDate(value)).toBe(false);
     });
+
+    it('enforces the shared four-digit year boundary', () => {
+        expect(isExplicitOrderCalendarDate('0000-01-01')).toBe(false);
+        expect(isExplicitOrderCalendarDate('0001-01-01')).toBe(true);
+        expect(isExplicitOrderCalendarDate('9999-12-31')).toBe(true);
+        expect(isExplicitOrderTimestamp('0000-01-01T00:00:00Z')).toBe(false);
+        expect(isExplicitOrderTimestamp('0001-01-01T00:00:00Z')).toBe(true);
+        expect(isExplicitOrderTimestamp('9999-12-31T23:59:59Z')).toBe(true);
+    });
 });

@@ -711,7 +711,11 @@ describe('CO-3B invoice and payment workflow on migrated PostgreSQL', () => {
             [fixture.orderId],
         );
 
-        for (const paymentReceivedAt of ['2026-08-27', '2026-08-27T05:00:00']) {
+        for (const paymentReceivedAt of [
+            '2026-08-27',
+            '2026-08-27T05:00:00',
+            '0000-01-01T00:00:00Z',
+        ]) {
             await fixture.manager.agent
                 .post(`/admin/api/orders/${fixture.orderId}/confirm-payment`)
                 .set('Origin', ORIGIN)

@@ -508,6 +508,162 @@ describe('CO-3C fulfillment and completion on migrated PostgreSQL', () => {
         }).expect(201);
     });
 
+    it('rejects a zero-year fulfillment timestamp without side effects', async () => {
+        const fixture = await paidOrder('co3c-zero-year-fulfillment');
+        const before = await dataSource
+            .getRepository(OrderEntity)
+            .findOneByOrFail({ id: fixture.orderId });
+        const quoteBefore = await dataSource
+            .getRepository(OrderQuoteEntity)
+            .findOneByOrFail({ orderId: fixture.orderId });
+        const documentsBefore = await dataSource
+            .getRepository(OrderDocumentEntity)
+            .find({
+                where: { orderId: fixture.orderId },
+                order: { id: 'ASC' },
+            });
+
+        await fulfill(fixture, {
+            fulfilledAt: '0000-01-01T00:00:00Z',
+        }).expect(400);
+
+        const after = await dataSource
+            .getRepository(OrderEntity)
+            .findOneByOrFail({ id: fixture.orderId });
+        expect(after).toMatchObject({
+            status: 'paid',
+            version: fixture.version,
+            fulfilledAt: null,
+            fulfilledByStaffId: null,
+            fulfillmentMethod: null,
+            fulfillmentRecipientName: null,
+            fulfillmentCarrierName: null,
+            fulfillmentTrackingNumber: null,
+            fulfillmentComment: null,
+        });
+        expect(after.paymentReceivedAt).toEqual(before.paymentReceivedAt);
+        expect(after.paymentConfirmedAt).toEqual(before.paymentConfirmedAt);
+        expect(after.invoiceIssuedAt).toEqual(before.invoiceIssuedAt);
+        expect(
+            await dataSource
+                .getRepository(OrderQuoteEntity)
+                .findOneByOrFail({ orderId: fixture.orderId }),
+        ).toEqual(quoteBefore);
+        expect(
+            await dataSource.getRepository(OrderDocumentEntity).find({
+                where: { orderId: fixture.orderId },
+                order: { id: 'ASC' },
+            }),
+        ).toEqual(documentsBefore);
+        expect(
+            await dataSource.getRepository(OrderEventEntity).count({
+                where: { orderId: fixture.orderId, type: 'fulfilled' },
+            }),
+        ).toBe(0);
+        expect(
+            await dataSource.getRepository(AuditEventEntity).count({
+                where: {
+                    targetId: String(fixture.orderId),
+                    action: 'order.fulfilled',
+                },
+            }),
+        ).toBe(0);
+    });
+
+    it('rejects zero-year completion dates and persists the year-one boundary', async () => {
+        const fixture = await paidOrder('co3c-zero-year-completion');
+        const fulfilledResponse = await fulfill(fixture).expect(201);
+        const before = await dataSource
+            .getRepository(OrderEntity)
+            .findOneByOrFail({ id: fixture.orderId });
+        const quoteBefore = await dataSource
+            .getRepository(OrderQuoteEntity)
+            .findOneByOrFail({ orderId: fixture.orderId });
+        const documentsBefore = await dataSource
+            .getRepository(OrderDocumentEntity)
+            .find({
+                where: { orderId: fixture.orderId },
+                order: { id: 'ASC' },
+            });
+        const base = {
+            expectedVersion: fulfilledResponse.body.version as number,
+            realizationNumber: 'R-0001',
+            realizationDate: '2026-08-28',
+            documentDeliveryMethod: 'edo',
+            documentKinds: ['upd'],
+        };
+
+        await post(fixture.manager.agent, fixture.orderId, 'complete', {
+            ...base,
+            realizationDate: '0000-01-01',
+        }).expect(400);
+        await post(fixture.manager.agent, fixture.orderId, 'complete', {
+            ...base,
+            documentsDeliveredAt: '0000-01-01T00:00:00Z',
+        }).expect(400);
+
+        const rejected = await dataSource
+            .getRepository(OrderEntity)
+            .findOneByOrFail({ id: fixture.orderId });
+        expect(rejected).toMatchObject({
+            status: 'fulfilled',
+            version: fulfilledResponse.body.version,
+            completedAt: null,
+            completedByStaffId: null,
+            realizationNumber: null,
+            realizationDate: null,
+            finalDocumentsDeliveryMethod: null,
+            finalDocumentKinds: null,
+            finalDocumentsDeliveredAt: null,
+            completionComment: null,
+        });
+        expect(rejected.paymentReceivedAt).toEqual(before.paymentReceivedAt);
+        expect(rejected.paymentConfirmedAt).toEqual(before.paymentConfirmedAt);
+        expect(rejected.invoiceIssuedAt).toEqual(before.invoiceIssuedAt);
+        expect(rejected.fulfilledAt).toEqual(before.fulfilledAt);
+        expect(rejected.fulfilledByStaffId).toBe(before.fulfilledByStaffId);
+        expect(rejected.fulfillmentMethod).toBe(before.fulfillmentMethod);
+        expect(
+            await dataSource
+                .getRepository(OrderQuoteEntity)
+                .findOneByOrFail({ orderId: fixture.orderId }),
+        ).toEqual(quoteBefore);
+        expect(
+            await dataSource.getRepository(OrderDocumentEntity).find({
+                where: { orderId: fixture.orderId },
+                order: { id: 'ASC' },
+            }),
+        ).toEqual(documentsBefore);
+        expect(
+            await dataSource.getRepository(OrderEventEntity).count({
+                where: { orderId: fixture.orderId, type: 'completed' },
+            }),
+        ).toBe(0);
+        expect(
+            await dataSource.getRepository(AuditEventEntity).count({
+                where: {
+                    targetId: String(fixture.orderId),
+                    action: 'order.completed',
+                },
+            }),
+        ).toBe(0);
+
+        const completed = await post(
+            fixture.manager.agent,
+            fixture.orderId,
+            'complete',
+            { ...base, realizationDate: '0001-01-01' },
+        ).expect(201);
+        expect(completed.body.completion.realizationDate).toBe('0001-01-01');
+        expect(
+            (
+                await dataSource
+                    .getRepository(OrderEntity)
+                    .findOneByOrFail({ id: fixture.orderId })
+            ).realizationDate,
+        ).toBe('0001-01-01');
+    });
+
     it('validates realization and final-document rules including not-required', async () => {
         const individual = await paidOrder('co3c-not-required');
         const individualFulfilled = await fulfill(individual).expect(201);

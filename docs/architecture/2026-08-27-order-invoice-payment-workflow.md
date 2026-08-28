@@ -85,8 +85,9 @@ The fixed sources are `bank_statement`, `payment_order`,
 defaults to command time. An explicit value must be a full RFC3339-style
 timestamp with seconds and an uppercase `T` plus either `Z` or a numeric
 `+/-HH:mm` offset. Date-only and timezone-less values are rejected. The value
-is normalized to one absolute instant before applying the five-minute future
-clock tolerance.
+uses a four-digit year in `0001..9999`; year `0000`, BC dates, signed years,
+and extended years are rejected. It is normalized to one absolute instant
+before applying the five-minute future clock tolerance.
 
 ## 12. Order fields
 

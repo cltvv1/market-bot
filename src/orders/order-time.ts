@@ -5,6 +5,8 @@ export const ORDER_TIMESTAMP_PATTERN =
 export const ORDER_TIMESTAMP_MESSAGE =
     'must be a full timestamp with an explicit timezone';
 export const ORDER_TIMESTAMP_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+export const ORDER_MIN_YEAR = 1;
+export const ORDER_MAX_YEAR = 9999;
 
 export const ORDER_CALENDAR_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 export const ORDER_CALENDAR_DATE_MESSAGE =
@@ -26,6 +28,8 @@ export function isExplicitOrderTimestamp(value: unknown): value is string {
     const offsetMinute = match[11] === undefined ? 0 : Number(match[11]);
 
     if (
+        year < ORDER_MIN_YEAR ||
+        year > ORDER_MAX_YEAR ||
         month < 1 ||
         month > 12 ||
         day < 1 ||
@@ -67,7 +71,12 @@ export function isExplicitOrderCalendarDate(value: unknown): value is string {
     const month = Number(match[2]);
     const day = Number(match[3]);
     return (
-        month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth(year, month)
+        year >= ORDER_MIN_YEAR &&
+        year <= ORDER_MAX_YEAR &&
+        month >= 1 &&
+        month <= 12 &&
+        day >= 1 &&
+        day <= daysInMonth(year, month)
     );
 }
 

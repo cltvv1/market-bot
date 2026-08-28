@@ -2412,7 +2412,13 @@ export class OrdersService {
 export function isOrderPersistenceConflict(error: unknown) {
     if (!(error instanceof QueryFailedError)) return false;
     const code = (error.driverError as { code?: string }).code;
-    return ['22001', '22003', '23502', '23503', '23505', '23514'].includes(
-        code || '',
-    );
+    return [
+        '22001',
+        '22003',
+        '22008',
+        '23502',
+        '23503',
+        '23505',
+        '23514',
+    ].includes(code || '');
 }
