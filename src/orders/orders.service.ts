@@ -2,6 +2,7 @@ import {
     BadRequestException,
     ConflictException,
     Injectable,
+    Logger,
     NotFoundException,
 } from '@nestjs/common';
 import { isUUID } from 'class-validator';
@@ -14,6 +15,8 @@ import { OrganizationEntity } from 'src/organizations/entities/organization.enti
 import { OrganizationMemberEntity } from 'src/organizations/entities/organization-member.entity';
 import { OrganizationsService } from 'src/organizations/organizations.service';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
+import { FilesService } from 'src/files/files.service';
+import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
 import {
     Brackets,
     DataSource,
@@ -25,6 +28,7 @@ import type {
     AdminOrderListQueryDto,
     AssignOrderDto,
     ClientOrderListQueryDto,
+    ConfirmOrderPaymentDto,
     OrderExpectedVersionDto,
     SubmitOrderDto,
     UpdateOrderQuoteDto,
@@ -34,6 +38,7 @@ import { OrderLineEntity } from './entities/order-line.entity';
 import { OrderEntity } from './entities/order.entity';
 import { OrderQuoteEntity } from './entities/order-quote.entity';
 import { OrderQuoteLineEntity } from './entities/order-quote-line.entity';
+import { OrderDocumentEntity } from './entities/order-document.entity';
 import {
     calculateCatalogTotals,
     formatOrderNumber,
@@ -58,7 +63,21 @@ import {
     quoteLineFromProduct,
     type QuoteLineSnapshot,
 } from './order-quote';
-import { ORDER_PAGE_SIZE_DEFAULT, POSTGRES_INTEGER_MAX } from './order.types';
+import {
+    canConfirmOrderPayment,
+    canUploadInvoice,
+    canUploadPaymentProof,
+    nextOrderDocumentRevision,
+    normalizePaymentReceivedAt,
+    orderDocumentDownloadUrl,
+    orderDocumentPurpose,
+    selectActiveInvoice,
+} from './order-payment';
+import {
+    ORDER_PAGE_SIZE_DEFAULT,
+    POSTGRES_INTEGER_MAX,
+    type OrderDocumentType,
+} from './order.types';
 
 interface OrderOrganizationSnapshot {
     organizationId: number | null;
@@ -73,10 +92,13 @@ interface OrderOrganizationSnapshot {
 
 @Injectable()
 export class OrdersService {
+    private readonly logger = new Logger(OrdersService.name);
+
     constructor(
         private readonly dataSource: DataSource,
         private readonly organizations: OrganizationsService,
         private readonly audit: AuditService,
+        private readonly files: FilesService,
     ) {}
 
     async submit(
@@ -288,7 +310,12 @@ export class OrdersService {
     async getClient(userId: number, id: number) {
         const order = await this.dataSource.getRepository(OrderEntity).findOne({
             where: { id, createdByUserId: userId },
-            relations: { lines: true, events: true, quote: { lines: true } },
+            relations: {
+                lines: true,
+                events: true,
+                documents: { storedFile: true },
+                quote: { lines: true },
+            },
         });
         if (!order) throw new NotFoundException('Order was not found');
         return this.presentDetail(order, false);
@@ -351,9 +378,17 @@ export class OrdersService {
             .take(limit)
             .getManyAndCount();
         const counts = await this.lineCounts(orders.map((order) => order.id));
+        const documentStats = await this.documentStats(
+            orders.map((order) => order.id),
+        );
         return {
             items: orders.map((order) =>
-                this.presentSummary(order, counts.get(order.id) ?? 0, true),
+                this.presentSummary(
+                    order,
+                    counts.get(order.id) ?? 0,
+                    true,
+                    documentStats.get(order.id),
+                ),
             ),
             total,
             page,
@@ -369,6 +404,12 @@ export class OrdersService {
                 lines: true,
                 events: true,
                 assignedManager: true,
+                paymentConfirmedByStaff: true,
+                documents: {
+                    storedFile: true,
+                    uploadedByStaff: true,
+                    uploadedByCustomer: true,
+                },
                 quote: {
                     lines: true,
                     createdByStaff: true,
@@ -768,6 +809,397 @@ export class OrdersService {
         });
     }
 
+    async preflightInvoiceUpload(id: number, actor: AdminPrincipal) {
+        const order = await this.dataSource.getRepository(OrderEntity).findOne({
+            where: { id },
+        });
+        if (!order) throw new NotFoundException('Order was not found');
+        if (!canUploadInvoice(order.status)) {
+            throw new ConflictException(
+                'Invoice cannot be uploaded in the current order state',
+            );
+        }
+        this.assertAssignedManager(order, actor.id);
+        return true;
+    }
+
+    async preflightPaymentProofUpload(id: number, userId: number) {
+        const order = await this.dataSource.getRepository(OrderEntity).findOne({
+            where: { id, createdByUserId: userId },
+        });
+        if (!order) throw new NotFoundException('Order was not found');
+        if (!canUploadPaymentProof(order.status)) {
+            throw new ConflictException(
+                'Payment proof cannot be uploaded in the current order state',
+            );
+        }
+        const invoice = await this.currentInvoice(this.dataSource.manager, id);
+        if (!invoice) throw new ConflictException('Current invoice is missing');
+        return true;
+    }
+
+    async uploadInvoice(
+        id: number,
+        expectedVersion: number,
+        file: { buffer: Buffer; originalname?: string; mimetype?: string },
+        actor: AdminPrincipal,
+        requestId?: string,
+    ) {
+        const pending = await this.files.savePendingBuffer({
+            purpose: 'order-invoice',
+            buffer: file.buffer,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            createdByStaffId: actor.id,
+            metadata: {
+                orderId: id,
+                orderDocumentType: 'invoice',
+            },
+        });
+        try {
+            return await this.attachInvoice(
+                id,
+                expectedVersion,
+                pending.id,
+                actor,
+                requestId,
+            );
+        } catch (error) {
+            await this.rejectPendingAfterFailure(pending.id);
+            throw error;
+        }
+    }
+
+    async uploadPaymentProof(
+        id: number,
+        expectedVersion: number,
+        file: { buffer: Buffer; originalname?: string; mimetype?: string },
+        session: WebSessionPrincipal,
+        requestId?: string,
+    ) {
+        const pending = await this.files.savePendingBuffer({
+            purpose: 'order-payment-proof',
+            buffer: file.buffer,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            createdByCustomerId: session.userId,
+            metadata: {
+                orderId: id,
+                orderDocumentType: 'payment_proof',
+            },
+        });
+        try {
+            return await this.attachPaymentProof(
+                id,
+                expectedVersion,
+                pending.id,
+                session,
+                requestId,
+            );
+        } catch (error) {
+            await this.rejectPendingAfterFailure(pending.id);
+            throw error;
+        }
+    }
+
+    async confirmPayment(
+        id: number,
+        input: ConfirmOrderPaymentDto,
+        actor: AdminPrincipal,
+        requestId?: string,
+    ) {
+        const commandTime = new Date();
+        const paymentReceivedAt = normalizePaymentReceivedAt(
+            input.paymentReceivedAt,
+            commandTime,
+        );
+        const comment = input.comment?.trim() || null;
+        return this.executeCommand(async (manager) => {
+            const order = await this.lockOrder(manager, id);
+            this.assertExpectedVersion(order, input.expectedVersion);
+            if (!canConfirmOrderPayment(order.status)) {
+                throw new ConflictException(
+                    'Payment cannot be confirmed in the current order state',
+                );
+            }
+            this.assertAssignedManager(order, actor.id);
+            const confirmedQuote = await this.requireConfirmedQuote(
+                manager,
+                order.id,
+            );
+            const invoice = await this.currentInvoice(manager, order.id);
+            if (!invoice) {
+                throw new ConflictException('Current invoice is missing');
+            }
+            const paymentProofCount = await manager
+                .getRepository(OrderDocumentEntity)
+                .count({
+                    where: {
+                        orderId: order.id,
+                        type: 'payment_proof',
+                        status: 'active',
+                    },
+                });
+            const paymentConfirmedAt = new Date();
+            await this.updateOrder(manager, order, {
+                status: 'paid',
+                paymentReceivedAt,
+                paymentConfirmedAt,
+                paymentConfirmedByStaffId: actor.id,
+                paymentConfirmationSource: input.source,
+                paymentConfirmationComment: comment,
+            });
+            const customerMetadata = {
+                quotedTotalMinor: confirmedQuote.total,
+                currency: confirmedQuote.quote.currency,
+            };
+            await this.recordStaffEvent(manager, order.id, actor.id, {
+                type: 'payment_confirmed',
+                fromStatus: 'waiting_payment',
+                toStatus: 'paid',
+                visibility: 'customer',
+                metadata: customerMetadata,
+            });
+            await this.auditStaff(
+                manager,
+                actor,
+                'order.payment.confirmed',
+                order,
+                requestId,
+                {
+                    managerId: actor.id,
+                    source: input.source,
+                    paymentReceivedAt: paymentReceivedAt.toISOString(),
+                    ...customerMetadata,
+                    paymentProofCount,
+                },
+            );
+            return this.presentDetail(
+                await this.loadOrder(manager, order.id),
+                true,
+            );
+        });
+    }
+
+    async openClientDocument(
+        userId: number,
+        orderId: number,
+        documentId: number,
+    ) {
+        const document = await this.dataSource
+            .getRepository(OrderDocumentEntity)
+            .findOne({
+                where: {
+                    id: documentId,
+                    orderId,
+                    order: { createdByUserId: userId },
+                },
+                relations: { order: true, storedFile: true },
+            });
+        if (
+            !document ||
+            !document.customerVisible ||
+            document.status !== 'active'
+        ) {
+            throw new NotFoundException('Order document was not found');
+        }
+        this.assertDocumentFileBinding(document);
+        return this.files.open(document.storedFileId);
+    }
+
+    async openAdminDocument(orderId: number, documentId: number) {
+        const document = await this.dataSource
+            .getRepository(OrderDocumentEntity)
+            .findOne({
+                where: { id: documentId, orderId },
+                relations: { storedFile: true },
+            });
+        if (!document) {
+            throw new NotFoundException('Order document was not found');
+        }
+        this.assertDocumentFileBinding(document);
+        return this.files.open(document.storedFileId);
+    }
+
+    private async attachInvoice(
+        id: number,
+        expectedVersion: number,
+        pendingFileId: number,
+        actor: AdminPrincipal,
+        requestId?: string,
+    ) {
+        return this.executeCommand(async (manager) => {
+            const order = await this.lockOrder(manager, id);
+            this.assertExpectedVersion(order, expectedVersion);
+            if (!canUploadInvoice(order.status)) {
+                throw new ConflictException(
+                    'Invoice cannot be uploaded in the current order state',
+                );
+            }
+            this.assertAssignedManager(order, actor.id);
+            const confirmedQuote = await this.requireConfirmedQuote(
+                manager,
+                order.id,
+            );
+            const pending = await this.lockPendingFile(
+                manager,
+                pendingFileId,
+                order.id,
+                'invoice',
+                actor.id,
+                null,
+            );
+            const documents = manager.getRepository(OrderDocumentEntity);
+            const invoiceHistory = await documents.find({
+                where: { orderId: order.id, type: 'invoice' },
+                order: { revision: 'ASC' },
+            });
+            const current = selectActiveInvoice(invoiceHistory);
+            const replacing = order.status === 'waiting_payment';
+            if ((!replacing && current) || (replacing && !current)) {
+                throw new ConflictException(
+                    'Order invoice state is inconsistent',
+                );
+            }
+            const now = new Date();
+            if (current) {
+                current.status = 'superseded';
+                current.supersededAt = now;
+                await documents.save(current);
+            }
+            const revision = nextOrderDocumentRevision(
+                invoiceHistory.map((document) => document.revision),
+            );
+            const document = await documents.save(
+                documents.create({
+                    orderId: order.id,
+                    type: 'invoice',
+                    status: 'active',
+                    revision,
+                    storedFileId: pending.id,
+                    customerVisible: true,
+                    uploadedByStaffId: actor.id,
+                    uploadedByCustomerId: null,
+                    quoteRevisionSnapshot: confirmedQuote.quote.revision,
+                    amountMinorSnapshot: confirmedQuote.total,
+                    currency: 'RUB',
+                    supersededAt: null,
+                }),
+            );
+            await this.activatePendingFile(manager, pending, document);
+            await this.updateOrder(manager, order, {
+                status: 'waiting_payment',
+                invoiceIssuedAt: order.invoiceIssuedAt ?? now,
+            });
+            const metadata = {
+                orderDocumentId: document.id,
+                documentRevision: revision,
+                quoteRevision: confirmedQuote.quote.revision,
+                amountMinor: confirmedQuote.total,
+                currency: confirmedQuote.quote.currency,
+            };
+            await this.recordStaffEvent(manager, order.id, actor.id, {
+                type: replacing ? 'invoice_replaced' : 'invoice_issued',
+                fromStatus: replacing ? 'waiting_payment' : 'confirmed',
+                toStatus: 'waiting_payment',
+                visibility: 'customer',
+                metadata,
+            });
+            await this.auditStaff(
+                manager,
+                actor,
+                replacing ? 'order.invoice.replaced' : 'order.invoice.issued',
+                order,
+                requestId,
+                { ...metadata, managerId: actor.id },
+            );
+            return this.presentDetail(
+                await this.loadOrder(manager, order.id),
+                true,
+            );
+        });
+    }
+
+    private async attachPaymentProof(
+        id: number,
+        expectedVersion: number,
+        pendingFileId: number,
+        session: WebSessionPrincipal,
+        requestId?: string,
+    ) {
+        return this.executeCommand(async (manager) => {
+            const order = await this.lockOrder(manager, id);
+            if (order.createdByUserId !== session.userId) {
+                throw new NotFoundException('Order was not found');
+            }
+            this.assertExpectedVersion(order, expectedVersion);
+            if (!canUploadPaymentProof(order.status)) {
+                throw new ConflictException(
+                    'Payment proof cannot be uploaded in the current order state',
+                );
+            }
+            if (!(await this.currentInvoice(manager, order.id))) {
+                throw new ConflictException('Current invoice is missing');
+            }
+            const pending = await this.lockPendingFile(
+                manager,
+                pendingFileId,
+                order.id,
+                'payment_proof',
+                null,
+                session.userId,
+            );
+            const documents = manager.getRepository(OrderDocumentEntity);
+            const prior = await documents.find({
+                where: { orderId: order.id, type: 'payment_proof' },
+            });
+            const revision = nextOrderDocumentRevision(
+                prior.map((document) => document.revision),
+            );
+            const document = await documents.save(
+                documents.create({
+                    orderId: order.id,
+                    type: 'payment_proof',
+                    status: 'active',
+                    revision,
+                    storedFileId: pending.id,
+                    customerVisible: true,
+                    uploadedByStaffId: null,
+                    uploadedByCustomerId: session.userId,
+                    quoteRevisionSnapshot: null,
+                    amountMinorSnapshot: null,
+                    currency: null,
+                    supersededAt: null,
+                }),
+            );
+            await this.activatePendingFile(manager, pending, document);
+            await this.updateOrder(manager, order, {});
+            const metadata = {
+                orderDocumentId: document.id,
+                documentRevision: revision,
+            };
+            await this.recordCustomerEvent(manager, order.id, session.userId, {
+                type: 'payment_proof_received',
+                fromStatus: 'waiting_payment',
+                toStatus: 'waiting_payment',
+                visibility: 'customer',
+                metadata,
+            });
+            await this.auditCustomer(
+                manager,
+                session,
+                'order.payment_proof.uploaded',
+                order,
+                requestId,
+                metadata,
+            );
+            return this.presentDetail(
+                await this.loadOrder(manager, order.id),
+                false,
+            );
+        });
+    }
+
     private async executeCommand<T>(
         operation: (manager: EntityManager) => Promise<T>,
     ): Promise<T> {
@@ -797,6 +1229,133 @@ export class OrdersService {
         });
         if (!quote) throw new ConflictException('Order quote is missing');
         return quote;
+    }
+
+    private async requireConfirmedQuote(
+        manager: EntityManager,
+        orderId: number,
+    ) {
+        const quote = await this.lockQuote(manager, orderId);
+        if (quote.status !== 'confirmed' || quote.hasUnpricedItems) {
+            throw new ConflictException('Confirmed order quote is required');
+        }
+        const lines = await manager.getRepository(OrderQuoteLineEntity).find({
+            where: { quoteId: quote.id },
+            order: { position: 'ASC', id: 'ASC' },
+        });
+        if (
+            !lines.length ||
+            lines.some((line) => line.quotedUnitPriceMinor === null)
+        ) {
+            throw new ConflictException('Confirmed order quote is incomplete');
+        }
+        const totals = calculateQuoteTotals(lines);
+        if (
+            totals.hasUnpricedItems ||
+            totals.quotedTotalMinor === null ||
+            totals.quotedPricedSubtotalMinor !==
+                quote.quotedPricedSubtotalMinor ||
+            totals.catalogPricedSubtotalMinor !==
+                quote.catalogPricedSubtotalMinor
+        ) {
+            throw new ConflictException(
+                'Confirmed order quote totals are invalid',
+            );
+        }
+        return { quote, lines, total: totals.quotedTotalMinor };
+    }
+
+    private async currentInvoice(manager: EntityManager, orderId: number) {
+        const invoices = await manager.getRepository(OrderDocumentEntity).find({
+            where: { orderId, type: 'invoice', status: 'active' },
+        });
+        return selectActiveInvoice(invoices);
+    }
+
+    private async lockPendingFile(
+        manager: EntityManager,
+        fileId: number,
+        orderId: number,
+        type: OrderDocumentType,
+        staffId: number | null,
+        customerId: number | null,
+    ) {
+        const file = await manager.getRepository(StoredFileEntity).findOne({
+            where: { id: fileId },
+            lock: { mode: 'pessimistic_write' },
+        });
+        const purpose = orderDocumentPurpose(type);
+        if (
+            !file ||
+            file.status !== 'pending' ||
+            file.purgedAt !== null ||
+            file.createdByStaffId !== staffId ||
+            file.createdByCustomerId !== customerId ||
+            file.metadata?.purpose !== purpose ||
+            file.metadata?.orderId !== orderId ||
+            file.metadata?.orderDocumentType !== type
+        ) {
+            throw new ConflictException('Pending order document is invalid');
+        }
+        const policy = this.files.getPolicy(purpose);
+        if (
+            !policy.mimeTypes.includes(file.mimeType) ||
+            BigInt(file.sizeBytes) > BigInt(policy.maxBytes) ||
+            !(await this.files.exists(file))
+        ) {
+            throw new ConflictException(
+                'Pending order document is unavailable',
+            );
+        }
+        return file;
+    }
+
+    private async activatePendingFile(
+        manager: EntityManager,
+        file: StoredFileEntity,
+        document: OrderDocumentEntity,
+    ) {
+        file.status = 'active';
+        file.metadata = {
+            ...(file.metadata ?? {}),
+            orderDocumentId: document.id,
+            documentRevision: document.revision,
+            ...(document.quoteRevisionSnapshot === null
+                ? {}
+                : { quoteRevisionSnapshot: document.quoteRevisionSnapshot }),
+        };
+        await manager.getRepository(StoredFileEntity).save(file);
+    }
+
+    private async rejectPendingAfterFailure(fileId: number) {
+        try {
+            await this.files.rejectPendingById(fileId);
+        } catch (cleanupError) {
+            const reason =
+                cleanupError instanceof Error
+                    ? cleanupError.message
+                    : 'unknown cleanup error';
+            this.logger.error(
+                `Failed to reject pending order document ${fileId}: ${reason}`,
+            );
+        }
+    }
+
+    private assertDocumentFileBinding(document: OrderDocumentEntity) {
+        if (!this.hasDocumentFileBinding(document)) {
+            throw new NotFoundException('Order document was not found');
+        }
+    }
+
+    private hasDocumentFileBinding(document: OrderDocumentEntity) {
+        const metadata = document.storedFile?.metadata;
+        return (
+            metadata?.purpose === orderDocumentPurpose(document.type) &&
+            metadata?.orderId === document.orderId &&
+            metadata?.orderDocumentId === document.id &&
+            metadata?.orderDocumentType === document.type &&
+            metadata?.documentRevision === document.revision
+        );
     }
 
     private assertExpectedVersion(order: OrderEntity, expectedVersion: number) {
@@ -833,7 +1392,16 @@ export class OrdersService {
         changes: Partial<
             Pick<
                 OrderEntity,
-                'status' | 'assignedManagerId' | 'assignedAt' | 'confirmedAt'
+                | 'status'
+                | 'assignedManagerId'
+                | 'assignedAt'
+                | 'confirmedAt'
+                | 'invoiceIssuedAt'
+                | 'paymentReceivedAt'
+                | 'paymentConfirmedAt'
+                | 'paymentConfirmedByStaffId'
+                | 'paymentConfirmationSource'
+                | 'paymentConfirmationComment'
             >
         >,
     ) {
@@ -904,6 +1472,31 @@ export class OrdersService {
         );
     }
 
+    private recordCustomerEvent(
+        manager: EntityManager,
+        orderId: number,
+        actorUserId: number,
+        input: {
+            type: OrderEventEntity['type'];
+            fromStatus: OrderEventEntity['fromStatus'];
+            toStatus: OrderEventEntity['toStatus'];
+            visibility: OrderEventEntity['visibility'];
+            metadata: Record<string, unknown>;
+        },
+    ) {
+        const events = manager.getRepository(OrderEventEntity);
+        return events.save(
+            events.create({
+                orderId,
+                ...input,
+                actorType: 'customer',
+                actorUserId,
+                actorStaffId: null,
+                message: null,
+            }),
+        );
+    }
+
     private auditStaff(
         manager: EntityManager,
         actor: AdminPrincipal,
@@ -917,6 +1510,33 @@ export class OrdersService {
                 actorType: 'staff',
                 actorStaffId: actor.id,
                 actorSessionId: actor.sessionId,
+                action,
+                targetType: 'order',
+                targetId: order.id,
+                requestId:
+                    requestId && isUUID(requestId) ? requestId : undefined,
+                metadata: {
+                    orderNumber: formatOrderNumber(order.id),
+                    ...metadata,
+                },
+            },
+            manager,
+        );
+    }
+
+    private auditCustomer(
+        manager: EntityManager,
+        session: WebSessionPrincipal,
+        action: string,
+        order: OrderEntity,
+        requestId: string | undefined,
+        metadata: Record<string, unknown>,
+    ) {
+        return this.audit.record(
+            {
+                actorType: 'customer',
+                actorCustomerId: session.userId,
+                actorWebSessionId: session.sessionId,
                 action,
                 targetType: 'order',
                 targetId: order.id,
@@ -1025,6 +1645,12 @@ export class OrdersService {
                 lines: true,
                 events: true,
                 assignedManager: true,
+                paymentConfirmedByStaff: true,
+                documents: {
+                    storedFile: true,
+                    uploadedByStaff: true,
+                    uploadedByCustomer: true,
+                },
                 quote: {
                     lines: true,
                     createdByStaff: true,
@@ -1053,6 +1679,54 @@ export class OrdersService {
         );
     }
 
+    private async documentStats(ids: number[]) {
+        if (!ids.length) {
+            return new Map<
+                number,
+                {
+                    hasCurrentInvoice: boolean;
+                    invoiceRevision: number | null;
+                    paymentProofCount: number;
+                }
+            >();
+        }
+        const rows: Array<{
+            orderId: string;
+            invoiceRevision: string | null;
+            paymentProofCount: string;
+        }> = await this.dataSource
+            .getRepository(OrderDocumentEntity)
+            .createQueryBuilder('document')
+            .select('document.orderId', 'orderId')
+            .addSelect(
+                `MAX(CASE WHEN document.type = 'invoice' AND document.status = 'active' THEN document.revision END)`,
+                'invoiceRevision',
+            )
+            .addSelect(
+                `COUNT(*) FILTER (WHERE document.type = 'payment_proof' AND document.status = 'active')`,
+                'paymentProofCount',
+            )
+            .where('document.orderId IN (:...ids)', { ids })
+            .groupBy('document.orderId')
+            .getRawMany();
+        return new Map(
+            rows.map((row) => {
+                const invoiceRevision =
+                    row.invoiceRevision === null
+                        ? null
+                        : Number(row.invoiceRevision);
+                return [
+                    Number(row.orderId),
+                    {
+                        hasCurrentInvoice: invoiceRevision !== null,
+                        invoiceRevision,
+                        paymentProofCount: Number(row.paymentProofCount),
+                    },
+                ];
+            }),
+        );
+    }
+
     private pagination(query: { page?: number; limit?: number }) {
         return {
             page: query.page ?? 1,
@@ -1064,6 +1738,11 @@ export class OrdersService {
         order: OrderEntity,
         itemCount: number,
         admin: boolean,
+        documentStats?: {
+            hasCurrentInvoice: boolean;
+            invoiceRevision: number | null;
+            paymentProofCount: number;
+        },
     ) {
         return {
             id: order.id,
@@ -1103,6 +1782,11 @@ export class OrdersService {
                       quote: order.quote
                           ? this.presentQuoteSummary(order.quote)
                           : null,
+                      hasCurrentInvoice:
+                          documentStats?.hasCurrentInvoice ?? false,
+                      invoiceRevision: documentStats?.invoiceRevision ?? null,
+                      paymentProofCount: documentStats?.paymentProofCount ?? 0,
+                      paymentConfirmedAt: order.paymentConfirmedAt,
                   }
                 : {
                       confirmedQuote: this.presentClientConfirmedQuote(order),
@@ -1128,8 +1812,33 @@ export class OrdersService {
             (left, right) =>
                 left.position - right.position || left.id - right.id,
         );
+        const documents = [...(order.documents || [])].sort(
+            (left, right) =>
+                left.createdAt.getTime() - right.createdAt.getTime() ||
+                left.id - right.id,
+        );
+        const activeInvoices = documents.filter(
+            (document) =>
+                document.type === 'invoice' && document.status === 'active',
+        );
+        const currentInvoice = selectActiveInvoice(activeInvoices);
+        const paymentProofs = documents.filter(
+            (document) =>
+                document.type === 'payment_proof' &&
+                document.status === 'active',
+        );
+        const detailDocumentStats = {
+            hasCurrentInvoice: currentInvoice !== null,
+            invoiceRevision: currentInvoice?.revision ?? null,
+            paymentProofCount: paymentProofs.length,
+        };
         return {
-            ...this.presentSummary(order, lines.length, admin),
+            ...this.presentSummary(
+                order,
+                lines.length,
+                admin,
+                admin ? detailDocumentStats : undefined,
+            ),
             organization:
                 order.customerType === 'organization'
                     ? {
@@ -1195,13 +1904,108 @@ export class OrdersService {
                                 ),
                             }
                           : null,
+                      documents: {
+                          invoices: documents
+                              .filter((document) => document.type === 'invoice')
+                              .map((document) =>
+                                  this.presentDocument(document, 'admin', true),
+                              ),
+                          paymentProofs: paymentProofs.map((document) =>
+                              this.presentDocument(document, 'admin', true),
+                          ),
+                      },
+                      paymentConfirmation: order.paymentConfirmedAt
+                          ? {
+                                receivedAt: order.paymentReceivedAt,
+                                confirmedAt: order.paymentConfirmedAt,
+                                source: order.paymentConfirmationSource,
+                                comment: order.paymentConfirmationComment,
+                                confirmedByStaff: this.presentManager(
+                                    order.paymentConfirmedByStaff,
+                                ),
+                            }
+                          : null,
                   }
                 : {
                       confirmedQuote: this.presentClientConfirmedQuote(
                           order,
                           quoteLines,
                       ),
+                      documents: {
+                          currentInvoice: currentInvoice
+                              ? this.presentDocument(
+                                    currentInvoice,
+                                    'client',
+                                    false,
+                                )
+                              : null,
+                          paymentProofs: paymentProofs.map((document) =>
+                              this.presentDocument(document, 'client', false),
+                          ),
+                      },
+                      payment: order.paymentConfirmedAt
+                          ? {
+                                receivedAt: order.paymentReceivedAt,
+                                confirmedAt: order.paymentConfirmedAt,
+                            }
+                          : null,
                   }),
+        };
+    }
+
+    private presentDocument(
+        document: OrderDocumentEntity,
+        audience: 'client' | 'admin',
+        includeUploader: boolean,
+    ) {
+        const file = document.storedFile;
+        const available =
+            file?.status === 'active' &&
+            file.purgedAt === null &&
+            this.hasDocumentFileBinding(document);
+        return {
+            id: document.id,
+            type: document.type,
+            revision: document.revision,
+            ...(audience === 'admin' ? { status: document.status } : {}),
+            originalName: file.originalName,
+            mimeType: file.mimeType,
+            sizeBytes: file.sizeBytes,
+            sha256: file.sha256,
+            createdAt: document.createdAt,
+            downloadUrl: available
+                ? orderDocumentDownloadUrl(
+                      audience,
+                      document.orderId,
+                      document.id,
+                  )
+                : null,
+            available,
+            ...(document.type === 'invoice'
+                ? {
+                      quoteRevisionSnapshot: document.quoteRevisionSnapshot,
+                      amountMinorSnapshot: document.amountMinorSnapshot,
+                      currency: document.currency,
+                  }
+                : {}),
+            ...(audience === 'admin'
+                ? { supersededAt: document.supersededAt }
+                : {}),
+            ...(includeUploader
+                ? {
+                      uploadedBy:
+                          document.type === 'invoice'
+                              ? this.presentManager(document.uploadedByStaff)
+                              : document.uploadedByCustomer
+                                ? {
+                                      id: document.uploadedByCustomer.id,
+                                      name: document.uploadedByCustomer.name,
+                                      platform:
+                                          document.uploadedByCustomer.platform,
+                                  }
+                                : null,
+                  }
+                : {}),
         };
     }
 

@@ -44,6 +44,8 @@ export type FilePurpose =
     | 'ticket-audio'
     | 'ticket-video'
     | 'service-invoice'
+    | 'order-invoice'
+    | 'order-payment-proof'
     | 'atol-consent'
     | 'generated-pdf'
     | 'signed-document'

@@ -204,11 +204,14 @@ commercial source will be the confirmed `OrderQuote` and `OrderQuoteLine`
 snapshot, not the preliminary `OrderLine` request. CO-3A stores no 1C IDs and
 makes no 1C calls.
 
-## 25. Deferred documents, payment, and fulfillment
+## 25. Documents, payment, and deferred fulfillment
 
-Invoices, payment proof, payment confirmation, order documents, StoredFile
-links, outbound document delivery, stock reservation, fulfillment, UPD, and
-later state transitions are deliberately deferred to separate packages.
+CO-3B now implements manual invoice revisions, customer payment proof,
+manual full-payment confirmation, OrderDocument ownership, and context-bound
+StoredFile downloads. Its contract is documented in
+`2026-08-27-order-invoice-payment-workflow.md`. Outbound document delivery,
+stock reservation, fulfillment, UPD, and later state transitions remain
+deferred to separate packages.
 
 ## 26. Explicit exclusions
 

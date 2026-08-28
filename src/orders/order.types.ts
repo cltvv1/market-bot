@@ -29,6 +29,7 @@ export const ORDER_EVENT_TYPES = [
     'quote_updated',
     'confirmed',
     'invoice_issued',
+    'invoice_replaced',
     'payment_proof_received',
     'payment_confirmed',
     'fulfilled',
@@ -59,3 +60,20 @@ export type OrderAssignmentScope = (typeof ORDER_ASSIGNMENT_SCOPES)[number];
 export const ORDER_MONEY_MAX_MINOR_TEXT = '99999999999999999999';
 export const ORDER_MONEY_MAX_MINOR = BigInt(ORDER_MONEY_MAX_MINOR_TEXT);
 export const ORDER_INTERNAL_COMMENT_MAX_LENGTH = 2000;
+export const ORDER_PAYMENT_COMMENT_MAX_LENGTH = 1000;
+
+export const ORDER_DOCUMENT_TYPES = ['invoice', 'payment_proof'] as const;
+export type OrderDocumentType = (typeof ORDER_DOCUMENT_TYPES)[number];
+
+export const ORDER_DOCUMENT_STATUSES = ['active', 'superseded'] as const;
+export type OrderDocumentStatus = (typeof ORDER_DOCUMENT_STATUSES)[number];
+
+export const ORDER_PAYMENT_SOURCES = [
+    'bank_statement',
+    'payment_order',
+    'customer_confirmation',
+    'other',
+] as const;
+export type OrderPaymentSource = (typeof ORDER_PAYMENT_SOURCES)[number];
+
+export const ORDER_PAYMENT_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;

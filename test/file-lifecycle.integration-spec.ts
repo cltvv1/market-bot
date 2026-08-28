@@ -142,7 +142,7 @@ describe('file lifecycle reconciliation on migrated PostgreSQL', () => {
                 (reference) => `${reference.tableName}.${reference.columnName}`,
             ),
         );
-        expect(surfaces.size).toBeGreaterThanOrEqual(11);
+        expect(surfaces.size).toBeGreaterThanOrEqual(12);
         for (const expected of [
             'ticket_messages.storedFileId',
             'service_requests.invoiceStoredFileId',
@@ -155,6 +155,7 @@ describe('file lifecycle reconciliation on migrated PostgreSQL', () => {
             'registration_evidence.storedFileId',
             'outbound_deliveries.storedFileId',
             'support_resource_versions.storedFileId',
+            'order_documents.storedFileId',
         ]) {
             expect(surfaces.has(expected)).toBe(true);
         }

@@ -46,6 +46,34 @@ export class FilesService {
         createdByCustomerId?: number;
         metadata?: Record<string, unknown>;
     }) {
+        return this.saveSmallBuffer(input, 'active');
+    }
+
+    async savePendingBuffer(input: {
+        purpose: FilePurpose;
+        buffer: Buffer;
+        originalName?: string;
+        mimeType?: string;
+        createdByStaffId?: number;
+        createdByCustomerId?: number;
+        metadata: Record<string, unknown>;
+    }) {
+        return this.saveSmallBuffer(input, 'pending');
+    }
+
+    private async saveSmallBuffer(
+        input: {
+            purpose: FilePurpose;
+            buffer: Buffer;
+            originalName?: string;
+            mimeType?: string;
+            serverGenerated?: boolean;
+            createdByStaffId?: number;
+            createdByCustomerId?: number;
+            metadata?: Record<string, unknown>;
+        },
+        status: 'active' | 'pending',
+    ) {
         if (input.purpose === 'support-resource') {
             throw new BadRequestException(
                 'Support resources require the streaming upload workflow',
@@ -56,6 +84,7 @@ export class FilesService {
             input.buffer,
             input.mimeType,
             input.serverGenerated,
+            input.originalName,
         );
         const now = new Date();
         const objectKey = [
@@ -78,7 +107,7 @@ export class FilesService {
                     mimeType: mime,
                     sizeBytes: String(stored.sizeBytes),
                     sha256: stored.sha256,
-                    status: 'active',
+                    status,
                     createdByStaffId: input.createdByStaffId ?? null,
                     createdByCustomerId: input.createdByCustomerId ?? null,
                     metadata: {
@@ -91,6 +120,17 @@ export class FilesService {
             await this.storage.remove(objectKey);
             throw error;
         }
+    }
+
+    async rejectPendingById(id: number, now = new Date()) {
+        return this.files.manager.transaction(async (manager) => {
+            const file = await manager.getRepository(StoredFileEntity).findOne({
+                where: { id },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!file) return null;
+            return this.rejectPending(file, manager, now);
+        });
     }
 
     async saveSupportStream(input: {
@@ -172,11 +212,15 @@ export class FilesService {
 
     async open(id: number) {
         const file = await this.get(id);
+        const physicallyExists =
+            file.purgedAt === null &&
+            (await this.storage.exists(file.objectKey));
         if (
             file.status !== 'active' ||
-            !(await this.storage.exists(file.objectKey))
+            file.purgedAt !== null ||
+            !physicallyExists
         ) {
-            if (file.status === 'active') {
+            if (file.status === 'active' && file.purgedAt === null) {
                 file.status = 'missing';
                 file.missingAt ??= new Date();
                 await this.files.save(file);
@@ -266,9 +310,12 @@ export class FilesService {
     }
 
     private safeOriginalName(value?: string) {
-        const name = path
-            .basename((value || 'file').replaceAll('\0', ''))
-            .trim();
+        const supplied = value || 'file';
+        const decoded = /[\u0080-\u00ff]/.test(supplied)
+            ? Buffer.from(supplied, 'latin1').toString('utf8')
+            : supplied;
+        const normalized = decoded.includes('\ufffd') ? supplied : decoded;
+        const name = path.basename(normalized.replaceAll('\0', '')).trim();
         if (!name) throw new BadRequestException('Invalid original filename');
         return name.slice(0, 255);
     }

@@ -17,12 +17,14 @@ import { UserEntity } from 'src/users/entities/user.entity';
 import type {
     OrderCustomerType,
     OrderDeliveryType,
+    OrderPaymentSource,
     OrderStatus,
 } from '../order.types';
 import { OrderEventEntity } from './order-event.entity';
 import { OrderLineEntity } from './order-line.entity';
 import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 import { OrderQuoteEntity } from './order-quote.entity';
+import { OrderDocumentEntity } from './order-document.entity';
 
 @Entity('orders')
 @Index('UQ_orders_user_idempotency', ['createdByUserId', 'idempotencyKey'], {
@@ -35,6 +37,8 @@ import { OrderQuoteEntity } from './order-quote.entity';
 @Index('IDX_orders_created', ['createdAt', 'id'])
 @Index('IDX_orders_assigned_manager', ['assignedManagerId'])
 @Index('IDX_orders_workspace', ['status', 'assignedManagerId', 'createdAt'])
+@Index('IDX_orders_invoice_issued_at', ['invoiceIssuedAt'])
+@Index('IDX_orders_payment_confirmed_at', ['paymentConfirmedAt'])
 @Check(
     'CK_orders_status',
     `"status" IN ('submitted','in_review','confirmed','waiting_payment','paid','fulfilled','completed','cancelled')`,
@@ -50,6 +54,14 @@ import { OrderQuoteEntity } from './order-quote.entity';
 @Check('CK_orders_currency', `"currency" = 'RUB'`)
 @Check('CK_orders_subtotal_nonnegative', `"catalogPricedSubtotalMinor" >= 0`)
 @Check('CK_orders_version_positive', `"version" > 0`)
+@Check(
+    'CK_orders_payment_source',
+    `"paymentConfirmationSource" IS NULL OR "paymentConfirmationSource" IN ('bank_statement','payment_order','customer_confirmation','other')`,
+)
+@Check(
+    'CK_orders_payment_confirmation_shape',
+    `("paymentReceivedAt" IS NULL AND "paymentConfirmedAt" IS NULL AND "paymentConfirmedByStaffId" IS NULL AND "paymentConfirmationSource" IS NULL AND "paymentConfirmationComment" IS NULL) OR ("paymentReceivedAt" IS NOT NULL AND "paymentConfirmedAt" IS NOT NULL AND "paymentConfirmedByStaffId" IS NOT NULL AND "paymentConfirmationSource" IS NOT NULL)`,
+)
 @Check('CK_orders_fingerprint', `"submissionFingerprint" ~ '^[0-9a-f]{64}$'`)
 @Check(
     'CK_orders_contact_required',
@@ -108,6 +120,31 @@ export class OrderEntity {
 
     @Column({ type: 'timestamp', nullable: true })
     confirmedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    invoiceIssuedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    paymentReceivedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    paymentConfirmedAt: Date | null;
+
+    @Column({ type: 'integer', nullable: true })
+    paymentConfirmedByStaffId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'RESTRICT' })
+    @JoinColumn({
+        name: 'paymentConfirmedByStaffId',
+        foreignKeyConstraintName: 'FK_orders_payment_confirmed_by_staff',
+    })
+    paymentConfirmedByStaff: AdminUserEntity | null;
+
+    @Column({ type: 'varchar', length: 32, nullable: true })
+    paymentConfirmationSource: OrderPaymentSource | null;
+
+    @Column({ type: 'varchar', length: 1000, nullable: true })
+    paymentConfirmationComment: string | null;
 
     @Column({ type: 'varchar', length: 32 })
     customerType: OrderCustomerType;
@@ -187,6 +224,9 @@ export class OrderEntity {
 
     @OneToOne(() => OrderQuoteEntity, (quote) => quote.order)
     quote: OrderQuoteEntity | null;
+
+    @OneToMany(() => OrderDocumentEntity, (document) => document.order)
+    documents: OrderDocumentEntity[];
 
     @CreateDateColumn()
     createdAt: Date;
