@@ -37,11 +37,14 @@ columns such as old `fileId` values are not `StoredFile` identities.
 | General service upload | `service-attachment` | `service_request_attachments.storedFileId` or `service_request_messages.storedFileId` | Attached after domain authorization; removal/failure logically deletes it. |
 | Outbound document/image delivery | Existing source purpose | `outbound_deliveries.storedFileId` | Secondary durable delivery reference; it blocks physical purge while retained. |
 | Hosted Support upload | `support-resource` | `support_resource_versions.storedFileId` | Created pending, then attached and activated transactionally; loser becomes rejected. |
+| Order invoice | `order-invoice` | `order_documents.storedFileId` | Created pending and attached transactionally; all current and superseded revisions remain referenced. |
+| Order customer payment proof | `order-payment-proof` | `order_documents.storedFileId` | Created pending and attached transactionally; every proof revision remains active and referenced. |
 
 Every current modeled `StoredFile` owner is protected by a PostgreSQL FK. The
 catalog inspector discovers those FKs dynamically, including tickets,
 registrations, service request fields/messages/attachments, outbound delivery,
-and Support versions. A future domain that stores a file ID without an FK must
+Support versions, and Order documents. The migrated schema currently exposes
+12 FK reference surfaces targeting `stored_files(id)`. A future domain that stores a file ID without an FK must
 be treated as a lifecycle blocker until it adds a FK or trusted adapter.
 
 ## 4. Why Support upload bypasses Multer

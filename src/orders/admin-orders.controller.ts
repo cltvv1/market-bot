@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Body,
     Controller,
     Get,
@@ -7,9 +8,14 @@ import {
     Put,
     Query,
     Req,
+    Res,
+    UploadedFile,
     UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request, Response } from 'express';
+import { multipartOptionsForPurpose } from 'src/files/multipart-options';
 import {
     CurrentAdmin,
     RequirePermissions,
@@ -23,11 +29,21 @@ import { RateLimit } from 'src/security/rate-limit';
 import {
     AdminOrderListQueryDto,
     AssignOrderDto,
+    ConfirmOrderPaymentDto,
+    OrderDocumentIdParamDto,
     OrderExpectedVersionDto,
     OrderIdParamDto,
     UpdateOrderQuoteDto,
 } from './dto/order.dto';
 import { OrdersService } from './orders.service';
+import { OrderInvoiceUploadPreflightGuard } from './order-upload-preflight.guard';
+import { orderDocumentContentDisposition } from './order-payment';
+
+interface UploadedMemoryFile {
+    buffer: Buffer;
+    originalname: string;
+    mimetype: string;
+}
 
 @Controller('admin/api/orders')
 @UseGuards(AdminSessionGuard, AdminPermissionGuard)
@@ -105,5 +121,77 @@ export class AdminOrdersController {
         @Req() request: Request & { requestId?: string },
     ) {
         return this.orders.confirm(params.id, body, admin, request.requestId);
+    }
+
+    @Post(':id/invoices')
+    @RequirePermissions('orders.invoice')
+    @UseGuards(OrderInvoiceUploadPreflightGuard)
+    @UseInterceptors(
+        FileInterceptor('file', multipartOptionsForPurpose('order-invoice', 1)),
+    )
+    @RateLimit('admin-order-document-upload', 60, 600)
+    uploadInvoice(
+        @Param() params: OrderIdParamDto,
+        @Body() body: OrderExpectedVersionDto,
+        @UploadedFile() file: UploadedMemoryFile | undefined,
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Req() request: Request & { requestId?: string },
+    ) {
+        if (!file) throw new BadRequestException('File is required');
+        return this.orders.uploadInvoice(
+            params.id,
+            body.expectedVersion,
+            file,
+            admin,
+            request.requestId,
+        );
+    }
+
+    @Post(':id/confirm-payment')
+    @RequirePermissions('orders.payment')
+    @RateLimit('admin-order-mutation', 120, 60)
+    confirmPayment(
+        @Param() params: OrderIdParamDto,
+        @Body() body: ConfirmOrderPaymentDto,
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Req() request: Request & { requestId?: string },
+    ) {
+        return this.orders.confirmPayment(
+            params.id,
+            body,
+            admin,
+            request.requestId,
+        );
+    }
+
+    @Get(':id/documents/:documentId/download')
+    @RequirePermissions('orders.read.all')
+    @RateLimit('admin-order-document-download', 240, 60)
+    async downloadDocument(
+        @Param() params: OrderDocumentIdParamDto,
+        @Res() response: Response,
+    ) {
+        const { file, stream } = await this.orders.openAdminDocument(
+            params.id,
+            params.documentId,
+        );
+        this.sendDocument(response, file, stream);
+    }
+
+    private sendDocument(
+        response: Response,
+        file: { originalName: string; mimeType: string; sizeBytes: string },
+        stream: NodeJS.ReadableStream,
+    ) {
+        response.setHeader('Content-Type', file.mimeType);
+        response.setHeader('Content-Length', file.sizeBytes);
+        response.setHeader(
+            'Content-Disposition',
+            orderDocumentContentDisposition(file.originalName),
+        );
+        response.setHeader('Cache-Control', 'private, no-store');
+        response.setHeader('X-Content-Type-Options', 'nosniff');
+        stream.on('error', () => response.destroy());
+        stream.pipe(response);
     }
 }

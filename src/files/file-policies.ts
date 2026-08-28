@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import * as path from 'node:path';
 import type { FilePurpose } from './file-storage.types';
 
 export interface FilePolicy {
@@ -10,6 +11,7 @@ export interface FilePolicy {
     staffReadable: boolean;
     inline: boolean;
     afterClose: boolean;
+    strictContent: boolean;
 }
 
 const MB = 1024 * 1024;
@@ -63,6 +65,24 @@ export const FILE_POLICIES: Record<FilePurpose, FilePolicy> = {
         ['.pdf'],
         false,
         false,
+    ),
+    'order-invoice': policy(
+        15 * MB,
+        ['application/pdf'],
+        ['.pdf'],
+        false,
+        true,
+        false,
+        true,
+    ),
+    'order-payment-proof': policy(
+        20 * MB,
+        ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+        ['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
+        false,
+        true,
+        false,
+        true,
     ),
     'atol-consent': policy(
         15 * MB,
@@ -148,6 +168,7 @@ function policy(
     inline: boolean,
     customerReadable: boolean,
     serverGeneratedOnly = false,
+    strictContent = false,
 ): FilePolicy {
     return {
         maxBytes,
@@ -158,6 +179,7 @@ function policy(
         staffReadable: true,
         inline,
         afterClose: false,
+        strictContent,
     };
 }
 
@@ -193,6 +215,7 @@ export function assertFilePolicy(
     buffer: Buffer,
     suppliedMime?: string,
     serverGenerated = false,
+    originalName?: string,
 ) {
     const policy = FILE_POLICIES[purpose];
     if (buffer.length > policy.maxBytes)
@@ -202,6 +225,33 @@ export function assertFilePolicy(
             'This file category is server-generated only',
         );
     const detected = detectMime(buffer);
+    if (policy.strictContent) {
+        if (!detected || !policy.mimeTypes.includes(detected)) {
+            throw new BadRequestException('File content type is not allowed');
+        }
+        const declared = suppliedMime?.toLowerCase();
+        if (
+            declared &&
+            declared !== 'application/octet-stream' &&
+            declared !== detected
+        ) {
+            throw new BadRequestException(
+                'File content does not match its declared MIME type',
+            );
+        }
+        const extension = path.extname(originalName || '').toLowerCase();
+        const detectedExtensions = STRICT_EXTENSIONS_BY_MIME[detected] ?? [];
+        if (
+            !extension ||
+            !policy.extensions.includes(extension) ||
+            !detectedExtensions.includes(extension)
+        ) {
+            throw new BadRequestException(
+                'File extension does not match its content',
+            );
+        }
+        return { policy, mime: detected };
+    }
     const mime = detected ?? suppliedMime?.toLowerCase();
     if (!mime || !policy.mimeTypes.includes(mime))
         throw new BadRequestException('File content type is not allowed');
@@ -212,3 +262,10 @@ export function assertFilePolicy(
     }
     return { policy, mime };
 }
+
+const STRICT_EXTENSIONS_BY_MIME: Record<string, readonly string[]> = {
+    'application/pdf': ['.pdf'],
+    'image/jpeg': ['.jpg', '.jpeg'],
+    'image/png': ['.png'],
+    'image/webp': ['.webp'],
+};

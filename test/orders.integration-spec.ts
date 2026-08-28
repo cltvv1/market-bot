@@ -271,6 +271,7 @@ describe('CO-2 order intake foundation on migrated PostgreSQL', () => {
              ORDER BY table_name`,
         );
         expect(tables.map((row) => row.table_name)).toEqual([
+            'order_documents',
             'order_events',
             'order_lines',
             'order_quote_lines',

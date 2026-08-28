@@ -7,6 +7,7 @@ import {
     IsEmail,
     IsIn,
     IsInt,
+    IsISO8601,
     IsNotEmpty,
     IsOptional,
     IsString,
@@ -26,12 +27,15 @@ import {
     ORDER_PAGE_SIZE_MAX,
     ORDER_ASSIGNMENT_SCOPES,
     ORDER_INTERNAL_COMMENT_MAX_LENGTH,
+    ORDER_PAYMENT_COMMENT_MAX_LENGTH,
+    ORDER_PAYMENT_SOURCES,
     ORDER_STATUSES,
     POSTGRES_INTEGER_MAX,
     type OrderCustomerType,
     type OrderDeliveryType,
     type OrderStatus,
     type OrderAssignmentScope,
+    type OrderPaymentSource,
 } from '../order.types';
 
 const trim = ({ value }: { value: unknown }) =>
@@ -207,6 +211,14 @@ export class OrderIdParamDto {
     id: number;
 }
 
+export class OrderDocumentIdParamDto extends OrderIdParamDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(POSTGRES_INTEGER_MAX)
+    documentId: number;
+}
+
 export class AdminOrderListQueryDto extends ClientOrderListQueryDto {
     @IsOptional()
     @Transform(trim)
@@ -269,4 +281,19 @@ export class UpdateOrderQuoteDto extends OrderExpectedVersionDto {
     @ValidateNested({ each: true })
     @Type(() => OrderQuoteLineDto)
     lines: OrderQuoteLineDto[];
+}
+
+export class ConfirmOrderPaymentDto extends OrderExpectedVersionDto {
+    @IsIn(ORDER_PAYMENT_SOURCES)
+    source: OrderPaymentSource;
+
+    @IsOptional()
+    @IsISO8601({ strict: true, strictSeparator: true })
+    paymentReceivedAt?: string;
+
+    @IsOptional()
+    @Transform(trim)
+    @IsString()
+    @MaxLength(ORDER_PAYMENT_COMMENT_MAX_LENGTH)
+    comment?: string | null;
 }

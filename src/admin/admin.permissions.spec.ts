@@ -16,6 +16,8 @@ describe('admin permissions', () => {
             'orders.review',
             'orders.quote',
             'orders.confirm',
+            'orders.invoice',
+            'orders.payment',
             'support.read',
             'support.manage',
             'knowledge.read',
@@ -34,6 +36,8 @@ describe('admin permissions', () => {
         expect(getPermissions(['superadmin'])).toContain('catalog.manage');
         expect(getPermissions(['superadmin'])).toContain('orders.read.all');
         expect(getPermissions(['superadmin'])).toContain('orders.confirm');
+        expect(getPermissions(['superadmin'])).toContain('orders.invoice');
+        expect(getPermissions(['superadmin'])).toContain('orders.payment');
         expect(getPermissions(['superadmin'])).toContain('support.manage');
         expect(getPermissions(['superadmin'])).toContain('knowledge.manage');
     });
