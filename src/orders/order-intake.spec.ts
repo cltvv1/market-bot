@@ -245,6 +245,7 @@ describe('order intake helpers', () => {
         for (const code of [
             '22001',
             '22003',
+            '22008',
             '23502',
             '23503',
             '23505',

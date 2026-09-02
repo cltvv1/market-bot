@@ -17,6 +17,9 @@ import { UserEntity } from 'src/users/entities/user.entity';
 import type {
     OrderCustomerType,
     OrderDeliveryType,
+    OrderFinalDocumentDeliveryMethod,
+    OrderFinalDocumentKind,
+    OrderFulfillmentMethod,
     OrderPaymentSource,
     OrderStatus,
 } from '../order.types';
@@ -39,6 +42,9 @@ import { OrderDocumentEntity } from './order-document.entity';
 @Index('IDX_orders_workspace', ['status', 'assignedManagerId', 'createdAt'])
 @Index('IDX_orders_invoice_issued_at', ['invoiceIssuedAt'])
 @Index('IDX_orders_payment_confirmed_at', ['paymentConfirmedAt'])
+@Index('IDX_orders_fulfilled_at', ['fulfilledAt'])
+@Index('IDX_orders_completed_at', ['completedAt'])
+@Index('IDX_orders_realization_number', ['realizationNumber'])
 @Check(
     'CK_orders_status',
     `"status" IN ('submitted','in_review','confirmed','waiting_payment','paid','fulfilled','completed','cancelled')`,
@@ -61,6 +67,42 @@ import { OrderDocumentEntity } from './order-document.entity';
 @Check(
     'CK_orders_payment_confirmation_shape',
     `("paymentReceivedAt" IS NULL AND "paymentConfirmedAt" IS NULL AND "paymentConfirmedByStaffId" IS NULL AND "paymentConfirmationSource" IS NULL AND "paymentConfirmationComment" IS NULL) OR ("paymentReceivedAt" IS NOT NULL AND "paymentConfirmedAt" IS NOT NULL AND "paymentConfirmedByStaffId" IS NOT NULL AND "paymentConfirmationSource" IS NOT NULL)`,
+)
+@Check(
+    'CK_orders_fulfillment_method',
+    `"fulfillmentMethod" IS NULL OR "fulfillmentMethod" IN ('pickup','courier','transport_company','service_only','mixed')`,
+)
+@Check(
+    'CK_orders_fulfillment_shape',
+    `("fulfilledAt" IS NULL AND "fulfilledByStaffId" IS NULL AND "fulfillmentMethod" IS NULL AND "fulfillmentRecipientName" IS NULL AND "fulfillmentCarrierName" IS NULL AND "fulfillmentTrackingNumber" IS NULL AND "fulfillmentComment" IS NULL) OR ("fulfilledAt" IS NOT NULL AND "fulfilledByStaffId" IS NOT NULL AND "fulfillmentMethod" IS NOT NULL)`,
+)
+@Check(
+    'CK_orders_fulfillment_optional_strings',
+    `("fulfillmentRecipientName" IS NULL OR btrim("fulfillmentRecipientName") <> '') AND ("fulfillmentCarrierName" IS NULL OR btrim("fulfillmentCarrierName") <> '') AND ("fulfillmentTrackingNumber" IS NULL OR btrim("fulfillmentTrackingNumber") <> '') AND ("fulfillmentComment" IS NULL OR btrim("fulfillmentComment") <> '')`,
+)
+@Check(
+    'CK_orders_fulfillment_conditions',
+    `("fulfillmentMethod" <> 'transport_company' OR ("fulfillmentCarrierName" IS NOT NULL AND btrim("fulfillmentCarrierName") <> '')) AND ("fulfillmentMethod" <> 'service_only' OR ("fulfillmentComment" IS NOT NULL AND btrim("fulfillmentComment") <> '' AND "fulfillmentCarrierName" IS NULL AND "fulfillmentTrackingNumber" IS NULL)) AND ("fulfillmentMethod" <> 'mixed' OR ("fulfillmentComment" IS NOT NULL AND btrim("fulfillmentComment") <> ''))`,
+)
+@Check(
+    'CK_orders_final_documents_delivery_method',
+    `"finalDocumentsDeliveryMethod" IS NULL OR "finalDocumentsDeliveryMethod" IN ('edo','paper','mixed','not_required')`,
+)
+@Check(
+    'CK_orders_final_document_kinds',
+    `"finalDocumentKinds" IS NULL OR (cardinality("finalDocumentKinds") <= 5 AND "finalDocumentKinds" <@ ARRAY['upd','invoice_factura','torg12','act','other']::varchar[])`,
+)
+@Check(
+    'CK_orders_completion_shape',
+    `("completedAt" IS NULL AND "completedByStaffId" IS NULL AND "realizationNumber" IS NULL AND "realizationDate" IS NULL AND "finalDocumentsDeliveryMethod" IS NULL AND "finalDocumentKinds" IS NULL AND "finalDocumentsDeliveredAt" IS NULL AND "completionComment" IS NULL) OR ("completedAt" IS NOT NULL AND "completedByStaffId" IS NOT NULL AND "realizationNumber" IS NOT NULL AND btrim("realizationNumber") <> '' AND "realizationDate" IS NOT NULL AND "finalDocumentsDeliveryMethod" IS NOT NULL AND "finalDocumentKinds" IS NOT NULL AND "fulfilledAt" IS NOT NULL)`,
+)
+@Check(
+    'CK_orders_completion_conditions',
+    `("finalDocumentsDeliveryMethod" IS NULL) OR ("finalDocumentsDeliveryMethod" IN ('edo','paper','mixed') AND cardinality("finalDocumentKinds") >= 1 AND "finalDocumentsDeliveredAt" IS NOT NULL) OR ("finalDocumentsDeliveryMethod" = 'not_required' AND cardinality("finalDocumentKinds") = 0 AND "finalDocumentsDeliveredAt" IS NULL AND "completionComment" IS NOT NULL AND btrim("completionComment") <> '')`,
+)
+@Check(
+    'CK_orders_completion_other_comment',
+    `"finalDocumentKinds" IS NULL OR NOT ('other' = ANY("finalDocumentKinds")) OR ("completionComment" IS NOT NULL AND btrim("completionComment") <> '')`,
 )
 @Check('CK_orders_fingerprint', `"submissionFingerprint" ~ '^[0-9a-f]{64}$'`)
 @Check(
@@ -145,6 +187,65 @@ export class OrderEntity {
 
     @Column({ type: 'varchar', length: 1000, nullable: true })
     paymentConfirmationComment: string | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    fulfilledAt: Date | null;
+
+    @Column({ type: 'integer', nullable: true })
+    fulfilledByStaffId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'RESTRICT' })
+    @JoinColumn({
+        name: 'fulfilledByStaffId',
+        foreignKeyConstraintName: 'FK_orders_fulfilled_by_staff',
+    })
+    fulfilledByStaff: AdminUserEntity | null;
+
+    @Column({ type: 'varchar', length: 32, nullable: true })
+    fulfillmentMethod: OrderFulfillmentMethod | null;
+
+    @Column({ type: 'varchar', length: 160, nullable: true })
+    fulfillmentRecipientName: string | null;
+
+    @Column({ type: 'varchar', length: 160, nullable: true })
+    fulfillmentCarrierName: string | null;
+
+    @Column({ type: 'varchar', length: 160, nullable: true })
+    fulfillmentTrackingNumber: string | null;
+
+    @Column({ type: 'varchar', length: 1000, nullable: true })
+    fulfillmentComment: string | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    completedAt: Date | null;
+
+    @Column({ type: 'integer', nullable: true })
+    completedByStaffId: number | null;
+
+    @ManyToOne(() => AdminUserEntity, { nullable: true, onDelete: 'RESTRICT' })
+    @JoinColumn({
+        name: 'completedByStaffId',
+        foreignKeyConstraintName: 'FK_orders_completed_by_staff',
+    })
+    completedByStaff: AdminUserEntity | null;
+
+    @Column({ type: 'varchar', length: 100, nullable: true })
+    realizationNumber: string | null;
+
+    @Column({ type: 'date', nullable: true })
+    realizationDate: string | null;
+
+    @Column({ type: 'varchar', length: 32, nullable: true })
+    finalDocumentsDeliveryMethod: OrderFinalDocumentDeliveryMethod | null;
+
+    @Column({ type: 'varchar', array: true, nullable: true })
+    finalDocumentKinds: OrderFinalDocumentKind[] | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    finalDocumentsDeliveredAt: Date | null;
+
+    @Column({ type: 'varchar', length: 1000, nullable: true })
+    completionComment: string | null;
 
     @Column({ type: 'varchar', length: 32 })
     customerType: OrderCustomerType;

@@ -153,10 +153,15 @@ describe('CO-3A order quote helpers', () => {
         );
     });
 
-    it('defines only the CO-3A assignment and review states', () => {
+    it('supports assignment through fulfillment while review remains narrow', () => {
         expect(canAssignOrder('submitted')).toBe(true);
         expect(canAssignOrder('in_review')).toBe(true);
-        expect(canAssignOrder('confirmed')).toBe(false);
+        expect(canAssignOrder('confirmed')).toBe(true);
+        expect(canAssignOrder('waiting_payment')).toBe(true);
+        expect(canAssignOrder('paid')).toBe(true);
+        expect(canAssignOrder('fulfilled')).toBe(true);
+        expect(canAssignOrder('completed')).toBe(false);
+        expect(canAssignOrder('cancelled')).toBe(false);
         expect(canStartOrderReview('submitted')).toBe(true);
         expect(canStartOrderReview('confirmed')).toBe(false);
     });

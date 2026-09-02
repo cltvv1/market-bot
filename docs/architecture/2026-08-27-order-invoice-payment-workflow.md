@@ -1,5 +1,10 @@
 # CO-3B Order invoice and payment workflow
 
+> CO-3C continuation: fulfillment and completion are now implemented as the
+> later explicit transitions `paid -> fulfilled -> completed`. Invoice,
+> payment-proof, full-payment, and physical-file-availability semantics in this
+> document are unchanged.
+
 ## 1. Baseline
 
 CO-3B starts from `c7b069b99a4eef21e670cfbbad99816b92fc788f`, the
@@ -80,8 +85,9 @@ The fixed sources are `bank_statement`, `payment_order`,
 defaults to command time. An explicit value must be a full RFC3339-style
 timestamp with seconds and an uppercase `T` plus either `Z` or a numeric
 `+/-HH:mm` offset. Date-only and timezone-less values are rejected. The value
-is normalized to one absolute instant before applying the five-minute future
-clock tolerance.
+uses a four-digit year in `0001..9999`; year `0000`, BC dates, signed years,
+and extended years are rejected. It is normalized to one absolute instant
+before applying the five-minute future clock tolerance.
 
 ## 12. Order fields
 

@@ -2,6 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import {
     ArrayMaxSize,
     ArrayMinSize,
+    ArrayUnique,
     IsArray,
     IsDefined,
     IsEmail,
@@ -23,6 +24,13 @@ import {
     ORDER_PAYMENT_TIMESTAMP_MESSAGE,
 } from '../order-payment';
 import {
+    isExplicitOrderCalendarDate,
+    isExplicitOrderTimestamp,
+    ORDER_CALENDAR_DATE_MESSAGE,
+    ORDER_TIMESTAMP_MESSAGE,
+} from '../order-time';
+import { hasNoOrderControlCharacters } from '../order-fulfillment';
+import {
     ORDER_CUSTOMER_TYPES,
     ORDER_DELIVERY_TYPES,
     ORDER_ITEM_COUNT_MAX,
@@ -33,6 +41,9 @@ import {
     ORDER_INTERNAL_COMMENT_MAX_LENGTH,
     ORDER_PAYMENT_COMMENT_MAX_LENGTH,
     ORDER_PAYMENT_SOURCES,
+    ORDER_FINAL_DOCUMENT_DELIVERY_METHODS,
+    ORDER_FINAL_DOCUMENT_KINDS,
+    ORDER_FULFILLMENT_METHODS,
     ORDER_STATUSES,
     POSTGRES_INTEGER_MAX,
     type OrderCustomerType,
@@ -40,6 +51,9 @@ import {
     type OrderStatus,
     type OrderAssignmentScope,
     type OrderPaymentSource,
+    type OrderFinalDocumentDeliveryMethod,
+    type OrderFinalDocumentKind,
+    type OrderFulfillmentMethod,
 } from '../order.types';
 
 const trim = ({ value }: { value: unknown }) =>
@@ -305,5 +319,95 @@ export class ConfirmOrderPaymentDto extends OrderExpectedVersionDto {
     @Transform(trim)
     @IsString()
     @MaxLength(ORDER_PAYMENT_COMMENT_MAX_LENGTH)
+    comment?: string | null;
+}
+
+export class FulfillOrderDto extends OrderExpectedVersionDto {
+    @IsIn(ORDER_FULFILLMENT_METHODS)
+    method: OrderFulfillmentMethod;
+
+    @IsOptional()
+    @ValidateBy({
+        name: 'isExplicitOrderTimestamp',
+        validator: {
+            validate: (value: unknown) => isExplicitOrderTimestamp(value),
+            defaultMessage: () => `fulfilledAt ${ORDER_TIMESTAMP_MESSAGE}`,
+        },
+    })
+    fulfilledAt?: string;
+
+    @IsOptional()
+    @Transform(trim)
+    @IsString()
+    @MaxLength(160)
+    recipientName?: string | null;
+
+    @IsOptional()
+    @Transform(trim)
+    @IsString()
+    @MaxLength(160)
+    carrierName?: string | null;
+
+    @IsOptional()
+    @Transform(trim)
+    @IsString()
+    @MaxLength(160)
+    trackingNumber?: string | null;
+
+    @IsOptional()
+    @Transform(trim)
+    @IsString()
+    @MaxLength(1000)
+    comment?: string | null;
+}
+
+export class CompleteOrderDto extends OrderExpectedVersionDto {
+    @Transform(trim)
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(100)
+    @ValidateBy({
+        name: 'hasNoOrderControlCharacters',
+        validator: {
+            validate: (value: unknown) => hasNoOrderControlCharacters(value),
+            defaultMessage: () => 'realizationNumber is invalid',
+        },
+    })
+    realizationNumber: string;
+
+    @ValidateBy({
+        name: 'isExplicitOrderCalendarDate',
+        validator: {
+            validate: (value: unknown) => isExplicitOrderCalendarDate(value),
+            defaultMessage: () =>
+                `realizationDate ${ORDER_CALENDAR_DATE_MESSAGE}`,
+        },
+    })
+    realizationDate: string;
+
+    @IsIn(ORDER_FINAL_DOCUMENT_DELIVERY_METHODS)
+    documentDeliveryMethod: OrderFinalDocumentDeliveryMethod;
+
+    @IsArray()
+    @ArrayMaxSize(5)
+    @ArrayUnique()
+    @IsIn(ORDER_FINAL_DOCUMENT_KINDS, { each: true })
+    documentKinds: OrderFinalDocumentKind[];
+
+    @IsOptional()
+    @ValidateBy({
+        name: 'isExplicitOrderTimestamp',
+        validator: {
+            validate: (value: unknown) => isExplicitOrderTimestamp(value),
+            defaultMessage: () =>
+                `documentsDeliveredAt ${ORDER_TIMESTAMP_MESSAGE}`,
+        },
+    })
+    documentsDeliveredAt?: string;
+
+    @IsOptional()
+    @Transform(trim)
+    @IsString()
+    @MaxLength(1000)
     comment?: string | null;
 }

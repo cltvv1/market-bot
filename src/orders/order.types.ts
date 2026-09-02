@@ -76,4 +76,33 @@ export const ORDER_PAYMENT_SOURCES = [
 ] as const;
 export type OrderPaymentSource = (typeof ORDER_PAYMENT_SOURCES)[number];
 
-export const ORDER_PAYMENT_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+export const ORDER_FULFILLMENT_METHODS = [
+    'pickup',
+    'courier',
+    'transport_company',
+    'service_only',
+    'mixed',
+] as const;
+export type OrderFulfillmentMethod = (typeof ORDER_FULFILLMENT_METHODS)[number];
+
+export const ORDER_FINAL_DOCUMENT_DELIVERY_METHODS = [
+    'edo',
+    'paper',
+    'mixed',
+    'not_required',
+] as const;
+export type OrderFinalDocumentDeliveryMethod =
+    (typeof ORDER_FINAL_DOCUMENT_DELIVERY_METHODS)[number];
+
+export const ORDER_FINAL_DOCUMENT_KINDS = [
+    'upd',
+    'invoice_factura',
+    'torg12',
+    'act',
+    'other',
+] as const;
+export type OrderFinalDocumentKind =
+    (typeof ORDER_FINAL_DOCUMENT_KINDS)[number];
+
+export const ORDER_FULFILLMENT_COMMENT_MAX_LENGTH = 1000;
+export const ORDER_COMPLETION_COMMENT_MAX_LENGTH = 1000;

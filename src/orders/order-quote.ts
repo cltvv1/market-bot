@@ -35,7 +35,14 @@ export interface QuoteTotals {
 }
 
 export function canAssignOrder(status: OrderStatus) {
-    return status === 'submitted' || status === 'in_review';
+    return [
+        'submitted',
+        'in_review',
+        'confirmed',
+        'waiting_payment',
+        'paid',
+        'fulfilled',
+    ].includes(status);
 }
 
 export function canStartOrderReview(status: OrderStatus) {

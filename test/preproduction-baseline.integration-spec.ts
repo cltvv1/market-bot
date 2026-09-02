@@ -29,6 +29,9 @@ describe('pre-production database baseline', () => {
             { name: 'AddOrderIntakeFoundation1788096000000' },
             { name: 'AddOrderSalesWorkspaceCore1788182400000' },
             { name: 'AddOrderInvoicePaymentWorkflow1788268800000' },
+            {
+                name: 'AddOrderFulfillmentCompletionWorkflow1788355200000',
+            },
         ]);
     });
 
