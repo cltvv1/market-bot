@@ -1,65 +1,57 @@
 # Current project audit
 
-Current as of the pre-production rebaseline on 2026-08-22. Historical audits
-describe earlier development states and are not runtime specifications.
+The canonical current-state summary is
+[PROJECT_STATUS.md](PROJECT_STATUS.md). Full repository, runtime, UI, security,
+and roadmap evidence is in the
+[2026-09-02 project status rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
 
-## Architecture
+This page is a navigation aid. Historical audits and package reports remain
+valid only for their stated date and baseline.
 
-VITMA MARKET is one NestJS modular monolith with one PostgreSQL database and
-two React applications. Telegram and MAX are transport adapters; both call the
-same application services used by web/admin workflows. TypeORM runs with
-`synchronize: false`.
+## Audited baseline
 
-```text
-client-ui ---- HTTP/web session ----+
-admin-ui ----- HTTP/staff session ---+--> NestJS --> PostgreSQL
-Telegram ----- messenger adapter ---+       |
-MAX ---------- messenger adapter ---+       +--> FileStoragePort
-```
+- `main`: `b9b3ed63d2ee26216b8e5f03ce85dd2d54141cde`;
+- merge: PR #24, CO-3C Fulfillment and completion workflow;
+- hosted CI: [run 33605998052](https://github.com/cltvv1/market-bot/actions/runs/33605998052), green;
+- schema: 11 append-only migrations, 57 application tables/entities, zero
+  generated drift in isolated application and test databases;
+- application: 30 NestJS modules, 20 controllers, and 189 decorated HTTP
+  handlers.
 
-## Current domain paths
+## Current architecture
 
-- organization access: pending request, staff approval, representative membership;
-- service requests: one aggregate, versioned forms, structured answers, files,
-  messages, public token and centralized transitions;
-- KKT registration: one registration aggregate plus requirements, evidence and
-  persistent data requests;
-- files: only `StoredFile` references and domain-authorized streams;
-- staff access: server-side sessions and multi-role RBAC;
-- customer web access: server-side HttpOnly session;
-- audit, health, integration observations and coordinated backup/restore.
+VITMA MARKET is one NestJS modular monolith and one PostgreSQL database serving
+two React applications plus Telegram and MAX adapters. TypeORM runs with
+`synchronize: false` and migrations are explicit. Local file storage is behind
+`FileStoragePort`; CH-R1 and CH-R2 persist inbound commands, dialog state, and
+business-significant outbound delivery.
 
-## Frontends
+The core service, registration, ticket, organization-access, Catalog,
+Support/Knowledge, and whole-order sales domains are persisted and tested.
+ATOL Connect and Platforma OFD are read-only observational sources.
 
-- `client-ui`: React/TypeScript/Vite customer site;
-- `admin-ui`: React/TypeScript/Vite staff workspace;
-- Nest can serve production builds only when `SERVE_BUILT_UI=true`;
-- no static HTML implementation or fallback mode remains.
+## Product boundary
 
-The catalog/cart/checkout demo still uses frontend data and `localStorage`.
-This is an explicit future Catalog + Orders scope, not an alternate backend
-contract.
+The backend is ahead of the product UI:
 
-## Persistence baseline
+- service requests, KKT registration, organization access, tickets, and
+  integration opportunities have usable channel or staff paths;
+- Catalog, Support/Knowledge, and Orders have real backend APIs but no complete
+  client/staff UI;
+- the visible client catalog/cart/checkout still uses hardcoded data,
+  `localStorage`, and a fake order submission;
+- there is no 1C or EDO integration;
+- the system is development-ready and suitable for controlled pre-production
+  verification, but is not production-deployed or production-ready.
 
-- migration: `InitialPreproductionBaseline1787388476982`;
-- 38 TypeORM entity tables plus `typeorm_migrations`;
-- no development-data conversion step;
-- no old route aliases, path columns or dual-write;
-- service forms bootstrap as published version 1 on an empty database.
+## Next work
 
-Detailed schema: [`database/SCHEMA_BASELINE_REPORT.md`](database/SCHEMA_BASELINE_REPORT.md).
-Decision record: [`architecture/preproduction-baseline.md`](architecture/preproduction-baseline.md).
-Verification evidence: [`audits/2026-08-22-preproduction-legacy-purge.md`](audits/2026-08-22-preproduction-legacy-purge.md).
+The next bounded package is EM-0, an audit/design-first rebaseline of equipment
+monitoring, provider identity, freshness, stale/resolved behavior, and
+Observation/Opportunity lifecycle. FE-1 and focused security/operations
+hardening should proceed in parallel. See [ROADMAP.md](ROADMAP.md) for dependency
+order.
 
-## Known product gaps
-
-- no PostgreSQL catalog/orders workflow;
-- no customer phone OTP/profile merge;
-- equipment model is KKT-oriented and not yet a general equipment registry;
-- no durable outbox/retry/deduplication for messenger delivery;
-- production retention, deployment and second backup destination are undecided;
-- ATOL/OFD bridges remain controlled integrations, not authoritative accounting.
-
-The next code-health audit must run from the merge commit of this rebaseline;
-findings from an older schema or route set are no longer valid.
+The open PR #12 code-health audit is based on an older pre-CH-R1/CH-R2 baseline
+and is superseded. It should be closed without merge after this rebaseline is
+accepted.

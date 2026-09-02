@@ -1,87 +1,157 @@
 # Roadmap
 
-This roadmap starts from the clean pre-production baseline. It uses dependency
-order and relative complexity, not calendar estimates.
+This roadmap reflects `main` at
+`b9b3ed63d2ee26216b8e5f03ce85dd2d54141cde` after CO-3C. It is ordered by
+dependency and evidence, not by calendar promises. Current capability status is
+kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
+[2026-09-02 rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
 
-## Foundation status
+## Completed foundations
 
-| Package | Status | Result |
-|---|---|---|
-| Stage 0 security/operations | Complete | migrations, sessions, RBAC, validation, FileStorage, audit, CI, backup |
-| B1 Telegram/MAX stabilization | Complete | current flows share application services; no external calls in tests |
-| BKV1-0 organization access | Complete | pending request and staff-approved representative membership |
-| BKV1-1 service requests | Complete | canonical aggregate, forms, drafts, files, messages and status token |
-| BKV1-2 KKT readiness | Complete | checklist, evidence, data requests, verification and backend gates |
-| Pre-production rebaseline | In review | one initial migration and removal of discarded development contracts |
+| Package | Result |
+| --- | --- |
+| Pre-production rebaseline | Clean baseline, append-only migrations, `synchronize: false`, CI and isolated database verification |
+| BKV1 organization/service/registration | Representative access, canonical ServiceRequests, versioned forms, files/messages, and KKT readiness |
+| CH-R1 | Durable inbound identity, dialog serialization/state, duplicate handling, and fail-closed interruption recovery |
+| CH-R2 | Durable outbound intents, bounded retry, stale-claim recovery, dedupe keys, files, and current staff reauthorization |
+| SEC-R1 | HTTP file/resource authorization and strict new-domain file delivery |
+| SEC-R2 | Current-role and assignment authorization for staff notifications |
+| CO-1 | PostgreSQL Catalog metadata, publication/search, admin API, RBAC, and audit |
+| KB-1 | Product Support, versioned resources, Knowledge metadata, publication, and APIs |
+| FS-1 | File lifecycle reconciliation plus hosted Support upload/download |
+| CO-2 | Authenticated, idempotent Order intake with immutable submitted lines |
+| CO-3A | Sales assignment, review, mutable quote, and confirmation |
+| CO-3B | Invoice revisions, payment proof, and manual payment confirmation |
+| CO-3C | Whole-order fulfillment, realization facts, final documents, and completion |
 
-## Recommended sequence
+Completion here means the bounded package contract passed its tests. It does not
+mean every capability has a product UI or that the system is production-ready.
 
-### R0. Restart code-health audit
+## Current next track
 
-**Priority:** P0. **Complexity:** M.
+### EM-0 Equipment Monitoring rebaseline
 
-Re-run dead-code, dependency, duplication and boundary analysis after this
-branch is merged. Do not reuse findings based on removed migrations/routes.
+Audit and design the current ATOL Connect and Platforma OFD data flow before
+adding more automation:
 
-**Done when:** audit reports reference the new main SHA and propose only small,
-tested cleanup packages.
+- verify provider contracts and fail-closed schema handling with sanitized
+  fixtures;
+- define canonical organization/KKT/FN/OFD identity mapping;
+- define snapshot, incremental, missing, stale, resolved, reopened, and excluded
+  semantics;
+- define Observation to ServiceOpportunity lifecycle and manual recovery;
+- define external scheduling, run limits, retry, and transaction boundaries;
+- decide whether current entities are sufficient for EM-1.
 
-### R1. Catalog and order-request vertical
+Implementation is allowed only for a narrowly demonstrated blocker. Provider
+access remains read-only. EM-0 does not include outreach, OFD.ru, AI
+recommendations, or provider-cabinet writes.
 
-**Priority:** P1. **Complexity:** XL.
+### EM-1 Equipment health and recommendations
 
-Admin creates/publishes products; customer browses PostgreSQL catalog, submits
-an order-request; sales manager receives it, uploads an invoice and records the
-status/history. Accounting and stock remain in 1C.
+After EM-0, map provider observations to deterministic normalized issues,
+severity/priority, recommended action, and resolution/reopen lifecycle. Keep
+recommendations explainable and reviewable by staff.
 
-**Not included:** acquiring, warehouse accounting or automatic 1C sync.
+### EM-2 Contact resolution and enrichment
 
-### R2. Complete customer service-request experience
+Unify manual, customer, provider, and later 1C contact candidates. Model source,
+freshness, confidence, candidate/verified/rejected/obsolete state, person/role,
+deduplication, preferred contact, consent, and do-not-contact. This package is a
+dependency of proactive customer notifications.
 
-**Priority:** P1. **Complexity:** L.
+### NR-1 Notifications and renewals
 
-Polish real web forms/status/messages around the existing backend, add approved
-service schemas and close remaining frontend mock/status assumptions.
+Create FN/OFD/ITS deadline rules and staff alerts, then send only to eligible
+customers. Reuse CH-R2 for durable delivery and add event-level dedupe, delivery
+history, quiet hours/escalation, and an operator fallback task. A recorded
+business event and an actually delivered message remain separate facts.
 
-### R3. Bot extensibility and delivery reliability
+## Parallel tracks
 
-**Priority:** P1. **Complexity:** L/XL by package.
+### FE-1 Frontend activation and real API switch
 
-Use versioned form definitions across web/Telegram/MAX, then add durable
-conversation state, inbound deduplication and outbox/retry in separate packages.
+Connect the existing client Catalog, Support, and Orders APIs and add staff
+workspaces for Catalog, Support/Knowledge, and Orders. Remove hardcoded catalog
+data, fake checkout, and `localStorage` business truth. This can start alongside
+EM-0; it should not wait for the whole monitoring track.
 
-### R4. Unified customer profile
+### SEC-R3 Production security hardening
 
-**Priority:** P1. **Complexity:** XL.
+Prioritize same-origin protection for all customer cookie mutations,
+ServiceRequest bearer entropy/exposure/revocation, strict legacy file-content
+authorization, registration authorization before lazy initialization, closed
+ticket replies, last-superadmin concurrency, request-ID validation, MAX media
+egress policy, CSP, and reachable dependency advisories. Split implementation
+into reviewable packages rather than one broad security rewrite.
 
-Phone-based profile, verified channel linking, controlled duplicate merge,
-organization representatives and authenticated history. SMS is not a blocker
-until a provider is selected.
+### OPS-1 Production operations
 
-### R5. General equipment registry
+Make readiness prove the full migration chain; define reverse proxy/TLS,
+deployment topology, process supervision, centralized rate limits, file
+capacity/lifecycle execution, backup retention/encryption/off-host copy,
+restore rehearsal, and operational monitoring.
 
-**Priority:** P1. **Complexity:** XL.
+### Unified customer and contact profile
 
-Locations, general equipment, specialized KKT/FN/OFD/license data, linked
-requests, documents and maintenance history.
+Use EM-2 evidence to converge customer identities, organization memberships,
+channel links, contacts, assets, requests, and orders without automatic unsafe
+profile merging.
 
-### R6. Notifications and renewals
+### FE-2 Full UX redesign
 
-**Priority:** P1. **Complexity:** XL.
+After FE-1 exposes real data flows, redesign the customer information
+architecture around store, service, Support/Knowledge, organizations/assets,
+orders, registrations, and operator contact. Do not redesign around current
+mock behavior.
 
-Durable scheduled notifications for FN/OFD expiration through Telegram, MAX
-and email, with delivery history, idempotency and operator fallback tasks.
+## Later integrations
 
-### R7. Controlled integrations
+### INT-1 1C UT 11.5 exchange design
 
-**Priority:** P2. **Complexity:** XL.
+Begin only after the manual Order workflow and canonical identifiers are proven
+through real UI use. Define:
 
-CSV/XLSX exchange with 1C first; verified ATOL/OFD adapters only after API,
-contract and data-processing rights are confirmed.
+- Catalog and stock import ownership;
+- confirmed Quote to 1C customer order;
+- invoice and realization linkage;
+- idempotency, reconciliation, failures, and operator recovery.
 
-### R8. Rule-based equipment selector
+VITMA must not accidentally treat an unreviewed import as authoritative.
 
-**Priority:** P2. **Complexity:** L.
+### EDO
 
-Editable deterministic questions/rules, explainable recommendations and handoff
-to cart or sales manager. No AI/ML component.
+Choose a provider and document identity/ownership contract after INT-1.
+Electronic document exchange is not part of current runtime.
+
+### Catalog and stock synchronization
+
+Belongs to INT-1 or a package derived from it. Until then, Catalog publication
+is managed in VITMA and provider observations remain non-accounting data.
+
+## Explicitly deferred
+
+- online acquiring;
+- warehouse accounting inside VITMA;
+- partial fulfillment;
+- returns and refunds;
+- provider-cabinet write automation;
+- OFD.ru integration;
+- Playwright scraping of Rusprofile as a default contact source;
+- AI recommendations without deterministic rules and reviewable evidence;
+- microservices, Redis, or an external queue without measured need.
+
+## Dependency order
+
+```text
+EM-0 -> EM-1 -> EM-2 -> NR-1
+  |
+  +---- FE-1 (parallel) -> FE-2
+  +---- SEC-R3 / OPS-1 (parallel)
+
+proven manual Orders + real UI -> INT-1 -> EDO
+```
+
+The next bounded package is EM-0. It should finish with a reviewed
+state-transition/data-flow contract, stale-resolution matrix, operational
+schedule/recovery contract, and a justified minimum schema decision for EM-1.
