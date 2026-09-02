@@ -3,19 +3,26 @@
 Единый pre-production проект клиентского сайта, операторской админки,
 Telegram/MAX-ботов и NestJS backend для VITMA MARKET.
 
+Текущее подтверждённое состояние, реальные UI-разрывы и порядок дальнейшей
+работы: [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md).
+
 ## Состав проекта
 
 - `src/` - NestJS modular monolith, API, общая бизнес-логика и адаптеры Telegram/MAX;
 - `client-ui/` - клиентский React/TypeScript/Vite сайт;
 - `admin-ui/` - React/TypeScript/Vite админка;
 - PostgreSQL - единая база всех runtime-модулей;
-- `storage/` - локальная реализация `FileStoragePort` для development;
-- `src/database/migrations/` - одна чистая pre-production baseline migration.
+- `storage/` - текущий локальный адаптер `FileStoragePort` для development и
+  контролируемого pre-production использования; production-топология хранения
+  остаётся отложенной;
+- `src/database/migrations/` - append-only цепочка из 11 migrations от чистой
+  pre-production baseline до текущей схемы.
 
-Каноническая baseline зафиксирована в
+Решение о чистой исходной baseline зафиксировано в
 [`docs/architecture/preproduction-baseline.md`](docs/architecture/preproduction-baseline.md).
 Система не поддерживает отброшенные development-форматы, старые маршруты или
-историческую цепочку migrations.
+схемы до этой baseline. Все последующие изменения применяются append-only
+migrations.
 
 ## Требования
 
@@ -80,8 +87,9 @@ npm run admin:create
 Web, Telegram, MAX, admin и integrations используют один публичный
 `ServiceRequestsService` и одну `service_requests` модель. Web работает через
 server-side draft, структурированные answers, вложения и idempotent submit.
-Публичный статус защищён непредсказуемым token; номер заявки не является
-credential.
+Публичный статус использует отдельный bearer token; номер заявки не является
+credential. Текущий способ формирования, передачи и отзыва token отмечен как
+production security gap в `docs/PROJECT_STATUS.md`.
 
 ### Регистрация ККТ
 
@@ -93,16 +101,20 @@ callback или AuditEvent.
 
 ### Файлы
 
-Runtime хранит только ссылки на `StoredFile`; прямых filesystem path полей и
-fallback-выдачи нет. Допустимые типы и размеры описаны в
+Runtime хранит предметные ссылки на `StoredFile`; новые Support/Order downloads
+проверяют строгий контекст владельца. Для части старых общих file purposes ещё
+остаётся permissive fallback, который должен быть закрыт до production.
+Допустимые типы и размеры описаны в
 [`docs/files/FILE_STORAGE_GUIDE.md`](docs/files/FILE_STORAGE_GUIDE.md).
 
 ## Миграции PostgreSQL
 
-Схема создаётся одной migration:
+Схема создаётся последовательным применением 11 append-only migrations:
 
 ```text
 InitialPreproductionBaseline1787388476982
+...
+AddOrderFulfillmentCompletionWorkflow1788355200000
 ```
 
 Команды:
@@ -116,9 +128,9 @@ npm run migration:generate
 npm run schema:log
 ```
 
-`migration:revert` baseline допустим только на disposable development/test DB.
-Существующие БД со старой историей не обновляются этой baseline: поскольку
-production deployment не было, development окружение пересоздаётся с нуля.
+`migration:revert` допустим только на disposable development/test DB. Базы,
+созданные до чистой pre-production baseline, не обновляются этой цепочкой:
+такое development окружение пересоздаётся с нуля.
 
 ## Отдельная test DB
 
@@ -135,7 +147,7 @@ npm run test:integration
 ```
 
 `test:integration` удаляет и создаёт только явно заданную `*_test` БД, применяет
-baseline migration и запускает PostgreSQL integration suite.
+полную migration chain и запускает PostgreSQL integration suite.
 
 ## Backup и restore
 
@@ -174,10 +186,12 @@ npm run ci:build
 
 ## Клиентский магазин
 
-Каталог, корзина и checkout пока являются демонстрационными типизированными
-frontend-модулями; часть состояния хранится в `localStorage`. Этот demo-scope
-сохранён намеренно, но требует отдельного Catalog + Orders
-backend package. Онлайн-эквайринг в ближайший обязательный scope не входит.
+Catalog и полный whole-order sales workflow уже реализованы в PostgreSQL
+backend. Однако видимые каталог, корзина и checkout остаются демонстрационными:
+они используют hardcoded frontend data, `localStorage` и не создают backend
+Order. Клиентские order screens и staff workspaces для Catalog/Support/Orders
+ещё отсутствуют. Переключение на реальные API входит в FE-1; онлайн-эквайринг
+явно отложен.
 
 ## Интеграции
 
