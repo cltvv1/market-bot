@@ -14,7 +14,7 @@ kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
 | BKV1 organization/service/registration | Representative access, canonical ServiceRequests, versioned forms, files/messages, and KKT readiness |
 | CH-R1 | Durable inbound identity, dialog serialization/state, duplicate handling, and fail-closed interruption recovery |
 | CH-R2 | Durable outbound intents, bounded retry, stale-claim recovery, dedupe keys, files, and current staff reauthorization |
-| SEC-R1 | HTTP file/resource authorization and strict new-domain file delivery |
+| SEC-R1 | Stable pre-auth rate limiting, asynchronous PBKDF2, bounded/fixed Multer, and pre-parser resource authorization |
 | SEC-R2 | Current-role and assignment authorization for staff notifications |
 | CO-1 | PostgreSQL Catalog metadata, publication/search, admin API, RBAC, and audit |
 | KB-1 | Product Support, versioned resources, Knowledge metadata, publication, and APIs |
@@ -22,7 +22,7 @@ kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
 | CO-2 | Authenticated, idempotent Order intake with immutable submitted lines |
 | CO-3A | Sales assignment, review, mutable quote, and confirmation |
 | CO-3B | Invoice revisions, payment proof, and manual payment confirmation |
-| CO-3C | Whole-order fulfillment, realization facts, final documents, and completion |
+| CO-3C | Whole-order fulfillment, realization facts, final-document handoff facts, and completion |
 
 Completion here means the bounded package contract passed its tests. It does not
 mean every capability has a product UI or that the system is production-ready.

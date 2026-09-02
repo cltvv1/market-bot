@@ -12,7 +12,9 @@ Telegram/MAX-ботов и NestJS backend для VITMA MARKET.
 - `client-ui/` - клиентский React/TypeScript/Vite сайт;
 - `admin-ui/` - React/TypeScript/Vite админка;
 - PostgreSQL - единая база всех runtime-модулей;
-- `storage/` - локальная реализация `FileStoragePort` для development;
+- `storage/` - текущий локальный адаптер `FileStoragePort` для development и
+  контролируемого pre-production использования; production-топология хранения
+  остаётся отложенной;
 - `src/database/migrations/` - append-only цепочка из 11 migrations от чистой
   pre-production baseline до текущей схемы.
 

@@ -33,7 +33,7 @@ The audit started from the exact remote baseline:
 
 - `origin/main`: `b9b3ed63d2ee26216b8e5f03ce85dd2d54141cde`;
 - commit subject: `Merge pull request #24 from cltvv1/codex/co-3c-fulfillment-completion-workflow`;
-- parents: `c1c424f4d70dcde6b4601ee4b01592f87aaee0d6` and `791729c36bf6107581cbc65734115d13aa52d1bc`;
+- parents: `c1c424fb3b632507bddf9ac2487e33e86b9cb781` and `791729c7c63456bf6cb147d285b50702fbf4eb4c`;
 - baseline push CI: [run 33605998052](https://github.com/cltvv1/market-bot/actions/runs/33605998052), successful for all three repository jobs.
 
 Work was performed in a dedicated clean worktree on branch `codex/psr-1-project-status-roadmap-rebaseline`. The primary worktree and its user-modified `package-lock.json` were not changed.
