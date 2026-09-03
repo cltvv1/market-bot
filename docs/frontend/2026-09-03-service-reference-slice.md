@@ -1,6 +1,9 @@
 # FE-1A Service reference review
 
-Draft for visual approval, 2026-09-03. **Not a production redesign.**
+Visual and information-architecture direction approved by the product owner
+on 2026-09-03. The reference queue, detail and client service page are accepted
+as the foundation for subsequent production packages. **FE-1A remains a
+dev-only reference package, not a production migration.**
 Baseline: `4de78fe5696d781341272328305041236ebece99` (PSR-1),
 [green baseline CI](https://github.com/cltvv1/market-bot/actions/runs/33614871297).
 Branch: `codex/fe-1a-interface-foundation-reference-slice`.
@@ -13,7 +16,10 @@ Canonical PSR-1 status, grades and roadmap are unchanged.
 
 ## Preview
 
-The current local preview uses synthetic data, with bots and delivery disabled.
+The reproducible local preview uses synthetic data, with bots and delivery
+disabled. These URLs apply when the dedicated preview is running. Preview
+processes are stopped as part of package cleanup after merge and green main CI;
+the commands below remain available for a later isolated review.
 
 - Queue: <http://localhost:5173/admin/reference/service-requests>
 - Payment detail: <http://localhost:5173/admin/reference/service-requests/14>
@@ -283,8 +289,9 @@ access, organizations, kits, staff, audit) were opened. This is a navigation/ren
 regression check, not a new claim of exhaustive legacy mutation coverage. Normal
 client workflows are exercised by existing site smoke. Production CSS is identical.
 CI adds only a frontend check step to the existing build job, with no backend test
-or lint baseline edits. Exact-head hosted results are linked from the draft PR;
-the final task report records the run and all required jobs after they finish.
+or lint baseline edits. Exact-head hosted results are linked from PR #26;
+the final task report records the approval commit, final PR verification,
+merge SHA and a separate main CI run. Previous CI does not validate a new commit.
 
 ## Gaps and next stages
 
@@ -303,22 +310,34 @@ The full evidence/classification matrix is in the architecture document.
 - **Separate later client packages:** registration discovery/resume (R-RESUME),
   verified identity (IDENTITY-1), complete My work/customer read views (B-R2).
 
-If visually accepted: FE-1B Admin shell and ServiceRequest production migration,
-then FE-1C Client service production migration. Add real versioned commands,
+The accepted reference direction is the foundation for a separate FE-1B Admin
+shell and ServiceRequest production migration, followed by the proposed FE-1C
+Client service production migration. Add real versioned commands,
 preserve RBAC and add browser workflow tests; remove reference-only duplication.
-If rejected: revise this draft branch only. Neither package is started here.
+Neither package is started here. Approval does not freeze the entire frontend
+roadmap or waive the limitations and security gates above.
 
-## Decisions requiring approval
+## Approved direction and production constraints
 
-Approval has **not** been received. Please review:
+The product owner approved the following direction on 2026-09-03:
 
-1. Sidebar width (248px), density and grouping of separate domains.
+1. Permanent sidebar, with 248px as the initial desktop reference, and navigation
+   groups organized around work processes while keeping domains separate.
 2. Queue row density, visible identity/status/assignment hierarchy.
-3. Four detail tabs and keeping documents separate from conversation.
+3. A separate detail URL and four tabs: Request, Conversation, Documents,
+   History; documents stay separate from conversation.
 4. Next action at the top of Request content, tabs before it on mobile.
 5. Restrained warm accent intensity against mostly white/graphite surfaces.
 6. Client service hierarchy: one main CTA, three paths, existing-request area.
-7. Mobile admin modal drawer versus lighter public navigation disclosure.
+7. Mobile admin modal drawer, object-list queue and lighter public navigation
+   disclosure.
+8. White/light-neutral surfaces, graphite, no green in new screens and no
+   color-only status indicators.
+
+These are production-migration starting points, not a claim of production UI
+readiness. Small applied adjustments may be made in FE-1B for real API contracts,
+long content, accessibility or operational workflows. All backend gaps and
+PSR-1 security blockers remain authoritative; this approval resolves none of them.
 
 ## Exact changed file inventory
 
@@ -370,4 +389,7 @@ docs/frontend/screenshots/2026-09-03/client-service-mobile.png
 No changes under backend `src/**`, `test/**`, migrations or integration scripts.
 No dependencies/lockfiles/schema/permissions changed. No production data,
 provider calls, EM-0, FE-1B, Catalog/Orders production UI, 1C, EDO or new
-notifications subsystem. No GitHub Issues, deployment or merge. PR stays draft.
+notifications subsystem. No GitHub Issues or deployment. Following the
+documentation-only approval commit, PR #26 remains draft until its exact-head
+verification is green, then may be marked ready and merged with a normal merge
+commit. Production routes remain unchanged by that merge; FE-1B is separate.

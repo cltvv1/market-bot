@@ -1,6 +1,10 @@
 # FE-1A Design foundation
 
-Draft, not approved. Shared tokens live in
+Visual system approved by the product owner on 2026-09-03 as the foundation
+for phased production migration. FE-1A remains a dev-only reference
+implementation: approval does not switch existing production routes or UI.
+
+Shared tokens live in
 `client-ui/src/reference/foundation.css`; the admin reference imports that file.
 It is a stylesheet, not a new app/package/framework. All rules are scoped to
 `.ui-reference-root` or its specific admin/client descendant. Existing CSS is

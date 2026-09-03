@@ -1,6 +1,9 @@
 # FE-1A Interface architecture
 
-Status: draft for visual approval, not production migration. Baseline:
+Status: target information architecture and ServiceRequest reference direction
+approved by the product owner on 2026-09-03. Production migration remains a
+separate FE-1B package, not started here. FE-1A does not change the normal UI
+or combine existing backend entities. Baseline:
 `4de78fe5696d781341272328305041236ebece99` (PSR-1).
 Baseline [CI 33614871297](https://github.com/cltvv1/market-bot/actions/runs/33614871297)
 passed Quality, Production builds, and PostgreSQL/tests/offline smoke.
@@ -160,13 +163,16 @@ localStorage. Direct detail entry falls back to the default queue.
 
 ## Migration decision
 
-If approved, FE-1B migrates only admin shell and ServiceRequest production
-queue/detail, adds real versioned commands with existing RBAC and browser workflow
-tests, and removes reference duplication. It must explicitly resolve capped
+The approved reference direction is the foundation for a separate FE-1B package.
+Its proposed scope is to migrate the admin shell and ServiceRequest production
+queue/detail, add real versioned commands with existing RBAC and browser workflow
+tests, and remove reference duplication. It must explicitly resolve capped
 queue/name/action/file gaps or document truthful bounded behavior. FE-1C follows
 for client service. P-PROOF is required before claiming complete web payment.
 Registration resume, cross-device identity, full customer registry, Catalog,
 Orders, Support, Knowledge and EM remain separate packages.
 
-If rejected, revise this draft reference branch only. No main routes or
-canonical grades were replaced. FE-1B is not started.
+Approval covers this reference direction, not an immutable frontend roadmap.
+Small adjustments for real API contracts, long data, accessibility or workflow
+remain possible during production migration. No normal routes or canonical
+grades were replaced. FE-1B is not started.
