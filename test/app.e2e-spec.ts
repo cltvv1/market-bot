@@ -39,7 +39,19 @@ describe('AppController (e2e)', () => {
             '/site',
             '/site/service/request',
             '/admin',
-            '/admin/registrations/42',
+            '/admin/work',
+            '/admin/requests/service',
+            '/admin/requests/service/42',
+            '/admin/requests/registrations',
+            '/admin/requests/tickets',
+            '/admin/customers/access',
+            '/admin/customers/organizations',
+            '/admin/customers/equipment',
+            '/admin/integrations/signals',
+            '/admin/integrations/runs',
+            '/admin/settings/staff',
+            '/admin/settings/notifications',
+            '/admin/settings/audit',
         ]) {
             const response = await request(app.getHttpServer())
                 .get(path)

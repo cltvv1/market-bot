@@ -4,11 +4,11 @@ const assert = require('node:assert/strict');
 const { NestFactory } = require('@nestjs/core');
 const { getBotToken } = require('nestjs-telegraf');
 const PDFDocument = require('pdfkit');
-const { AppModule } = require('../../../../src/app.module');
-const { AdminAuthService } = require('../../../../src/admin/admin-auth.service');
-const { AdminService } = require('../../../../src/admin/admin.service');
-const { ServiceRequestsService } = require('../../../../src/service-requests/service-requests.service');
-const { FilesService } = require('../../../../src/files/files.service');
+const { AppModule } = require('../../../src/app.module');
+const { AdminAuthService } = require('../../../src/admin/admin-auth.service');
+const { AdminService } = require('../../../src/admin/admin.service');
+const { ServiceRequestsService } = require('../../../src/service-requests/service-requests.service');
+const { FilesService } = require('../../../src/files/files.service');
 
 async function pdf(text) {
   const document = new PDFDocument();
@@ -18,19 +18,19 @@ async function pdf(text) {
     document.on('end', () => resolve(Buffer.concat(chunks)));
     document.on('error', reject);
   });
-  document.fontSize(16).text('FE-1A SYNTHETIC DOCUMENT').moveDown().text(text);
+  document.fontSize(16).text('FE-1B SYNTHETIC DOCUMENT').moveDown().text(text);
   document.end();
   return ready;
 }
 async function main() {
   assert.equal(process.env.NODE_ENV, 'test');
-  assert.equal(process.env.TEST_DB_NAME, 'vitma_fe1a_test');
+  assert.equal(process.env.TEST_DB_NAME, 'vitma_fe1b_review_test');
   assert.equal(process.env.TEST_DB_HOST, '127.0.0.1');
-  assert.equal(process.env.TEST_DB_PORT, '55436');
+  assert.equal(process.env.TEST_DB_PORT, '55437');
   assert.equal(process.env.BOT_POLLING_ENABLED, 'false');
   assert.equal(process.env.OUTBOUND_DELIVERY_WORKER_ENABLED, 'false');
   assert.equal(process.env.MAX_BOT_TOKEN || '', '');
-  assert.equal(path.basename(process.env.FILE_STORAGE_ROOT || ''), 'vitma-fe1a-storage');
+  assert.equal(path.basename(process.env.FILE_STORAGE_ROOT || ''), 'vitma-fe1b-review-storage');
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
   app.get(getBotToken()).stop = () => undefined;
   try {
@@ -39,15 +39,15 @@ async function main() {
     const adminService = app.get(AdminService);
     const files = app.get(FilesService);
     assert.equal((await service.listForAdmin('all')).length, 0, 'Use an empty isolated test DB');
-    const password = 'Reference-Only-2026!';
-    const admin = await auth.createStaff({ login: 'fe1a-review', displayName: 'Анна · демо-оператор', roles: ['superadmin'], password });
-    const engineer = await auth.createStaff({ login: 'fe1a-engineer', displayName: 'Михаил · демо-инженер', roles: ['engineer'], password });
-    await auth.createStaff({ login: 'fe1a-sales', displayName: 'Демо-менеджер', roles: ['sales_manager'], password });
-    await auth.createStaff({ login: 'fe1a-empty', displayName: 'Демо-инженер без назначений', roles: ['engineer'], password });
-    await auth.createStaff({ login: 'fe1a-operator', displayName: 'Демо-оператор', roles: ['operator'], password });
+    const password = 'Review-Only-2026!';
+    const admin = await auth.createStaff({ login: 'fe1b-review', displayName: 'Анна · демо-оператор', roles: ['superadmin'], password });
+    const engineer = await auth.createStaff({ login: 'fe1b-engineer', displayName: 'Михаил · демо-инженер', roles: ['engineer'], password });
+    await auth.createStaff({ login: 'fe1b-sales', displayName: 'Демо-менеджер', roles: ['sales_manager'], password });
+    await auth.createStaff({ login: 'fe1b-empty', displayName: 'Демо-инженер без назначений', roles: ['engineer'], password });
+    await auth.createStaff({ login: 'fe1b-operator', displayName: 'Демо-оператор', roles: ['operator'], password });
     const names = ['Тестовая мастерская «Контур»', 'Демо-магазин «Северная точка»', 'Демонстрационная организация с очень длинным наименованием для проверки интерфейса на небольшом экране', 'Демо-студия «Форма»'];
     const ids = [];
-    for (let index = 0; index < 13; index++) {
+    for (let index = 0; index < 35; index++) {
       const data = await service.createManual(admin.id, {
         serviceTypeCode: index % 2 ? 'firmware_update' : 'kkt_remote_work',
         source: index % 2 ? 'phone' : 'admin', initialStatus: 'submitted',

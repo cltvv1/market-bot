@@ -1,0 +1,176 @@
+.vitma-admin-app {
+    --ui-text: #171615;
+    --ui-text-muted: #625d58;
+    --ui-accent: #80766d;
+    --ui-accent-strong: #5f5650;
+    --ui-canvas: #f5f4f2;
+    --ui-surface: #ffffff;
+    --ui-surface-subtle: #faf9f7;
+    --ui-border: #dfdcd7;
+    --ui-border-strong: #c7c2bb;
+    --ui-control-border: #827b73;
+    --ui-warning-text: #805514;
+    --ui-warning-surface: #fff7e8;
+    --ui-danger-text: #93413d;
+    --ui-danger-surface: #fff1ef;
+    --ui-info-text: #4d5963;
+    --ui-info-surface: #f0f3f5;
+    --ui-focus: #6f6259;
+    --ui-space-1: 4px;
+    --ui-space-2: 8px;
+    --ui-space-3: 12px;
+    --ui-space-4: 16px;
+    --ui-space-6: 24px;
+    --ui-space-8: 32px;
+    --ui-radius: 6px;
+    color: var(--ui-text);
+    background: var(--ui-surface);
+    font-family: 'Segoe UI Variable Text', 'Segoe UI', Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100dvh;
+    letter-spacing: 0;
+}
+.vitma-admin-app *,
+.vitma-admin-app *::before,
+.vitma-admin-app *::after {
+    box-sizing: border-box;
+    min-width: 0;
+}
+.vitma-admin-app :is(h1, h2, h3, p, dl, dd) {
+    margin: 0;
+    color: inherit;
+    overflow-wrap: anywhere;
+}
+.vitma-admin-app h1 {
+    font-size: 28px;
+    line-height: 1.25;
+    font-weight: 650;
+}
+.vitma-admin-app h2 {
+    font-size: 18px;
+    line-height: 1.4;
+    font-weight: 650;
+}
+.vitma-admin-app h3 {
+    font-size: 14px;
+    line-height: 1.5;
+}
+.vitma-admin-app a {
+    color: inherit;
+    text-decoration: none;
+}
+.vitma-admin-app button,
+.vitma-admin-app input,
+.vitma-admin-app select {
+    font: inherit;
+    letter-spacing: 0;
+}
+.vitma-admin-app button {
+    cursor: pointer;
+}
+.vitma-admin-app button:disabled {
+    cursor: not-allowed;
+}
+.vitma-admin-app :is(button, a, input, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 3px;
+}
+.vitma-admin-app .admin-button,
+.vitma-admin-app .admin-icon-button {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border: 1px solid var(--ui-control-border);
+    border-radius: var(--ui-radius);
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    min-height: 40px;
+    padding: 9px 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+}
+.vitma-admin-app .admin-icon-button {
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+}
+.vitma-admin-app .admin-button--primary {
+    background: var(--ui-text);
+    color: var(--ui-surface);
+    border-color: var(--ui-text);
+}
+.vitma-admin-app .admin-button:hover,
+.vitma-admin-app .admin-icon-button:hover {
+    background: var(--ui-surface-subtle);
+}
+.vitma-admin-app .admin-button--primary:hover {
+    background: var(--ui-accent-strong);
+    color: var(--ui-surface);
+}
+.vitma-admin-app :is(.admin-button, .admin-icon-button):disabled {
+    color: var(--ui-text-muted);
+    background: var(--ui-surface-subtle);
+    border-color: var(--ui-border-strong);
+}
+.vitma-admin-app .admin-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+.vitma-admin-app .admin-eyebrow,
+.vitma-admin-app .admin-preview-label {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+}
+.vitma-admin-app .admin-state {
+    min-height: 260px;
+    padding: 48px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    text-align: center;
+}
+.vitma-admin-app .admin-state p {
+    color: var(--ui-text-muted);
+    max-width: 520px;
+}
+.vitma-admin-app .admin-skeleton {
+    width: min(480px, 90%);
+    height: 20px;
+    background: var(--ui-canvas);
+    border-radius: 4px;
+}
+.vitma-admin-app .admin-notice {
+    color: var(--ui-info-text);
+    background: var(--ui-info-surface);
+    padding: 14px 16px;
+    border-left: 2px solid var(--ui-info-text);
+}
+.vitma-admin-app .admin-skip {
+    position: fixed;
+    top: -100px;
+    left: 16px;
+    padding: 12px;
+    z-index: 100;
+    background: var(--ui-surface);
+}
+.vitma-admin-app .admin-skip:focus {
+    top: 12px;
+}
+.vitma-admin-app svg {
+    flex-shrink: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+    html:has(.vitma-admin-app) {
+        scroll-behavior: auto;
+    }
+    .vitma-admin-app * {
+        scroll-behavior: auto;
+    }
+}

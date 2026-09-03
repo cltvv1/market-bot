@@ -15,7 +15,11 @@ export function useRead<T>(path: string | null, refreshKey = 0) {
             setResult({ path, loading: false });
             return;
         }
-        setResult({ path, loading: true });
+        setResult((previous) => ({
+            path,
+            data: previous.path === path ? previous.data : undefined,
+            loading: true,
+        }));
         void api<T>(path, { signal: controller.signal })
             .then((data) => {
                 if (!controller.signal.aborted)

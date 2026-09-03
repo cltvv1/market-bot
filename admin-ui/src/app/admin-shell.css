@@ -1,7 +1,7 @@
-.ref-admin {
+.vitma-admin-app {
     display: flex;
 }
-.ref-admin .ref-sidebar {
+.vitma-admin-app .admin-sidebar {
     width: 248px;
     flex: 0 0 248px;
     height: 100dvh;
@@ -12,26 +12,26 @@
     border-right: 1px solid var(--ui-border);
     padding: 24px 16px;
 }
-.ref-admin .ref-brand {
+.vitma-admin-app .admin-brand {
     display: block;
     font-size: 21px;
     font-weight: 750;
     margin: 0 12px 26px;
 }
-.ref-admin .ref-brand span {
+.vitma-admin-app .admin-brand span {
     font-weight: 400;
     font-size: 15px;
 }
-.ref-admin .ref-nav-group {
+.vitma-admin-app .admin-nav-group {
     margin: 0 0 18px;
 }
-.ref-admin .ref-nav-group h2 {
+.vitma-admin-app .admin-nav-group h2 {
     font-size: 12px;
     color: var(--ui-text-muted);
     font-weight: 600;
     margin: 0 12px 5px;
 }
-.ref-admin .ref-nav-group :is(a, button) {
+.vitma-admin-app .admin-nav-group :is(a, button) {
     justify-content: flex-start;
     width: 100%;
     min-height: 40px;
@@ -47,23 +47,23 @@
     text-align: left;
     line-height: 1.45;
 }
-.ref-admin .ref-nav-group [aria-current] {
+.vitma-admin-app .admin-nav-group [aria-current] {
     background: #eeeae5;
     color: var(--ui-text);
     font-weight: 650;
     box-shadow: inset 3px 0 var(--ui-accent);
 }
-.ref-admin .ref-nav-group [aria-disabled] {
+.vitma-admin-app .admin-nav-group [aria-disabled] {
     cursor: default;
 }
-.ref-admin .ref-sidebar > .ref-preview-label {
+.vitma-admin-app .admin-sidebar > .admin-preview-label {
     display: block;
     margin: 16px 12px 0;
 }
-.ref-admin .ref-workspace {
+.vitma-admin-app .admin-workspace {
     flex: 1;
 }
-.ref-admin .ref-utility {
+.vitma-admin-app .admin-utility {
     min-height: 65px;
     padding: 10px 32px;
     display: flex;
@@ -72,47 +72,47 @@
     gap: 16px;
     border-bottom: 1px solid var(--ui-border);
 }
-.ref-admin .ref-utility-title {
+.vitma-admin-app .admin-utility-title {
     color: var(--ui-text-muted);
     font-size: 13px;
 }
-.ref-admin .ref-utility-actions {
+.vitma-admin-app .admin-utility-actions {
     display: flex;
     align-items: center;
     gap: 10px;
 }
-.ref-admin .ref-utility .ref-icon-button {
+.vitma-admin-app .admin-utility .admin-icon-button {
     border-color: transparent;
 }
-.ref-admin .ref-employee {
+.vitma-admin-app .admin-employee {
     max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     margin-left: 8px;
 }
-.ref-admin .ref-main {
+.vitma-admin-app .admin-main {
     max-width: 1456px;
     margin: auto;
     padding: 32px;
 }
-.ref-admin .ref-breadcrumb {
+.vitma-admin-app .admin-breadcrumb {
     font-size: 12px;
     color: var(--ui-text-muted);
     margin-bottom: 12px;
 }
-.ref-admin .ref-page-heading {
+.vitma-admin-app .admin-page-heading {
     display: flex;
     align-items: start;
     justify-content: space-between;
     gap: 16px;
     margin-bottom: 26px;
 }
-.ref-admin .ref-page-heading p {
+.vitma-admin-app .admin-page-heading p {
     color: var(--ui-text-muted);
     margin-top: 8px;
 }
-.ref-admin .ref-filters {
+.vitma-admin-app .admin-filters {
     display: grid;
     grid-template-columns: 1.35fr 1fr 1fr 1.2fr 40px;
     align-items: end;
@@ -121,14 +121,14 @@
     border-top: 1px solid var(--ui-border);
     border-bottom: 1px solid var(--ui-border);
 }
-.ref-admin :is(.ref-filters, .ref-pagination) label {
+.vitma-admin-app :is(.admin-filters, .admin-pagination) label {
     display: flex;
     flex-direction: column;
     gap: 6px;
     font-size: 12px;
     color: var(--ui-text-muted);
 }
-.ref-admin select {
+.vitma-admin-app select:not(:where(.legacy-admin-root *)) {
     min-height: 40px;
     border: 1px solid var(--ui-control-border);
     border-radius: 5px;
@@ -137,64 +137,64 @@
     padding: 8px 28px 8px 10px;
     width: 100%;
 }
-.ref-admin .ref-filter-summary {
+.vitma-admin-app .admin-filter-summary {
     margin-top: 12px;
     color: var(--ui-accent-strong);
 }
-.ref-admin .ref-result-note {
+.vitma-admin-app .admin-result-note {
     font-size: 12px;
     color: var(--ui-text-muted);
     margin: 12px 0 16px;
 }
-.ref-admin .ref-queue-head,
-.ref-admin .ref-queue-row {
+.vitma-admin-app .admin-queue-head,
+.vitma-admin-app .admin-queue-row {
     display: grid;
     grid-template-columns:
         minmax(230px, 2.4fr) minmax(154px, 1.1fr) minmax(130px, 1.1fr)
         minmax(100px, 0.7fr);
     column-gap: 20px;
 }
-.ref-admin .ref-queue-head {
+.vitma-admin-app .admin-queue-head {
     padding: 12px 14px;
     font-size: 12px;
     color: var(--ui-text-muted);
     background: var(--ui-surface-subtle);
     border-bottom: 1px solid var(--ui-border);
 }
-.ref-admin .ref-queue-row {
+.vitma-admin-app .admin-queue-row {
     position: relative;
     padding: 18px 14px;
     border-bottom: 1px solid var(--ui-border);
     align-items: center;
 }
-.ref-admin .ref-queue-row:hover,
-.ref-admin .ref-selected {
+.vitma-admin-app .admin-queue-row:hover,
+.vitma-admin-app .admin-selected {
     background: var(--ui-surface-subtle);
 }
-.ref-admin .ref-row-link {
+.vitma-admin-app .admin-row-link {
     font-size: 15px;
     font-weight: 650;
 }
-.ref-admin .ref-row-link::after {
+.vitma-admin-app .admin-row-link::after {
     content: '';
     position: absolute;
     inset: 0;
 }
-.ref-admin .ref-row-link:focus-visible::after {
+.vitma-admin-app .admin-row-link:focus-visible::after {
     outline: 2px solid var(--ui-focus);
     outline-offset: -2px;
 }
-.ref-admin .ref-request-identity {
+.vitma-admin-app .admin-request-identity {
     display: flex;
     flex-direction: column;
     gap: 5px;
 }
-.ref-admin .ref-request-identity > span,
-.ref-admin small {
+.vitma-admin-app .admin-request-identity > span,
+.vitma-admin-app small {
     color: var(--ui-text-muted);
     font-size: 12px;
 }
-.ref-admin .ref-row-meta {
+.vitma-admin-app .admin-row-meta {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -202,18 +202,18 @@
     color: var(--ui-text-muted);
     font-size: 12px;
 }
-.ref-admin .ref-priority {
+.vitma-admin-app .admin-priority {
     display: inline-flex;
     gap: 4px;
     align-items: center;
 }
-.ref-admin .ref-priority--high {
+.vitma-admin-app .admin-priority--high {
     color: var(--ui-warning-text);
 }
-.ref-admin .ref-priority--urgent {
+.vitma-admin-app .admin-priority--urgent {
     color: var(--ui-danger-text);
 }
-.ref-admin .ref-status {
+.vitma-admin-app .admin-status {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -225,26 +225,26 @@
     background: var(--ui-surface-subtle);
     line-height: 1.4;
 }
-.ref-admin .ref-status--warning {
+.vitma-admin-app .admin-status--warning {
     color: var(--ui-warning-text);
     background: var(--ui-warning-surface);
     border-color: #dcc7a3;
 }
-.ref-admin .ref-status--danger {
+.vitma-admin-app .admin-status--danger {
     color: var(--ui-danger-text);
     background: var(--ui-danger-surface);
 }
-.ref-admin .ref-row-staff {
+.vitma-admin-app .admin-row-staff {
     display: flex;
     flex-direction: column;
     gap: 5px;
     font-size: 13px;
 }
-.ref-admin .ref-row-time {
+.vitma-admin-app .admin-row-time {
     font-size: 12px;
     color: var(--ui-text-muted);
 }
-.ref-admin .ref-pagination {
+.vitma-admin-app .admin-pagination {
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -252,17 +252,17 @@
     padding: 20px 0;
     font-size: 12px;
 }
-.ref-admin .ref-pagination > span:first-child {
+.vitma-admin-app .admin-pagination > span:first-child {
     margin-right: auto;
 }
-.ref-admin .ref-pagination label {
+.vitma-admin-app .admin-pagination label {
     flex-direction: row;
     align-items: center;
 }
-.ref-admin .ref-pagination select {
+.vitma-admin-app .admin-pagination select {
     width: 70px;
 }
-.ref-admin .ref-back {
+.vitma-admin-app .admin-back {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -270,20 +270,20 @@
     min-height: 36px;
     margin-bottom: 18px;
 }
-.ref-admin .ref-detail-heading h1 {
+.vitma-admin-app .admin-detail-heading h1 {
     max-width: 850px;
     margin: 10px 0 12px;
 }
-.ref-admin .ref-detail-subtitle {
+.vitma-admin-app .admin-detail-subtitle {
     display: flex;
     align-items: center;
     gap: 14px;
     flex-wrap: wrap;
 }
-.ref-admin .ref-detail-subtitle > span:first-child {
+.vitma-admin-app .admin-detail-subtitle > span:first-child {
     font-size: 16px;
 }
-.ref-admin .ref-assignments {
+.vitma-admin-app .admin-assignments {
     display: flex;
     flex-wrap: wrap;
     gap: 10px 24px;
@@ -291,34 +291,34 @@
     font-size: 12px;
     margin-top: 18px;
 }
-.ref-admin .ref-assignments strong {
+.vitma-admin-app .admin-assignments strong {
     color: var(--ui-text);
     font-weight: 500;
 }
-.ref-admin .ref-stage {
+.vitma-admin-app .admin-stage {
     margin: 26px 0;
     padding: 24px 0;
     border-top: 2px solid var(--ui-accent);
     border-bottom: 1px solid var(--ui-border);
 }
-.ref-admin .ref-stage-heading {
+.vitma-admin-app .admin-stage-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 18px;
 }
-.ref-admin .ref-stage-heading svg {
+.vitma-admin-app .admin-stage-heading svg {
     color: var(--ui-accent-strong);
 }
-.ref-admin .ref-payment-documents {
+.vitma-admin-app .admin-payment-documents {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 24px;
 }
-.ref-admin .ref-payment-documents h3 {
+.vitma-admin-app .admin-payment-documents h3 {
     margin-bottom: 8px;
 }
-.ref-admin .ref-document {
+.vitma-admin-app .admin-document {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -328,57 +328,57 @@
     border: 1px solid var(--ui-border);
     border-radius: 6px;
 }
-.ref-admin .ref-document > div {
+.vitma-admin-app .admin-document > div {
     display: flex;
     flex-direction: column;
     gap: 4px;
     overflow-wrap: anywhere;
 }
-.ref-admin .ref-document strong {
+.vitma-admin-app .admin-document strong {
     font-size: 14px;
     font-weight: 600;
 }
-.ref-admin .ref-payment-documents small {
+.vitma-admin-app .admin-payment-documents small {
     display: block;
     margin-top: 5px;
 }
-.ref-admin .ref-stage-action {
+.vitma-admin-app .admin-stage-action {
     display: flex;
     justify-content: space-between;
     align-items: center;
     gap: 24px;
     margin: 0 0 22px;
 }
-.ref-admin .ref-stage-action p {
+.vitma-admin-app .admin-stage-action p {
     display: flex;
     align-items: center;
     gap: 7px;
     font-size: 13px;
 }
-.ref-admin .ref-stage-action span {
+.vitma-admin-app .admin-stage-action span {
     display: block;
     font-size: 12px;
     color: var(--ui-text-muted);
     margin-top: 5px;
 }
-.ref-admin .ref-next-action {
+.vitma-admin-app .admin-next-action {
     display: flex;
     gap: 12px;
     margin: 24px 0;
     border-block: 1px solid var(--ui-border);
     padding: 20px 0;
 }
-.ref-admin .ref-next-action p {
+.vitma-admin-app .admin-next-action p {
     margin-top: 5px;
     color: var(--ui-text-muted);
 }
-.ref-admin .ref-detail-tabs {
+.vitma-admin-app .admin-detail-tabs {
     margin-top: 24px;
     display: flex;
     border-bottom: 1px solid var(--ui-border);
     gap: 24px;
 }
-.ref-admin .ref-detail-tabs button {
+.vitma-admin-app .admin-detail-tabs button {
     padding: 13px 0;
     background: none;
     border: none;
@@ -388,51 +388,51 @@
     gap: 6px;
     align-items: center;
 }
-.ref-admin .ref-detail-tabs [aria-selected='true'] {
+.vitma-admin-app .admin-detail-tabs [aria-selected='true'] {
     border-bottom-color: var(--ui-text);
     color: var(--ui-text);
     font-weight: 650;
 }
-.ref-admin .ref-detail-tabs span {
+.vitma-admin-app .admin-detail-tabs span {
     font-size: 11px;
 }
-.ref-admin .ref-detail-panel {
+.vitma-admin-app .admin-detail-panel {
     padding: 26px 0;
 }
-.ref-admin .ref-detail-panel .ref-stage {
+.vitma-admin-app .admin-detail-panel .admin-stage {
     margin-top: 0;
 }
-.ref-admin .ref-fields {
+.vitma-admin-app .admin-fields {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 20px 32px;
     margin-top: 20px;
 }
-.ref-admin .ref-fields dt {
+.vitma-admin-app .admin-fields dt {
     color: var(--ui-text-muted);
     font-size: 12px;
     margin-bottom: 4px;
 }
-.ref-admin .ref-fields dd {
+.vitma-admin-app .admin-fields dd {
     font-size: 14px;
     white-space: pre-wrap;
 }
-.ref-admin .ref-field-section + .ref-field-section {
+.vitma-admin-app .admin-field-section + .admin-field-section {
     margin-top: 28px;
     padding-top: 24px;
     border-top: 1px solid var(--ui-border);
 }
-.ref-admin .ref-conversation,
-.ref-admin .ref-timeline {
+.vitma-admin-app .admin-conversation,
+.vitma-admin-app .admin-timeline {
     list-style: none;
     padding: 0;
     margin: 20px 0;
 }
-.ref-admin .ref-chat-entry {
+.vitma-admin-app .admin-chat-entry {
     padding: 16px 0;
     border-bottom: 1px solid var(--ui-border);
 }
-.ref-admin .ref-chat-entry header {
+.vitma-admin-app .admin-chat-entry header {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
@@ -440,31 +440,31 @@
     color: var(--ui-text-muted);
     margin-bottom: 8px;
 }
-.ref-admin .ref-chat-entry strong {
+.vitma-admin-app .admin-chat-entry strong {
     color: var(--ui-text);
 }
-.ref-admin .ref-chat-entry p {
+.vitma-admin-app .admin-chat-entry p {
     white-space: pre-wrap;
 }
-.ref-admin .ref-chat-entry--staff {
+.vitma-admin-app .admin-chat-entry--staff {
     padding-left: 16px;
     border-left: 2px solid var(--ui-accent);
 }
-.ref-admin .ref-document-entry {
+.vitma-admin-app .admin-document-entry {
     margin: 20px 0;
 }
-.ref-admin .ref-document-kind {
+.vitma-admin-app .admin-document-kind {
     display: block;
     margin-bottom: 8px;
     font-size: 12px;
     color: var(--ui-text-muted);
 }
-.ref-admin .ref-timeline li {
+.vitma-admin-app .admin-timeline li {
     display: flex;
     gap: 14px;
     padding: 0 0 24px;
 }
-.ref-admin .ref-timeline-marker {
+.vitma-admin-app .admin-timeline-marker {
     width: 8px;
     height: 8px;
     border: 1px solid var(--ui-accent);
@@ -472,19 +472,19 @@
     margin-top: 7px;
     flex-shrink: 0;
 }
-.ref-admin .ref-timeline p {
+.vitma-admin-app .admin-timeline p {
     font-size: 12px;
     color: var(--ui-text-muted);
     margin-top: 5px;
 }
-.ref-admin .ref-empty-inline {
+.vitma-admin-app .admin-empty-inline {
     padding: 28px 0;
     color: var(--ui-text-muted);
 }
-.ref-admin .ref-nav-trigger {
+.vitma-admin-app .admin-nav-trigger {
     display: none;
 }
-.ref-admin .ref-drawer {
+.vitma-admin-app .admin-drawer {
     padding: 0;
     margin: 0;
     width: 296px;
@@ -495,36 +495,36 @@
     background: var(--ui-surface);
     color: var(--ui-text);
 }
-.ref-admin .ref-drawer::backdrop {
+.vitma-admin-app .admin-drawer::backdrop {
     background: rgb(23 22 21 / 35%);
 }
-.ref-admin .ref-drawer > div {
+.vitma-admin-app .admin-drawer > div {
     padding: 16px;
 }
-.ref-admin .ref-drawer header {
+.vitma-admin-app .admin-drawer header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 20px;
 }
-.ref-admin .ref-notification-area {
+.vitma-admin-app .admin-notification-area {
     padding: 16px 32px;
     border-bottom: 1px solid var(--ui-border);
 }
-.ref-admin .ref-notifications {
+.vitma-admin-app .admin-notifications {
     max-width: 500px;
 }
-.ref-admin .ref-notifications p {
+.vitma-admin-app .admin-notifications p {
     display: flex;
     justify-content: space-between;
     margin: 10px 0;
 }
 @media (max-width: 1250px) {
-    .ref-admin .ref-main {
+    .vitma-admin-app .admin-main {
         padding: 24px;
     }
-    .ref-admin .ref-queue-head,
-    .ref-admin .ref-queue-row {
+    .vitma-admin-app .admin-queue-head,
+    .vitma-admin-app .admin-queue-row {
         grid-template-columns:
             minmax(210px, 1.8fr) minmax(145px, 1.1fr) minmax(118px, 1fr)
             90px;
@@ -532,103 +532,103 @@
     }
 }
 @media (max-width: 1023px) {
-    .ref-admin .ref-sidebar {
+    .vitma-admin-app .admin-sidebar {
         display: none;
     }
-    .ref-admin .ref-nav-trigger {
+    .vitma-admin-app .admin-nav-trigger {
         display: inline-flex;
     }
-    .ref-admin .ref-utility {
+    .vitma-admin-app .admin-utility {
         padding: 10px 24px;
     }
-    .ref-admin .ref-utility-title {
+    .vitma-admin-app .admin-utility-title {
         margin-right: auto;
     }
 }
 @media (max-width: 767px) {
-    .ref-admin .ref-main {
+    .vitma-admin-app .admin-main {
         padding: 20px 16px;
     }
-    .ref-admin h1 {
+    .vitma-admin-app h1 {
         font-size: 24px;
     }
-    .ref-admin .ref-utility {
+    .vitma-admin-app .admin-utility {
         padding: 8px 12px;
         gap: 4px;
     }
-    .ref-admin .ref-utility-title {
+    .vitma-admin-app .admin-utility-title {
         font-size: 12px;
     }
-    .ref-admin .ref-employee {
+    .vitma-admin-app .admin-employee {
         display: none;
     }
-    .ref-admin .ref-utility-actions {
+    .vitma-admin-app .admin-utility-actions {
         gap: 0;
     }
-    .ref-admin .ref-filters {
+    .vitma-admin-app .admin-filters {
         grid-template-columns: 1fr 1fr;
     }
-    .ref-admin .ref-queue-head {
+    .vitma-admin-app .admin-queue-head {
         display: none;
     }
-    .ref-admin .ref-queue-row {
+    .vitma-admin-app .admin-queue-row {
         display: grid;
         grid-template-columns: 1fr;
         gap: 12px;
         padding: 18px 0;
     }
-    .ref-admin .ref-row-staff {
+    .vitma-admin-app .admin-row-staff {
         flex-direction: row;
         flex-wrap: wrap;
     }
-    .ref-admin .ref-row-time {
+    .vitma-admin-app .admin-row-time {
         display: none;
     }
-    .ref-admin .ref-pagination {
+    .vitma-admin-app .admin-pagination {
         flex-wrap: wrap;
         gap: 8px;
     }
-    .ref-admin .ref-pagination label {
+    .vitma-admin-app .admin-pagination label {
         flex: 1;
     }
-    .ref-admin .ref-pagination > span:first-child {
+    .vitma-admin-app .admin-pagination > span:first-child {
         width: 100%;
     }
-    .ref-admin .ref-page-heading > .ref-preview-label {
+    .vitma-admin-app .admin-page-heading > .admin-preview-label {
         max-width: 85px;
         text-align: right;
     }
-    .ref-admin .ref-payment-documents {
+    .vitma-admin-app .admin-payment-documents {
         grid-template-columns: 1fr;
         gap: 16px;
     }
-    .ref-admin .ref-stage {
+    .vitma-admin-app .admin-stage {
         margin: 22px 0;
         padding: 18px 0;
     }
-    .ref-admin .ref-stage-action {
+    .vitma-admin-app .admin-stage-action {
         flex-direction: column;
         align-items: stretch;
         gap: 14px;
     }
-    .ref-admin .ref-stage-action p {
+    .vitma-admin-app .admin-stage-action p {
         align-items: start;
     }
-    .ref-admin .ref-stage-action p svg {
+    .vitma-admin-app .admin-stage-action p svg {
         margin-top: 2px;
     }
-    .ref-admin .ref-detail-tabs {
+    .vitma-admin-app .admin-detail-tabs {
         justify-content: space-between;
         gap: 8px;
     }
-    .ref-admin .ref-detail-tabs button {
+    .vitma-admin-app .admin-detail-tabs button {
         font-size: 12px;
         min-height: 44px;
     }
-    .ref-admin .ref-fields {
+    .vitma-admin-app .admin-fields {
         grid-template-columns: 1fr;
     }
-    .ref-admin .ref-assignments {
+    .vitma-admin-app .admin-assignments {
         gap: 7px;
         flex-direction: column;
     }

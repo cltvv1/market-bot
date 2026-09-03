@@ -11,6 +11,8 @@ import { ServiceRequestEventEntity } from './entities/service-request-event.enti
 import { ServiceTypeEntity } from './entities/service-type.entity';
 import { ServiceRequestsController } from './service-requests.controller';
 import { ServiceRequestsService } from './service-requests.service';
+import { ServiceRequestAdminReadService } from './service-request-admin-read.service';
+import { ServiceRequestAdminCommandsService } from './service-request-admin-commands.service';
 import { ServiceRequestChannelWorkflowService } from './service-request-channel-workflow.service';
 import { FilesModule } from 'src/files/files.module';
 import { AuditModule } from 'src/audit/audit.module';
@@ -52,6 +54,8 @@ import {
     ],
     controllers: [ServiceRequestsController, PublicServiceRequestsController],
     providers: [
+        ServiceRequestAdminReadService,
+        ServiceRequestAdminCommandsService,
         ServiceRequestsService,
         ServiceRequestChannelWorkflowService,
         ServiceFormService,
@@ -59,7 +63,12 @@ import {
         MessageServiceRequestUploadGuard,
         PublicServiceRequestUploadGuard,
     ],
-    exports: [ServiceRequestsService, TypeOrmModule],
+    exports: [
+        ServiceRequestsService,
+        ServiceRequestAdminReadService,
+        ServiceRequestAdminCommandsService,
+        TypeOrmModule,
+    ],
 })
 export class ServiceRequestsModule implements OnApplicationBootstrap {
     constructor(

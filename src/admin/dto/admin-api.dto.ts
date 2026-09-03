@@ -6,7 +6,9 @@ import {
     IsOptional,
     IsString,
     Matches,
+    Max,
     MaxLength,
+    MinLength,
     Min,
 } from 'class-validator';
 
@@ -118,6 +120,35 @@ export class ServiceRequestListQueryDto {
     @IsOptional()
     @IsIn(['telegram', 'max', 'web'])
     platform?: 'telegram' | 'max' | 'web';
+
+    @IsOptional()
+    @IsIn(['low', 'normal', 'high', 'urgent'])
+    priority?: 'low' | 'normal' | 'high' | 'urgent';
+
+    @IsOptional()
+    @IsIn(['all', 'mine', 'unassigned'])
+    scope?: 'all' | 'mine' | 'unassigned';
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(2_147_483_647)
+    responsibleStaffId?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(100_000)
+    page?: number;
+
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(100)
+    limit?: number;
 }
 
 export class CustomerContextQueryDto {
@@ -180,15 +211,24 @@ export class OrganizationAccessReviewDto {
     reviewComment?: string;
 }
 
-export class ScheduleServiceRequestDto {
+export class ServiceRequestVersionDto {
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(2_147_483_647)
+    expectedVersion: number;
+}
+
+export class ScheduleServiceRequestDto extends ServiceRequestVersionDto {
     @IsString()
     @Transform(trim)
+    @MinLength(1)
     @MaxLength(500)
     visitAddress: string;
 
-    @IsOptional()
     @IsDateString()
-    visitTime?: string;
+    @Matches(/(?:Z|[+-]\d{2}:\d{2})$/)
+    visitTime: string;
 
     @IsOptional()
     @IsString()
@@ -197,7 +237,7 @@ export class ScheduleServiceRequestDto {
     operatorComment?: string;
 }
 
-export class ServiceRequestOperatorStateDto {
+export class ServiceRequestOperatorStateDto extends ServiceRequestVersionDto {
     @IsOptional()
     @IsIn(['low', 'normal', 'high', 'urgent'])
     priority?: 'low' | 'normal' | 'high' | 'urgent';
@@ -209,10 +249,11 @@ export class ServiceRequestOperatorStateDto {
     operatorComment?: string | null;
 }
 
-export class AssignEngineerDto {
+export class AssignEngineerDto extends ServiceRequestVersionDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(2_147_483_647)
     assignedEngineerId: number;
 }
 
