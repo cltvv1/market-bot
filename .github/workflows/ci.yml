@@ -58,6 +58,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run ci:build
+      - name: Verify frontend reference isolation and contracts
+        run: |
+          npx tsc --noEmit -p admin-ui/tsconfig.json
+          npm run lint:site
+          node admin-ui/src/reference/tools/reference-model.test.cjs
 
   database-and-tests:
     name: PostgreSQL, tests, and offline smoke

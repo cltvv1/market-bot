@@ -1,0 +1,635 @@
+.ref-admin {
+    display: flex;
+}
+.ref-admin .ref-sidebar {
+    width: 248px;
+    flex: 0 0 248px;
+    height: 100dvh;
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+    background: var(--ui-surface-subtle);
+    border-right: 1px solid var(--ui-border);
+    padding: 24px 16px;
+}
+.ref-admin .ref-brand {
+    display: block;
+    font-size: 21px;
+    font-weight: 750;
+    margin: 0 12px 26px;
+}
+.ref-admin .ref-brand span {
+    font-weight: 400;
+    font-size: 15px;
+}
+.ref-admin .ref-nav-group {
+    margin: 0 0 18px;
+}
+.ref-admin .ref-nav-group h2 {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    font-weight: 600;
+    margin: 0 12px 5px;
+}
+.ref-admin .ref-nav-group :is(a, button) {
+    justify-content: flex-start;
+    width: 100%;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--ui-text-muted);
+    font-size: 13px;
+    text-align: left;
+    line-height: 1.45;
+}
+.ref-admin .ref-nav-group [aria-current] {
+    background: #eeeae5;
+    color: var(--ui-text);
+    font-weight: 650;
+    box-shadow: inset 3px 0 var(--ui-accent);
+}
+.ref-admin .ref-nav-group [aria-disabled] {
+    cursor: default;
+}
+.ref-admin .ref-sidebar > .ref-preview-label {
+    display: block;
+    margin: 16px 12px 0;
+}
+.ref-admin .ref-workspace {
+    flex: 1;
+}
+.ref-admin .ref-utility {
+    min-height: 65px;
+    padding: 10px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-admin .ref-utility-title {
+    color: var(--ui-text-muted);
+    font-size: 13px;
+}
+.ref-admin .ref-utility-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.ref-admin .ref-utility .ref-icon-button {
+    border-color: transparent;
+}
+.ref-admin .ref-employee {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-left: 8px;
+}
+.ref-admin .ref-main {
+    max-width: 1456px;
+    margin: auto;
+    padding: 32px;
+}
+.ref-admin .ref-breadcrumb {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    margin-bottom: 12px;
+}
+.ref-admin .ref-page-heading {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 26px;
+}
+.ref-admin .ref-page-heading p {
+    color: var(--ui-text-muted);
+    margin-top: 8px;
+}
+.ref-admin .ref-filters {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr 1fr 1.2fr 40px;
+    align-items: end;
+    gap: 12px;
+    padding: 20px 0;
+    border-top: 1px solid var(--ui-border);
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-admin :is(.ref-filters, .ref-pagination) label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+}
+.ref-admin select {
+    min-height: 40px;
+    border: 1px solid var(--ui-control-border);
+    border-radius: 5px;
+    color: var(--ui-text);
+    background: var(--ui-surface);
+    padding: 8px 28px 8px 10px;
+    width: 100%;
+}
+.ref-admin .ref-filter-summary {
+    margin-top: 12px;
+    color: var(--ui-accent-strong);
+}
+.ref-admin .ref-result-note {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    margin: 12px 0 16px;
+}
+.ref-admin .ref-queue-head,
+.ref-admin .ref-queue-row {
+    display: grid;
+    grid-template-columns:
+        minmax(230px, 2.4fr) minmax(154px, 1.1fr) minmax(130px, 1.1fr)
+        minmax(100px, 0.7fr);
+    column-gap: 20px;
+}
+.ref-admin .ref-queue-head {
+    padding: 12px 14px;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    background: var(--ui-surface-subtle);
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-admin .ref-queue-row {
+    position: relative;
+    padding: 18px 14px;
+    border-bottom: 1px solid var(--ui-border);
+    align-items: center;
+}
+.ref-admin .ref-queue-row:hover,
+.ref-admin .ref-selected {
+    background: var(--ui-surface-subtle);
+}
+.ref-admin .ref-row-link {
+    font-size: 15px;
+    font-weight: 650;
+}
+.ref-admin .ref-row-link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+}
+.ref-admin .ref-row-link:focus-visible::after {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: -2px;
+}
+.ref-admin .ref-request-identity {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.ref-admin .ref-request-identity > span,
+.ref-admin small {
+    color: var(--ui-text-muted);
+    font-size: 12px;
+}
+.ref-admin .ref-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    color: var(--ui-text-muted);
+    font-size: 12px;
+}
+.ref-admin .ref-priority {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+}
+.ref-admin .ref-priority--high {
+    color: var(--ui-warning-text);
+}
+.ref-admin .ref-priority--urgent {
+    color: var(--ui-danger-text);
+}
+.ref-admin .ref-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: 4px;
+    padding: 4px 7px;
+    font-size: 12px;
+    color: var(--ui-text);
+    background: var(--ui-surface-subtle);
+    line-height: 1.4;
+}
+.ref-admin .ref-status--warning {
+    color: var(--ui-warning-text);
+    background: var(--ui-warning-surface);
+    border-color: #dcc7a3;
+}
+.ref-admin .ref-status--danger {
+    color: var(--ui-danger-text);
+    background: var(--ui-danger-surface);
+}
+.ref-admin .ref-row-staff {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    font-size: 13px;
+}
+.ref-admin .ref-row-time {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+}
+.ref-admin .ref-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 20px 0;
+    font-size: 12px;
+}
+.ref-admin .ref-pagination > span:first-child {
+    margin-right: auto;
+}
+.ref-admin .ref-pagination label {
+    flex-direction: row;
+    align-items: center;
+}
+.ref-admin .ref-pagination select {
+    width: 70px;
+}
+.ref-admin .ref-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ui-text-muted);
+    min-height: 36px;
+    margin-bottom: 18px;
+}
+.ref-admin .ref-detail-heading h1 {
+    max-width: 850px;
+    margin: 10px 0 12px;
+}
+.ref-admin .ref-detail-subtitle {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+.ref-admin .ref-detail-subtitle > span:first-child {
+    font-size: 16px;
+}
+.ref-admin .ref-assignments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 24px;
+    color: var(--ui-text-muted);
+    font-size: 12px;
+    margin-top: 18px;
+}
+.ref-admin .ref-assignments strong {
+    color: var(--ui-text);
+    font-weight: 500;
+}
+.ref-admin .ref-stage {
+    margin: 26px 0;
+    padding: 24px 0;
+    border-top: 2px solid var(--ui-accent);
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-admin .ref-stage-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+}
+.ref-admin .ref-stage-heading svg {
+    color: var(--ui-accent-strong);
+}
+.ref-admin .ref-payment-documents {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+}
+.ref-admin .ref-payment-documents h3 {
+    margin-bottom: 8px;
+}
+.ref-admin .ref-document {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    background: var(--ui-surface-subtle);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+}
+.ref-admin .ref-document > div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-wrap: anywhere;
+}
+.ref-admin .ref-document strong {
+    font-size: 14px;
+    font-weight: 600;
+}
+.ref-admin .ref-payment-documents small {
+    display: block;
+    margin-top: 5px;
+}
+.ref-admin .ref-stage-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    margin: 0 0 22px;
+}
+.ref-admin .ref-stage-action p {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+}
+.ref-admin .ref-stage-action span {
+    display: block;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    margin-top: 5px;
+}
+.ref-admin .ref-next-action {
+    display: flex;
+    gap: 12px;
+    margin: 24px 0;
+    border-block: 1px solid var(--ui-border);
+    padding: 20px 0;
+}
+.ref-admin .ref-next-action p {
+    margin-top: 5px;
+    color: var(--ui-text-muted);
+}
+.ref-admin .ref-detail-tabs {
+    margin-top: 24px;
+    display: flex;
+    border-bottom: 1px solid var(--ui-border);
+    gap: 24px;
+}
+.ref-admin .ref-detail-tabs button {
+    padding: 13px 0;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--ui-text-muted);
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+}
+.ref-admin .ref-detail-tabs [aria-selected='true'] {
+    border-bottom-color: var(--ui-text);
+    color: var(--ui-text);
+    font-weight: 650;
+}
+.ref-admin .ref-detail-tabs span {
+    font-size: 11px;
+}
+.ref-admin .ref-detail-panel {
+    padding: 26px 0;
+}
+.ref-admin .ref-detail-panel .ref-stage {
+    margin-top: 0;
+}
+.ref-admin .ref-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px 32px;
+    margin-top: 20px;
+}
+.ref-admin .ref-fields dt {
+    color: var(--ui-text-muted);
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+.ref-admin .ref-fields dd {
+    font-size: 14px;
+    white-space: pre-wrap;
+}
+.ref-admin .ref-field-section + .ref-field-section {
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid var(--ui-border);
+}
+.ref-admin .ref-conversation,
+.ref-admin .ref-timeline {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+}
+.ref-admin .ref-chat-entry {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-admin .ref-chat-entry header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    margin-bottom: 8px;
+}
+.ref-admin .ref-chat-entry strong {
+    color: var(--ui-text);
+}
+.ref-admin .ref-chat-entry p {
+    white-space: pre-wrap;
+}
+.ref-admin .ref-chat-entry--staff {
+    padding-left: 16px;
+    border-left: 2px solid var(--ui-accent);
+}
+.ref-admin .ref-document-entry {
+    margin: 20px 0;
+}
+.ref-admin .ref-document-kind {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+}
+.ref-admin .ref-timeline li {
+    display: flex;
+    gap: 14px;
+    padding: 0 0 24px;
+}
+.ref-admin .ref-timeline-marker {
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--ui-accent);
+    border-radius: 50%;
+    margin-top: 7px;
+    flex-shrink: 0;
+}
+.ref-admin .ref-timeline p {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    margin-top: 5px;
+}
+.ref-admin .ref-empty-inline {
+    padding: 28px 0;
+    color: var(--ui-text-muted);
+}
+.ref-admin .ref-nav-trigger {
+    display: none;
+}
+.ref-admin .ref-drawer {
+    padding: 0;
+    margin: 0;
+    width: 296px;
+    max-width: 90vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    background: var(--ui-surface);
+    color: var(--ui-text);
+}
+.ref-admin .ref-drawer::backdrop {
+    background: rgb(23 22 21 / 35%);
+}
+.ref-admin .ref-drawer > div {
+    padding: 16px;
+}
+.ref-admin .ref-drawer header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+.ref-admin .ref-notification-area {
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-admin .ref-notifications {
+    max-width: 500px;
+}
+.ref-admin .ref-notifications p {
+    display: flex;
+    justify-content: space-between;
+    margin: 10px 0;
+}
+@media (max-width: 1250px) {
+    .ref-admin .ref-main {
+        padding: 24px;
+    }
+    .ref-admin .ref-queue-head,
+    .ref-admin .ref-queue-row {
+        grid-template-columns:
+            minmax(210px, 1.8fr) minmax(145px, 1.1fr) minmax(118px, 1fr)
+            90px;
+        gap: 12px;
+    }
+}
+@media (max-width: 1023px) {
+    .ref-admin .ref-sidebar {
+        display: none;
+    }
+    .ref-admin .ref-nav-trigger {
+        display: inline-flex;
+    }
+    .ref-admin .ref-utility {
+        padding: 10px 24px;
+    }
+    .ref-admin .ref-utility-title {
+        margin-right: auto;
+    }
+}
+@media (max-width: 767px) {
+    .ref-admin .ref-main {
+        padding: 20px 16px;
+    }
+    .ref-admin h1 {
+        font-size: 24px;
+    }
+    .ref-admin .ref-utility {
+        padding: 8px 12px;
+        gap: 4px;
+    }
+    .ref-admin .ref-utility-title {
+        font-size: 12px;
+    }
+    .ref-admin .ref-employee {
+        display: none;
+    }
+    .ref-admin .ref-utility-actions {
+        gap: 0;
+    }
+    .ref-admin .ref-filters {
+        grid-template-columns: 1fr 1fr;
+    }
+    .ref-admin .ref-queue-head {
+        display: none;
+    }
+    .ref-admin .ref-queue-row {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        padding: 18px 0;
+    }
+    .ref-admin .ref-row-staff {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    .ref-admin .ref-row-time {
+        display: none;
+    }
+    .ref-admin .ref-pagination {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .ref-admin .ref-pagination label {
+        flex: 1;
+    }
+    .ref-admin .ref-pagination > span:first-child {
+        width: 100%;
+    }
+    .ref-admin .ref-page-heading > .ref-preview-label {
+        max-width: 85px;
+        text-align: right;
+    }
+    .ref-admin .ref-payment-documents {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    .ref-admin .ref-stage {
+        margin: 22px 0;
+        padding: 18px 0;
+    }
+    .ref-admin .ref-stage-action {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 14px;
+    }
+    .ref-admin .ref-stage-action p {
+        align-items: start;
+    }
+    .ref-admin .ref-stage-action p svg {
+        margin-top: 2px;
+    }
+    .ref-admin .ref-detail-tabs {
+        justify-content: space-between;
+        gap: 8px;
+    }
+    .ref-admin .ref-detail-tabs button {
+        font-size: 12px;
+        min-height: 44px;
+    }
+    .ref-admin .ref-fields {
+        grid-template-columns: 1fr;
+    }
+    .ref-admin .ref-assignments {
+        gap: 7px;
+        flex-direction: column;
+    }
+}

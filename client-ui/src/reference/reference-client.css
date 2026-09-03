@@ -1,0 +1,262 @@
+.ref-client {
+    font-size: 16px;
+}
+.ref-client .ref-public-container {
+    width: min(1184px, calc(100% - 64px));
+    margin-inline: auto;
+}
+.ref-client .ref-public-header {
+    border-bottom: 1px solid var(--ui-border);
+    background: var(--ui-surface);
+}
+.ref-client .ref-public-header > .ref-public-container {
+    display: flex;
+    align-items: center;
+    gap: 48px;
+    min-height: 88px;
+}
+.ref-client .ref-public-brand {
+    display: flex;
+    align-items: center;
+    flex: 0 0 155px;
+}
+.ref-client .ref-public-brand img {
+    object-fit: contain;
+    width: 155px;
+    height: 52px;
+}
+.ref-client .ref-public-nav {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    margin-left: auto;
+    font-size: 14px;
+}
+.ref-client .ref-public-nav a {
+    padding: 31px 0;
+    border-bottom: 2px solid transparent;
+}
+.ref-client .ref-public-nav [aria-current] {
+    border-bottom-color: var(--ui-accent-strong);
+}
+.ref-client .ref-org-link {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-size: 14px;
+    color: var(--ui-text-muted);
+}
+.ref-client .ref-public-breadcrumb {
+    display: flex;
+    gap: 12px;
+    color: var(--ui-text-muted);
+    font-size: 13px;
+    padding: 26px 0;
+}
+.ref-client .ref-service-intro {
+    padding: 16px 0 42px;
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-client .ref-service-intro h1 {
+    font-size: 40px;
+    line-height: 1.2;
+    margin: 12px 0 18px;
+    max-width: 800px;
+}
+.ref-client .ref-service-intro p {
+    color: var(--ui-text-muted);
+    max-width: 640px;
+    font-size: 17px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+.ref-client .ref-button {
+    min-height: 46px;
+    font-size: 14px;
+}
+.ref-client .ref-button--primary {
+    padding-inline: 20px;
+}
+.ref-client .ref-service-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 80px;
+    padding: 36px 0;
+}
+.ref-client h2 {
+    font-size: 22px;
+}
+.ref-client .ref-service-path {
+    display: flex;
+    gap: 22px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--ui-border);
+}
+.ref-client .ref-service-path > svg {
+    color: var(--ui-accent-strong);
+    margin-top: 3px;
+}
+.ref-client .ref-service-path h3 {
+    font-size: 17px;
+    margin-bottom: 6px;
+}
+.ref-client .ref-service-path p {
+    color: var(--ui-text-muted);
+    font-size: 14px;
+    line-height: 1.6;
+}
+.ref-client .ref-service-path a {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ui-accent-strong);
+    font-weight: 600;
+    font-size: 14px;
+    margin-top: 10px;
+    min-height: 32px;
+}
+.ref-client .ref-path-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 24px;
+}
+.ref-client .ref-existing-request {
+    padding: 26px;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    align-self: start;
+    background: var(--ui-surface-subtle);
+}
+.ref-client .ref-existing-request > svg {
+    color: var(--ui-accent-strong);
+    margin-bottom: 18px;
+}
+.ref-client .ref-existing-request h2 {
+    font-size: 20px;
+}
+.ref-client .ref-existing-request p {
+    color: var(--ui-text-muted);
+    margin: 12px 0 20px;
+    font-size: 14px;
+    line-height: 1.6;
+}
+.ref-client .ref-existing-request small {
+    display: block;
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    line-height: 1.6;
+}
+.ref-client .ref-service-process {
+    padding: 8px 0 52px;
+}
+.ref-client .ref-service-process ol {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 32px;
+    padding: 0;
+    margin: 26px 0 0;
+    list-style: none;
+}
+.ref-client .ref-service-process li {
+    display: flex;
+    gap: 16px;
+}
+.ref-client .ref-service-process li > span {
+    color: var(--ui-accent-strong);
+    font-size: 14px;
+    padding-top: 2px;
+}
+.ref-client .ref-service-process h3 {
+    font-size: 15px;
+}
+.ref-client .ref-service-process p {
+    font-size: 13px;
+    color: var(--ui-text-muted);
+    margin-top: 8px;
+    line-height: 1.6;
+}
+.ref-client .ref-public-footer {
+    border-top: 1px solid var(--ui-border);
+    background: var(--ui-surface-subtle);
+    padding: 24px 0;
+    color: var(--ui-text-muted);
+    font-size: 12px;
+}
+.ref-client .ref-public-footer > div {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    flex-wrap: wrap;
+}
+.ref-client .ref-public-footer a {
+    margin-left: auto;
+}
+.ref-client .ref-public-menu-trigger {
+    display: none;
+}
+.ref-client #reference-public-menu {
+    padding: 12px 24px;
+    border-top: 1px solid var(--ui-border);
+}
+.ref-client #reference-public-menu a {
+    display: block;
+    padding: 12px 0;
+}
+@media (max-width: 1023px) {
+    .ref-client .ref-public-header > .ref-public-container {
+        gap: 24px;
+    }
+    .ref-client .ref-service-layout {
+        gap: 32px;
+        grid-template-columns: minmax(0, 1fr) 280px;
+    }
+    .ref-client .ref-org-link {
+        display: none;
+    }
+}
+@media (max-width: 767px) {
+    .ref-client .ref-public-container {
+        width: calc(100% - 40px);
+    }
+    .ref-client .ref-public-header > .ref-public-container {
+        min-height: 74px;
+        justify-content: space-between;
+    }
+    .ref-client .ref-public-nav {
+        display: none;
+    }
+    .ref-client .ref-public-menu-trigger {
+        display: inline-flex;
+    }
+    .ref-client .ref-public-breadcrumb {
+        padding: 20px 0;
+    }
+    .ref-client .ref-service-intro {
+        padding: 12px 0 30px;
+    }
+    .ref-client .ref-service-intro h1 {
+        font-size: 30px;
+    }
+    .ref-client .ref-service-intro p {
+        font-size: 16px;
+    }
+    .ref-client .ref-service-layout {
+        grid-template-columns: 1fr;
+        padding: 28px 0;
+        gap: 28px;
+    }
+    .ref-client .ref-service-path {
+        gap: 16px;
+    }
+    .ref-client .ref-service-process ol {
+        grid-template-columns: 1fr;
+        gap: 24px;
+    }
+    .ref-client .ref-public-footer > div {
+        gap: 14px;
+    }
+    .ref-client .ref-public-footer a {
+        margin-left: 0;
+    }
+}
