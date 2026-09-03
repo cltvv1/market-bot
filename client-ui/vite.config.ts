@@ -2,7 +2,8 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+    define: { 'import.meta.env.REFERENCE_DEV_SERVER': command === 'serve' },
     root: path.resolve(__dirname),
     cacheDir: path.resolve(__dirname, '..', 'node_modules', '.vite-client'),
     base: '/site/',
@@ -28,4 +29,4 @@ export default defineConfig({
             '/api': 'http://localhost:3000',
         },
     },
-});
+}));
