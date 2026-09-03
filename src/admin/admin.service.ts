@@ -1,5 +1,9 @@
 import { randomBytes } from 'crypto';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+    BadRequestException,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, IsNull, Not, Repository } from 'typeorm';
 import { RegistrationRequestEntity } from 'src/registrations/entities/registration.entity';
@@ -299,9 +303,7 @@ export class AdminService {
                 where: { id, assignedEngineerId: admin.id },
             });
             if (!request) {
-                throw new BadRequestException(
-                    'Service request was not found for this staff member',
-                );
+                throw new NotFoundException('Service request was not found');
             }
         }
         return this.serviceRequestsService.getAdminDetails(id);

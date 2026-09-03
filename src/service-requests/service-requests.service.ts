@@ -778,7 +778,11 @@ export class ServiceRequestsService {
         return { ...details, request: this.adminView(request) };
     }
 
-    async createManual(adminId: number, input: AdminCreateServiceRequestDto) {
+    async createManual(
+        adminId: number,
+        input: AdminCreateServiceRequestDto,
+        sessionId?: number,
+    ) {
         const type = await this.requireType(input.serviceTypeCode);
         const form = await this.forms.getPublishedForType(type);
         const contact = this.normalizeContact(
@@ -790,8 +794,9 @@ export class ServiceRequestsService {
             input.answers ?? {},
             false,
         );
-        const request = await this.requests.save(
-            this.requests.create({
+        const request = await this.dataSource.transaction(async (manager) => {
+            const repository = manager.getRepository(ServiceRequestEntity);
+            const created = repository.create({
                 requestNumber: this.createRequestNumber(),
                 serviceTypeId: type.id,
                 serviceTypeCode: type.code,
@@ -814,18 +819,32 @@ export class ServiceRequestsService {
                 equipmentSnapshot: this.cleanSnapshot(input.equipmentSnapshot),
                 priority: this.priorityFromAnswers(answers),
                 responsibleOperatorStaffId: adminId,
-            }),
-        );
-        if (input.initialStatus && input.initialStatus !== 'draft') {
-            transitionServiceRequest(request, input.initialStatus);
-            await this.requests.save(request);
-        }
-        await this.addEvent(
-            request.id,
-            'created',
-            'staff',
-            'Заявка создана сотрудником',
-        );
+            });
+            if (input.initialStatus && input.initialStatus !== 'draft')
+                transitionServiceRequest(created, input.initialStatus);
+            const saved = await repository.save(created);
+            await this.addEvent(
+                saved.id,
+                'created',
+                `staff:${adminId}`,
+                'Заявка создана сотрудником',
+                undefined,
+                manager,
+            );
+            await this.audit.record(
+                {
+                    actorType: 'staff',
+                    actorStaffId: adminId,
+                    actorSessionId: sessionId,
+                    action: 'service_request.manual.create',
+                    targetType: 'service_request',
+                    targetId: saved.id,
+                    metadata: { source: input.source },
+                },
+                manager,
+            );
+            return saved;
+        });
         return this.details(request, true);
     }
 

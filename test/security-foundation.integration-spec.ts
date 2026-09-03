@@ -350,22 +350,28 @@ describe('security foundation API contracts', () => {
             'security-engineer-request-0002',
         );
         const root = await login('root-user');
+        const detail = await root.agent
+            .get(`/admin/api/service-requests/${first.id}`)
+            .expect(200);
         await root.agent
             .post(`/admin/api/service-requests/${first.id}/assign-engineer`)
             .set('Origin', ORIGIN)
-            .send({ assignedEngineerId: engineer.id })
+            .send({
+                assignedEngineerId: engineer.id,
+                expectedVersion: Number(detail.body.workflow.expectedVersion),
+            })
             .expect(201);
 
         const engineerSession = await login('engineer-one');
         const list = await engineerSession.agent
             .get('/admin/api/service-requests?status=all')
             .expect(200);
-        expect(list.body.map((item: { id: number }) => item.id)).toEqual([
+        expect(list.body.items.map((item: { id: number }) => item.id)).toEqual([
             first.id,
         ]);
         await engineerSession.agent
             .get(`/admin/api/service-requests/${second.id}`)
-            .expect(400);
+            .expect(404);
         await engineerSession.agent.get('/admin/api/organizations').expect(403);
     });
 

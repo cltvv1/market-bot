@@ -1,0 +1,920 @@
+.legacy-admin-root {
+    font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        'Segoe UI',
+        sans-serif;
+    color: #172033;
+    background: #f3f5f8;
+    font-synthesis: none;
+    --ink: #172033;
+    --muted: #667085;
+    --line: #d8dee8;
+    --panel: #ffffff;
+    --soft: #f7f9fb;
+    --brand: #147d6f;
+    --brand-dark: #0e5f55;
+    --danger: #bd3535;
+}
+
+.legacy-admin-root * {
+    box-sizing: border-box;
+}
+.legacy-admin-root {
+    margin: 0;
+    min-width: 320px;
+    min-height: 100vh;
+}
+.legacy-admin-root button,
+.legacy-admin-root input,
+.legacy-admin-root select,
+.legacy-admin-root textarea {
+    font: inherit;
+    letter-spacing: 0;
+}
+.legacy-admin-root button,
+.legacy-admin-root .button {
+    min-height: 36px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 7px 11px;
+    color: var(--ink);
+    background: #fff;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    text-decoration: none;
+}
+.legacy-admin-root button:hover,
+.legacy-admin-root .button:hover {
+    border-color: #9ca8b8;
+    background: #f8fafc;
+}
+.legacy-admin-root button.primary,
+.legacy-admin-root .primary {
+    color: #fff;
+    border-color: var(--brand);
+    background: var(--brand);
+}
+.legacy-admin-root button.primary:hover {
+    background: var(--brand-dark);
+}
+.legacy-admin-root button.danger {
+    color: var(--danger);
+    border-color: #e9b9b9;
+}
+.legacy-admin-root button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+.legacy-admin-root input,
+.legacy-admin-root select,
+.legacy-admin-root textarea {
+    min-height: 38px;
+    min-width: 0;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--ink);
+    background: #fff;
+}
+.legacy-admin-root textarea {
+    min-height: 82px;
+    resize: vertical;
+}
+
+.legacy-admin-root .app-shell {
+    min-height: 100vh;
+}
+.legacy-admin-root .topbar {
+    min-height: 66px;
+    padding: 10px 22px;
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+}
+.legacy-admin-root .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.legacy-admin-root .brand-mark {
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    background: var(--brand);
+    font-weight: 800;
+    font-size: 20px;
+}
+.legacy-admin-root .brand div {
+    display: grid;
+}
+.legacy-admin-root .brand strong {
+    font-size: 17px;
+}
+.legacy-admin-root .brand span:last-child {
+    color: var(--muted);
+    font-size: 12px;
+}
+.legacy-admin-root .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.legacy-admin-root .admin-name {
+    color: var(--muted);
+    font-size: 13px;
+}
+.legacy-admin-root .icon-button {
+    width: 38px;
+    padding: 0;
+}
+.legacy-admin-root main {
+    max-width: 1540px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.legacy-admin-root .notice {
+    margin-bottom: 12px;
+    border: 1px solid #9ad5c8;
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #edf9f6;
+}
+.legacy-admin-root .notice button {
+    margin-left: auto;
+    min-height: 28px;
+    width: 28px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+.legacy-admin-root .stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(180px, 300px));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+.legacy-admin-root .stat {
+    min-height: 88px;
+    padding: 14px;
+    display: grid;
+    justify-items: start;
+    align-content: space-between;
+}
+.legacy-admin-root .stat span {
+    color: var(--muted);
+}
+.legacy-admin-root .stat strong {
+    font-size: 28px;
+}
+.legacy-admin-root .tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin-bottom: 10px;
+}
+.legacy-admin-root .tabs button {
+    white-space: nowrap;
+}
+.legacy-admin-root .tabs button.active {
+    color: #fff;
+    border-color: #172033;
+    background: #172033;
+}
+.legacy-admin-root .filters {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+.legacy-admin-root .filters select,
+.legacy-admin-root .filters input {
+    min-width: 170px;
+}
+
+.legacy-admin-root .workbench {
+    height: calc(100vh - 285px);
+    min-height: 560px;
+    display: grid;
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    overflow: hidden;
+    background: var(--panel);
+}
+.legacy-admin-root .work-list {
+    overflow-y: auto;
+    border-right: 1px solid var(--line);
+    background: #fbfcfd;
+}
+.legacy-admin-root .work-list-title {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 12px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    font-weight: 700;
+    background: #fbfcfd;
+}
+.legacy-admin-root .work-list-title span {
+    color: var(--muted);
+}
+.legacy-admin-root .work-row {
+    width: 100%;
+    min-height: 90px;
+    padding: 11px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--line);
+    border-radius: 0;
+    display: block;
+    text-align: left;
+    background: transparent;
+}
+.legacy-admin-root .work-row.active {
+    background: #e8f4f1;
+    box-shadow: inset 3px 0 var(--brand);
+}
+.legacy-admin-root .row-top {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: start;
+}
+.legacy-admin-root .row-top strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.legacy-admin-root .row-top > span,
+.legacy-admin-root .row-preview {
+    color: var(--muted);
+    font-size: 12px;
+}
+.legacy-admin-root .row-preview {
+    display: block;
+    margin-top: 7px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.legacy-admin-root .badges {
+    display: flex;
+    gap: 5px;
+    margin-top: 8px;
+}
+.legacy-admin-root .badge {
+    width: fit-content;
+    border: 1px solid #ccd4df;
+    border-radius: 999px;
+    padding: 2px 8px;
+    color: #4b5565;
+    background: #fff;
+    font-size: 12px;
+}
+.legacy-admin-root .priority-high {
+    color: #8b4c00;
+    border-color: #e9c283;
+    background: #fff8e8;
+}
+.legacy-admin-root .priority-urgent {
+    color: #a12727;
+    border-color: #edb4b4;
+    background: #fff1f1;
+}
+.legacy-admin-root .priority-low {
+    color: #53657d;
+    background: #f5f7fa;
+}
+.legacy-admin-root .work-detail {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+}
+.legacy-admin-root .detail-header {
+    min-height: 68px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    background: #fff;
+}
+.legacy-admin-root .detail-header h2 {
+    margin: 0;
+    font-size: 16px;
+    overflow-wrap: anywhere;
+}
+.legacy-admin-root .detail-header > div:first-child > span {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+}
+.legacy-admin-root .detail-body {
+    padding: 14px;
+    overflow: auto;
+}
+.legacy-admin-root .field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(170px, 1fr));
+    gap: 10px 24px;
+}
+.legacy-admin-root .info {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+.legacy-admin-root .info > span {
+    color: var(--muted);
+    font-size: 12px;
+}
+.legacy-admin-root .info > strong {
+    overflow-wrap: anywhere;
+}
+.legacy-admin-root .operator-panel {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+    display: grid;
+    gap: 10px;
+}
+.legacy-admin-root .form-row,
+.legacy-admin-root .actions,
+.legacy-admin-root .composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.legacy-admin-root .form-row > input,
+.legacy-admin-root .form-row > select {
+    flex: 1 1 160px;
+}
+.legacy-admin-root .operator-panel > textarea {
+    width: 100%;
+}
+.legacy-admin-root .file-link {
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--brand-dark);
+}
+
+.legacy-admin-root .chat-body {
+    flex: 1;
+    min-height: 0;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+}
+.legacy-admin-root .messages {
+    flex: 1;
+    min-height: 240px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+.legacy-admin-root .message {
+    max-width: min(680px, 82%);
+    padding: 9px 11px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    overflow-wrap: anywhere;
+}
+.legacy-admin-root .message.operator {
+    align-self: flex-end;
+    background: #e8f4f1;
+    border-color: #a9d7cd;
+}
+.legacy-admin-root .message span {
+    display: block;
+    margin-top: 5px;
+    color: var(--muted);
+    font-size: 11px;
+}
+.legacy-admin-root .message img {
+    max-width: 100%;
+    max-height: 360px;
+    border-radius: 5px;
+}
+.legacy-admin-root .event-list {
+    display: none;
+}
+.legacy-admin-root .chat-composer {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--line);
+}
+.legacy-admin-root .chat-composer textarea {
+    width: 100%;
+}
+.legacy-admin-root .composer-actions {
+    justify-content: flex-end;
+    margin-top: 8px;
+}
+.legacy-admin-root .file-picker {
+    min-height: 36px;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+}
+.legacy-admin-root .file-picker input {
+    display: none;
+}
+.legacy-admin-root .delivery-statuses {
+    display: grid;
+    gap: 6px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--line);
+}
+.legacy-admin-root .delivery-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    font-size: 13px;
+}
+.legacy-admin-root .delivery-status small {
+    flex-basis: 100%;
+    color: var(--danger);
+}
+
+.legacy-admin-root .customer-card {
+    padding: 14px;
+    display: grid;
+    grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+    gap: 12px;
+}
+.legacy-admin-root .customer-context {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+}
+.legacy-admin-root .context-panel,
+.legacy-admin-root .history,
+.legacy-admin-root .simple-card {
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    padding: 12px;
+    background: #fff;
+}
+.legacy-admin-root .context-panel h3,
+.legacy-admin-root .history h3,
+.legacy-admin-root .simple-card h3 {
+    margin: 0 0 10px;
+    font-size: 15px;
+}
+.legacy-admin-root .context-panel .info + .info,
+.legacy-admin-root .simple-card .info + .info {
+    margin-top: 9px;
+}
+.legacy-admin-root .history {
+    display: grid;
+    align-content: start;
+    gap: 7px;
+}
+.legacy-admin-root .history button {
+    min-height: 58px;
+    display: grid;
+    justify-items: start;
+    text-align: left;
+}
+.legacy-admin-root .history button span {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.legacy-admin-root .simple-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+.legacy-admin-root .kit-form {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(140px, 1fr)) auto;
+    gap: 8px;
+    background: #fff;
+}
+.legacy-admin-root .staff-form {
+    margin-bottom: 12px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    display: grid;
+    gap: 10px;
+    background: #fff;
+}
+.legacy-admin-root .staff-card {
+    display: grid;
+    gap: 10px;
+}
+.legacy-admin-root .role-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+}
+.legacy-admin-root .role-picker label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+}
+.legacy-admin-root .empty {
+    min-height: 120px;
+    padding: 24px;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    text-align: center;
+}
+.legacy-admin-root .center-screen {
+    min-height: 100vh;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: 12px;
+}
+.legacy-admin-root .loader {
+    width: 28px;
+    height: 28px;
+    border: 3px solid #dce3e9;
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.legacy-admin-root .login-screen {
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: #eef2f5;
+}
+.legacy-admin-root .login-panel {
+    width: min(400px, 100%);
+    padding: 24px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    display: grid;
+    gap: 14px;
+    background: #fff;
+    box-shadow: 0 14px 36px rgba(23, 32, 51, 0.08);
+}
+.legacy-admin-root .login-brand {
+    margin-bottom: 4px;
+}
+.legacy-admin-root .login-panel h1 {
+    margin: 4px 0;
+    font-size: 22px;
+}
+.legacy-admin-root .login-panel label {
+    display: grid;
+    gap: 5px;
+    font-size: 13px;
+}
+.legacy-admin-root .form-error {
+    color: var(--danger);
+    font-size: 13px;
+}
+.legacy-admin-root .menu-wrap {
+    position: relative;
+}
+.legacy-admin-root .popover {
+    position: absolute;
+    z-index: 20;
+    top: 44px;
+    right: 0;
+    width: 260px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    display: grid;
+    gap: 10px;
+    background: #fff;
+    box-shadow: 0 14px 36px rgba(23, 32, 51, 0.14);
+}
+.legacy-admin-root .popover label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.legacy-admin-root .popover label input {
+    min-height: 0;
+}
+.legacy-admin-root .popover-actions {
+    display: flex;
+    gap: 6px;
+}
+.legacy-admin-root .muted {
+    color: var(--muted);
+}
+
+.legacy-admin-root .signal-filters input {
+    flex: 1 1 260px;
+}
+.legacy-admin-root .detail-panel {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+.legacy-admin-root .detail-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+.legacy-admin-root .detail-fields {
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+    gap: 12px 24px;
+    border-bottom: 1px solid var(--line);
+}
+.legacy-admin-root .signal-description {
+    margin: 14px 16px 0;
+    padding: 11px 12px;
+    border-left: 3px solid var(--brand);
+    background: #f1f8f6;
+    overflow-wrap: anywhere;
+}
+.legacy-admin-root .signal-observations {
+    padding: 14px 16px;
+    display: grid;
+    align-content: start;
+    gap: 8px;
+}
+.legacy-admin-root .signal-observations h3 {
+    margin: 0 0 2px;
+    font-size: 15px;
+}
+.legacy-admin-root .signal-observations article {
+    padding: 10px 11px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--soft);
+}
+.legacy-admin-root .signal-observations article > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+.legacy-admin-root .signal-observations article span,
+.legacy-admin-root .signal-observations article small {
+    color: var(--muted);
+}
+.legacy-admin-root .signal-observations article p {
+    margin: 7px 0 3px;
+}
+.legacy-admin-root .operator-controls {
+    margin-top: auto;
+    padding: 14px 16px;
+    border-top: 1px solid var(--line);
+    display: grid;
+    gap: 10px;
+    background: #fff;
+}
+.legacy-admin-root .operator-controls textarea {
+    width: 100%;
+}
+.legacy-admin-root .control-row {
+    display: grid;
+    grid-template-columns: minmax(160px, 1fr) minmax(190px, 1fr) auto;
+    gap: 8px;
+}
+.legacy-admin-root .integration-runs {
+    display: grid;
+    gap: 12px;
+}
+.legacy-admin-root .integration-runs > header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.legacy-admin-root .integration-runs h2 {
+    margin: 0;
+    font-size: 18px;
+}
+.legacy-admin-root .integration-runs header span {
+    color: var(--muted);
+    font-size: 13px;
+}
+.legacy-admin-root .integration-run-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+}
+.legacy-admin-root .bridge-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    gap: 12px;
+}
+.legacy-admin-root .bridge-state {
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    display: grid;
+    gap: 10px;
+    background: #fff;
+}
+.legacy-admin-root .bridge-state > div:first-child {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.legacy-admin-root .bridge-state button {
+    justify-self: start;
+}
+.legacy-admin-root .integration-run {
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+}
+.legacy-admin-root .integration-run.failed {
+    border-color: #e9b9b9;
+}
+.legacy-admin-root .run-stats {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+.legacy-admin-root .integration-exclusions {
+    padding: 13px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    display: grid;
+    gap: 10px;
+    background: #fff;
+}
+.legacy-admin-root .integration-exclusions h3 {
+    margin: 0;
+    font-size: 15px;
+}
+.legacy-admin-root .integration-exclusions header span {
+    color: var(--muted);
+    font-size: 12px;
+}
+.legacy-admin-root .exclusion-form {
+    display: grid;
+    grid-template-columns: minmax(120px, 0.7fr) minmax(170px, 1fr) minmax(
+            190px,
+            1fr
+        ) minmax(220px, 1.4fr) auto;
+    gap: 8px;
+}
+.legacy-admin-root .exclusion-list {
+    display: grid;
+    gap: 7px;
+}
+.legacy-admin-root .exclusion-list article {
+    min-height: 54px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(180px, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    background: var(--soft);
+}
+.legacy-admin-root .exclusion-list article > div {
+    display: grid;
+    gap: 2px;
+}
+.legacy-admin-root .exclusion-list article span {
+    color: var(--muted);
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+.legacy-admin-root .exclusion-list label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+.legacy-admin-root .exclusion-list input {
+    min-height: 0;
+}
+
+@media (max-width: 900px) {
+    .legacy-admin-root main {
+        padding: 12px;
+    }
+    .legacy-admin-root .topbar {
+        align-items: flex-start;
+        padding: 10px 12px;
+    }
+    .legacy-admin-root .admin-name {
+        display: none;
+    }
+    .legacy-admin-root .stats {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    .legacy-admin-root .stat {
+        min-height: 74px;
+    }
+    .legacy-admin-root .workbench {
+        height: auto;
+        min-height: 0;
+        grid-template-columns: 1fr;
+    }
+    .legacy-admin-root .work-list {
+        max-height: 310px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+    }
+    .legacy-admin-root .work-detail {
+        min-height: 560px;
+    }
+    .legacy-admin-root .field-grid,
+    .legacy-admin-root .customer-card {
+        grid-template-columns: 1fr;
+    }
+    .legacy-admin-root .detail-fields {
+        grid-template-columns: repeat(2, minmax(140px, 1fr));
+    }
+    .legacy-admin-root .kit-form {
+        grid-template-columns: 1fr 1fr;
+    }
+    .legacy-admin-root .exclusion-form {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 560px) {
+    .legacy-admin-root .brand div {
+        display: none;
+    }
+    .legacy-admin-root .stats {
+        grid-template-columns: 1fr;
+    }
+    .legacy-admin-root .stat {
+        min-height: 62px;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+    }
+    .legacy-admin-root .filters > * {
+        width: 100%;
+    }
+    .legacy-admin-root .detail-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+    .legacy-admin-root .message {
+        max-width: 100%;
+    }
+    .legacy-admin-root .kit-form {
+        grid-template-columns: 1fr;
+    }
+    .legacy-admin-root .detail-fields,
+    .legacy-admin-root .control-row,
+    .legacy-admin-root .run-stats {
+        grid-template-columns: 1fr;
+    }
+    .legacy-admin-root .bridge-grid {
+        grid-template-columns: 1fr;
+    }
+    .legacy-admin-root .exclusion-form,
+    .legacy-admin-root .exclusion-list article {
+        grid-template-columns: 1fr;
+    }
+}

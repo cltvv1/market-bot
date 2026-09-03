@@ -16,6 +16,25 @@ import {
     Bell,
     ScrollText,
 } from 'lucide-react';
+import type { Tab } from '../types';
+
+export const legacyRoutes: Record<Exclude<Tab, 'service'>, string> = {
+    registrations: '/requests/registrations',
+    tickets: '/requests/tickets',
+    'organization-access': '/customers/access',
+    organizations: '/customers/organizations',
+    'equipment-kits': '/customers/equipment',
+    opportunities: '/integrations/signals',
+    integrations: '/integrations/runs',
+    staff: '/settings/staff',
+    audit: '/settings/audit',
+};
+export const unavailableRoutes = new Set([
+    '/admin/sales/orders',
+    '/admin/catalog/products',
+    '/admin/catalog/support',
+    '/admin/catalog/knowledge',
+]);
 
 export const navigation = [
     {
@@ -30,7 +49,6 @@ export const navigation = [
                     'registrations.read',
                     'registrations.read.assigned',
                     'tickets.read',
-                    'orders.read.all',
                 ],
                 target: '/admin/work',
             },
@@ -47,7 +65,6 @@ export const navigation = [
                     'serviceRequests.read.assigned',
                 ],
                 target: '/admin/requests/service',
-                reference: '/service-requests',
             },
             {
                 label: 'Регистрации ККТ',

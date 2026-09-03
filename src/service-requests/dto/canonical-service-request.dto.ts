@@ -7,6 +7,7 @@ import {
     IsOptional,
     IsString,
     Matches,
+    Max,
     MaxLength,
     Min,
 } from 'class-validator';
@@ -157,15 +158,15 @@ export class AdminTransitionServiceRequestDto {
     @IsIn(ADMIN_TRANSITIONS)
     status: ServiceRequestStatus;
 
-    @ApiPropertyOptional({
+    @ApiProperty({
         minimum: 1,
         description: 'Optimistic request version',
     })
-    @IsOptional()
     @Type(() => Number)
     @IsInt()
     @Min(1)
-    expectedVersion?: number;
+    @Max(2_147_483_647)
+    expectedVersion: number;
 }
 
 export class PublicServiceRequestTokenParamDto {

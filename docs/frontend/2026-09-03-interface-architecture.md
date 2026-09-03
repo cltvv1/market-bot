@@ -1,5 +1,11 @@
 # FE-1A Interface architecture
 
+FE-1B branch update (2026-09-03): the production admin shell and ServiceRequest
+workspace are implemented in `codex/fe-1b-admin-shell-service-workspace` for draft
+review. See [production migration](2026-09-03-admin-shell-service-production-migration.md).
+The inventory below records the FE-1A baseline; other domain statuses and PSR-1
+grades are unchanged. The client reference remains separate and dev-only.
+
 Status: target information architecture and ServiceRequest reference direction
 approved by the product owner on 2026-09-03. Production migration remains a
 separate FE-1B package, not started here. FE-1A does not change the normal UI

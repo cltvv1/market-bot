@@ -1,11 +1,14 @@
 # Service request route inventory
 
-Current as of the pre-production baseline on 2026-08-22.
+Updated for the FE-1B draft branch on 2026-09-03.
 
 `ServiceRequestsController` is the only owner of authenticated customer HTTP
 routes. `PublicServiceRequestsController` owns bearer-token status access.
-`AdminController` owns staff operations. All three call the same public
-`ServiceRequestsService`; no controller contains an alternate persistence path.
+`AdminController` owns staff operations. Customer controllers continue to call
+`ServiceRequestsService`. Staff reads/commands use bounded
+`ServiceRequestAdminReadService` and `ServiceRequestAdminCommandsService` with the
+same canonical aggregate/status rules, row locks, transactional Event/Audit and
+current OutboundDelivery. Controllers do not implement a parallel state machine.
 
 ## Customer routes
 
@@ -39,6 +42,7 @@ The display request number is not accepted as a token.
 | Method | URL |
 |---|---|
 | `GET` | `/admin/api/service-requests` |
+| `GET` | `/admin/api/service-requests/types` |
 | `GET` | `/admin/api/service-requests/:id` |
 | `POST` | `/admin/api/service-requests/manual` |
 | `POST` | `/admin/api/service-requests/:id/messages` |
@@ -51,6 +55,25 @@ The display request number is not accepted as a token.
 | `GET` | `/admin/api/service-requests/:id/attachments/:attachmentId` |
 | `POST` | `/admin/api/service-requests/:id/schedule` |
 | `POST` | `/admin/api/service-requests/:id/operator-state` |
+
+List query: `status=active|all|<canonical>`, `platform`, `priority`,
+`scope=all|mine|unassigned`, `responsibleStaffId`, `page`, `limit` (default 25,
+max 100). Response is `{items,page,limit,total,hasNext}`, with createdAt/id DESC
+ordering and forced assigned scope where appropriate. Detail projects safe staff,
+documents, events and authoritative workflow actions; foreign assigned-only IDs
+return the same 404 as nonexistent IDs. Types returns active code/title only.
+
+Transition, assignment, operator-state, schedule/reschedule and invoice multipart
+commands require `expectedVersion` (integer 1..2147483647). Missing input is 400,
+stale input 409. Messages remain append-only with a locked state check. Invoice
+and schedule have dedicated handlers; generic transitions cannot bypass them.
+
+Owned admin SPA routes are `/admin`, `/admin/work`, `/admin/requests/service`,
+`/admin/requests/service/:id`, `/admin/requests/registrations`, `/admin/requests/tickets`,
+`/admin/customers/access`, `/admin/customers/organizations`, `/admin/customers/equipment`,
+`/admin/integrations/signals`, `/admin/integrations/runs`, `/admin/settings/staff`,
+`/admin/settings/notifications`, `/admin/settings/audit`. No broad SPA catch-all
+shadows API/assets/files. See the FE-1B production migration report for full contracts.
 
 ## Removed pre-production routes
 

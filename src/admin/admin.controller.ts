@@ -3,10 +3,8 @@ import {
     BadRequestException,
     Body,
     Controller,
-    ForbiddenException,
     Get,
     Header,
-    Next,
     NotFoundException,
     Param,
     Post,
@@ -26,7 +24,6 @@ import {
 } from 'src/files/multipart-options';
 import { ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
-import type { NextFunction } from 'express';
 import { AdminService } from './admin.service';
 import { AdminAuthService } from './admin-auth.service';
 import {
@@ -37,7 +34,6 @@ import {
 } from './admin-auth.decorators';
 import { AdminPermissionGuard, AdminSessionGuard } from './admin-auth.guard';
 import type { AdminPrincipal } from './admin-auth.types';
-import type { AdminPermission } from './admin.permissions';
 import {
     AdminIdParamDto,
     AdminLoginDto,
@@ -73,6 +69,7 @@ import {
     SearchQueryDto,
     ServiceRequestListQueryDto,
     ServiceRequestOperatorStateDto,
+    ServiceRequestVersionDto,
     TextMessageDto,
 } from './dto/admin-api.dto';
 import { RateLimit } from 'src/security/rate-limit';
@@ -82,6 +79,8 @@ import { UiServingService } from 'src/ui/ui-serving.service';
 import { OrganizationAccessService } from 'src/organizations/organization-access.service';
 import { OrganizationAccessAdminResponseDto } from 'src/organizations/dto/organization-api.dto';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
+import { ServiceRequestAdminReadService } from 'src/service-requests/service-request-admin-read.service';
+import { ServiceRequestAdminCommandsService } from 'src/service-requests/service-request-admin-commands.service';
 import { RegistrationReadinessService } from 'src/registrations/registration-readiness.service';
 import { RegistrationsService } from 'src/registrations/registrations.service';
 import {
@@ -111,11 +110,28 @@ export class AdminController {
         private readonly uiServing: UiServingService,
         private readonly organizationAccessService: OrganizationAccessService,
         private readonly serviceRequests: ServiceRequestsService,
+        private readonly serviceRead: ServiceRequestAdminReadService,
+        private readonly serviceCommands: ServiceRequestAdminCommandsService,
         private readonly registrationReadiness: RegistrationReadinessService,
         private readonly registrationsService: RegistrationsService,
     ) {}
 
-    @Get()
+    @Get([
+        '',
+        'work',
+        'requests/service',
+        'requests/service/:id',
+        'requests/registrations',
+        'requests/tickets',
+        'customers/access',
+        'customers/organizations',
+        'customers/equipment',
+        'integrations/signals',
+        'integrations/runs',
+        'settings/staff',
+        'settings/notifications',
+        'settings/audit',
+    ])
     @PublicAdmin()
     @Header('Content-Type', 'text/html; charset=utf-8')
     @Header('Cache-Control', 'no-store')
@@ -411,11 +427,13 @@ export class AdminController {
         @CurrentAdmin() admin: AdminPrincipal,
         @Query() query: ServiceRequestListQueryDto,
     ) {
-        return this.adminService.getServiceRequestsForAdmin(
-            admin,
-            query.status || 'active',
-            query.platform,
-        );
+        return this.serviceRead.list(admin, query);
+    }
+
+    @Get('api/service-requests/types')
+    @RequirePermissions('serviceRequests.update')
+    getServiceRequestTypes() {
+        return this.serviceRead.types();
     }
 
     @Get('api/service-requests/:id')
@@ -427,10 +445,7 @@ export class AdminController {
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
     ) {
-        return this.adminService.getServiceRequestDetailsForAdmin(
-            admin,
-            Number(params.id),
-        );
+        return this.serviceRead.detail(admin, Number(params.id));
     }
 
     @Post('api/service-requests/manual')
@@ -439,15 +454,12 @@ export class AdminController {
         @CurrentAdmin() admin: AdminPrincipal,
         @Body() body: AdminCreateServiceRequestDto,
     ) {
-        const result = await this.serviceRequests.createManual(admin.id, body);
-        await this.recordStaffAction(
-            admin,
-            'service_request.manual.create',
-            'service_request',
-            result.request.id,
-            { source: body.source },
+        const result = await this.serviceRequests.createManual(
+            admin.id,
+            body,
+            admin.sessionId,
         );
-        return result;
+        return this.serviceRead.detail(admin, result.request.id);
     }
 
     @Post('api/service-requests/:id/messages')
@@ -457,73 +469,28 @@ export class AdminController {
         @Param() params: PositiveIdParamDto,
         @Body() body: AdminServiceRequestMessageDto,
     ) {
-        const result = await this.serviceRequests.addStaffMessage(
-            admin.id,
-            Number(params.id),
-            body.text,
-            body.visibility ?? 'customer',
-        );
-        await this.recordStaffAction(
-            admin,
-            'service_request.message.add',
-            'service_request',
-            params.id,
-            { visibility: body.visibility ?? 'customer' },
-        );
-        return result;
+        return this.serviceCommands.message(admin, Number(params.id), body);
     }
 
     @Post('api/service-requests/:id/transition')
-    @RequirePermissions('serviceRequests.update')
+    @RequireAnyPermission(
+        'serviceRequests.update',
+        'serviceRequests.invoice',
+        'serviceRequests.payment',
+        'serviceRequests.schedule',
+        'serviceRequests.close',
+    )
     async transitionServiceRequest(
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
         @Body() body: AdminTransitionServiceRequestDto,
     ) {
-        const requiredPermission = this.serviceTransitionPermission(
-            body.status,
-        );
-        if (!admin.permissions.includes(requiredPermission)) {
-            await this.auditService.record({
-                actorType: 'staff',
-                actorStaffId: admin.id,
-                actorSessionId: admin.sessionId,
-                action: 'permission.denied',
-                targetType: 'service_request',
-                targetId: params.id,
-                result: 'denied',
-                metadata: { operation: 'status_transition' },
-            });
-            throw new ForbiddenException('Insufficient permissions');
-        }
-        const result = await this.serviceRequests.transitionByStaff(
-            admin.id,
+        return this.serviceCommands.transition(
+            admin,
             Number(params.id),
             body.status,
             body.expectedVersion,
         );
-        await this.recordStaffAction(
-            admin,
-            'service_request.status.transition',
-            'service_request',
-            params.id,
-            { status: body.status },
-        );
-        return result;
-    }
-
-    private serviceTransitionPermission(
-        status: AdminTransitionServiceRequestDto['status'],
-    ): AdminPermission {
-        if (['invoice_required', 'waiting_payment'].includes(status)) {
-            return 'serviceRequests.invoice';
-        }
-        if (status === 'paid') return 'serviceRequests.payment';
-        if (status === 'scheduled') return 'serviceRequests.schedule';
-        if (['completed', 'closed', 'cancelled'].includes(status)) {
-            return 'serviceRequests.close';
-        }
-        return 'serviceRequests.update';
     }
 
     @Post('api/service-requests/:id/assign-engineer')
@@ -533,19 +500,12 @@ export class AdminController {
         @Param() params: PositiveIdParamDto,
         @Body() body: AssignEngineerDto,
     ) {
-        const result = await this.adminService.assignEngineer(
+        return this.serviceCommands.assign(
+            admin,
             Number(params.id),
             body.assignedEngineerId,
-            admin.id,
+            body.expectedVersion,
         );
-        await this.recordStaffAction(
-            admin,
-            'service_request.engineer.assign',
-            'service_request',
-            params.id,
-            { assignedEngineerId: body.assignedEngineerId },
-        );
-        return result;
     }
 
     @Get('api/customer-context')
@@ -563,49 +523,41 @@ export class AdminController {
     @Post('api/service-requests/:id/invoice-file')
     @RequirePermissions('serviceRequests.invoice')
     @UseInterceptors(
-        FileInterceptor('file', multipartOptionsForPurpose('service-invoice')),
+        FileInterceptor(
+            'file',
+            multipartOptionsForPurpose('service-invoice', 1),
+        ),
     )
     async attachServiceRequestInvoiceFile(
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
+        @Body() body: ServiceRequestVersionDto,
         @UploadedFile() file?: UploadedMemoryFile,
     ) {
         if (!file) throw new BadRequestException('PDF file is required');
-        if (file.mimetype !== 'application/pdf') {
-            throw new BadRequestException('Only PDF files are supported');
-        }
-        const storedFile = await this.filesService.saveBuffer({
-            purpose: 'service-invoice',
-            buffer: file.buffer,
-            originalName: file.originalname,
-            mimeType: file.mimetype,
-            createdByStaffId: admin.id,
-            metadata: { serviceRequestId: Number(params.id) },
-        });
-        const result = await this.adminService.attachServiceRequestInvoice(
-            Number(params.id),
-            storedFile.id,
-            admin.id,
-        );
-        await this.recordStaffAction(
+        return this.serviceCommands.invoice(
             admin,
-            'service_request.invoice.upload',
-            'service_request',
-            params.id,
-            { storedFileId: storedFile.id },
+            Number(params.id),
+            body.expectedVersion,
+            file,
         );
-        return result;
     }
 
     @Get('api/service-requests/:id/invoice')
-    @RequirePermissions('serviceRequests.read.all')
+    @RequireAnyPermission(
+        'serviceRequests.read.all',
+        'serviceRequests.read.assigned',
+    )
     async downloadServiceRequestInvoice(
+        @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
         @Res() response: Response,
     ) {
-        const details = await this.adminService.getServiceRequest(
-            Number(params.id),
-        );
+        const details =
+            await this.adminService.getServiceRequestDetailsForAdmin(
+                admin,
+                Number(params.id),
+            );
         if (!details.request.invoiceStoredFileId) {
             throw new BadRequestException('Invoice PDF not found');
         }
@@ -616,14 +568,20 @@ export class AdminController {
     }
 
     @Get('api/service-requests/:id/signed-consent')
-    @RequirePermissions('serviceRequests.read.all')
+    @RequireAnyPermission(
+        'serviceRequests.read.all',
+        'serviceRequests.read.assigned',
+    )
     async downloadServiceRequestSignedConsent(
+        @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: PositiveIdParamDto,
         @Res() response: Response,
     ) {
-        const details = await this.adminService.getServiceRequest(
-            Number(params.id),
-        );
+        const details =
+            await this.adminService.getServiceRequestDetailsForAdmin(
+                admin,
+                Number(params.id),
+            );
         if (!details.request.signedConsentFileId) {
             throw new BadRequestException('Signed consent file not found');
         }
@@ -692,20 +650,7 @@ export class AdminController {
         @Param() params: PositiveIdParamDto,
         @Body() body: ScheduleServiceRequestDto,
     ) {
-        const result = await this.adminService.scheduleServiceRequestVisit(
-            Number(params.id),
-            body.visitAddress,
-            body.visitTime,
-            body.operatorComment,
-            admin.id,
-        );
-        await this.recordStaffAction(
-            admin,
-            'service_request.visit.schedule',
-            'service_request',
-            params.id,
-        );
-        return result;
+        return this.serviceCommands.schedule(admin, Number(params.id), body);
     }
 
     @Post('api/service-requests/:id/operator-state')
@@ -715,22 +660,11 @@ export class AdminController {
         @Param() params: PositiveIdParamDto,
         @Body() body: ServiceRequestOperatorStateDto,
     ) {
-        const result =
-            await this.adminService.updateServiceRequestOperatorState(
-                Number(params.id),
-                body,
-                admin.id,
-            );
-        await this.recordStaffAction(
+        return this.serviceCommands.operatorState(
             admin,
-            'service_request.operator_state.update',
-            'service_request',
-            params.id,
-            {
-                priority: body.priority,
-            },
+            Number(params.id),
+            body,
         );
-        return result;
     }
 
     @Get('api/activities')
@@ -1203,23 +1137,6 @@ export class AdminController {
             { storedFileId: registration.pdfFileId },
         );
         return this.sendStoredFile(response, registration.pdfFileId);
-    }
-
-    @Get('*path')
-    @PublicAdmin()
-    getReactRoute(
-        @Param('path') routePath: string | string[],
-        @Res() response: Response,
-        @Next() next: NextFunction,
-    ) {
-        const parts = Array.isArray(routePath) ? routePath : [routePath];
-        if (parts[0] === 'api') {
-            next();
-            return;
-        }
-        response.type('text/html; charset=utf-8');
-        response.setHeader('Cache-Control', 'no-store');
-        response.send(this.getPage());
     }
 
     private getCookie(request: Request, name: string) {

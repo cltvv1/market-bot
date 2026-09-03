@@ -1,0 +1,199 @@
+.vitma-admin-app {
+    width: 100%;
+}
+body:has(.vitma-admin-app) {
+    margin: 0;
+}
+.vitma-admin-app .admin-form {
+    display: grid;
+    gap: 18px;
+}
+.vitma-admin-app .admin-form label {
+    display: grid;
+    gap: 7px;
+    font-size: 13px;
+}
+.vitma-admin-app :is(.admin-form, .sr-filters) :is(input, textarea) {
+    width: 100%;
+    padding: 10px;
+    min-height: 40px;
+    border: 1px solid var(--ui-control-border);
+    border-radius: 5px;
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    font: inherit;
+}
+.vitma-admin-app textarea {
+    resize: vertical;
+}
+.vitma-admin-app .admin-form .admin-check {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.vitma-admin-app .admin-check input {
+    width: 18px;
+    min-height: 18px;
+    accent-color: var(--ui-accent-strong);
+}
+.vitma-admin-app .admin-login {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    min-height: 100dvh;
+    padding: 24px;
+}
+.vitma-admin-app .admin-login form {
+    width: min(100%, 400px);
+}
+.vitma-admin-app .admin-settings {
+    max-width: 580px;
+}
+.vitma-admin-app .admin-dialog {
+    width: min(560px, calc(100% - 32px));
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    padding: 24px;
+    background: var(--ui-surface);
+    color: var(--ui-text);
+}
+.vitma-admin-app .admin-dialog::backdrop {
+    background: rgb(23 22 21 / 35%);
+}
+.vitma-admin-app .admin-dialog > header {
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+.vitma-admin-app .admin-global-notice {
+    position: fixed;
+    z-index: 30;
+    bottom: 16px;
+    left: max(16px, calc((100% - 720px) / 2));
+    width: min(720px, calc(100% - 32px));
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    border: 1px solid var(--ui-border);
+}
+.vitma-admin-app .admin-global-notice button {
+    background: none;
+    border: none;
+    color: inherit;
+    text-decoration: underline;
+}
+.vitma-admin-app .admin-overview {
+    display: grid;
+    gap: 0;
+}
+.vitma-admin-app .admin-overview a {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 24px 0;
+    border-bottom: 1px solid var(--ui-border);
+}
+.vitma-admin-app .admin-overview strong {
+    font-size: 26px;
+    margin-left: auto;
+}
+.vitma-admin-app .admin-nav-disabled {
+    display: flex;
+    gap: 10px;
+    padding: 9px 12px;
+    color: var(--ui-text-muted);
+    font-size: 13px;
+    opacity: 0.65;
+}
+.vitma-admin-app .sr-filters {
+    grid-template-columns: repeat(5, minmax(0, 1fr)) 40px;
+}
+.vitma-admin-app .sr-administrative {
+    margin-top: 18px;
+}
+.vitma-admin-app .sr-administrative .admin-button {
+    font-size: 12px;
+    min-height: 34px;
+    padding: 6px 10px;
+}
+.vitma-admin-app .sr-action-option {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+.vitma-admin-app .sr-action-option small {
+    max-width: 260px;
+}
+.vitma-admin-app .sr-other-actions {
+    position: relative;
+}
+.vitma-admin-app .sr-other-actions summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    min-height: 40px;
+    font-size: 13px;
+}
+.vitma-admin-app .sr-other-actions > div {
+    position: absolute;
+    right: 0;
+    top: 44px;
+    z-index: 5;
+    width: min(320px, 80vw);
+    max-height: 420px;
+    overflow-y: auto;
+    border: 1px solid var(--ui-border-strong);
+    border-radius: 6px;
+    background: var(--ui-surface);
+    padding: 16px;
+    display: grid;
+    gap: 16px;
+}
+.vitma-admin-app .sr-message-modes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-bottom: 1px solid var(--ui-border);
+}
+.vitma-admin-app .sr-message-modes button {
+    padding: 10px 14px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--ui-text-muted);
+}
+.vitma-admin-app .sr-message-modes [aria-pressed='true'] {
+    border-bottom-color: var(--ui-accent-strong);
+    color: var(--ui-text);
+    font-weight: 600;
+}
+.vitma-admin-app .sr-deliveries {
+    color: var(--ui-text-muted);
+    padding-left: 18px;
+}
+@media (max-width: 1250px) {
+    .vitma-admin-app .sr-filters {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+@media (max-width: 767px) {
+    .vitma-admin-app .sr-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .vitma-admin-app .admin-page-heading {
+        flex-wrap: wrap;
+    }
+    .vitma-admin-app .sr-other-actions > div {
+        left: 0;
+        right: auto;
+    }
+    .vitma-admin-app .admin-dialog {
+        padding: 20px;
+    }
+}

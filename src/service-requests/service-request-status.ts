@@ -57,13 +57,20 @@ export function customerStatusFor(status: ServiceRequestStatus) {
     return CUSTOMER_STATUS[status];
 }
 
+export function canTransitionServiceRequest(
+    status: ServiceRequestStatus,
+    target: ServiceRequestStatus,
+) {
+    return (ALLOWED_TRANSITIONS[status] ?? []).includes(target);
+}
+
 export function transitionServiceRequest(
     request: ServiceRequestEntity,
     target: ServiceRequestStatus,
     now = new Date(),
 ) {
     if (request.status === target) return false;
-    if (!(ALLOWED_TRANSITIONS[request.status] ?? []).includes(target)) {
+    if (!canTransitionServiceRequest(request.status, target)) {
         throw new BadRequestException(
             `Service request cannot transition from ${request.status} to ${target}`,
         );

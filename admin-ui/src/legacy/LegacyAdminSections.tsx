@@ -1,40 +1,28 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 // prettier-ignore
 import {
-    Activity, Bell, Check, Database, ExternalLink, FileText, KeyRound, Link,
-    LogOut, RefreshCw, Send, ShieldCheck, UserPlus, UserRound, X,
+    Activity, Check, Database, ExternalLink, FileText, KeyRound, Link,
+    RefreshCw, Send, ShieldCheck, UserPlus, UserRound, X,
 } from 'lucide-react';
-import { ApiError, api, post, upload } from './api';
+import { ApiError, api, post, upload } from '../api';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { legacyRoutes } from '../app/navigation';
+import './legacy-admin.css';
 import {
-    answerLabels,
     fmtDate,
     priorityText,
     registrationStatus,
     statusText,
     value,
-} from './format';
+} from '../format';
 // prettier-ignore
 import type {
     Admin, AdminRole, CustomerCard, EquipmentKit, IntegrationBridgeState,
-    IntegrationExclusion, IntegrationRun, NotificationSettings, OpportunityDetail, OrganizationAccessRequest,
-    OpportunityStatus, Priority, Registration, RegistrationDetails, RegistrationRequirement, ServiceAttachment, ServiceEvent,
-    OutboundDelivery, ServiceMessage, ServiceOpportunity, ServiceRequest, Staff, Summary, Tab,
+    IntegrationExclusion, IntegrationRun, OpportunityDetail, OrganizationAccessRequest,
+    OpportunityStatus, Priority, Registration, RegistrationDetails, RegistrationRequirement,
+    OutboundDelivery, ServiceOpportunity, ServiceRequest, Staff, Tab,
     Ticket, TicketMessage,
-} from './types';
-
-// prettier-ignore
-const tabs: Array<{ id: Tab; label: string; permissions: string[] }> = [
-  { id: 'registrations', label: 'Регистрации', permissions: ['registrations.read'] },
-  { id: 'service', label: 'Заявки по сервису', permissions: ['serviceRequests.read.all', 'serviceRequests.read.assigned'] },
-  { id: 'tickets', label: 'Вопросы', permissions: ['tickets.read'] },
-  { id: 'opportunities', label: 'Сигналы', permissions: ['opportunities.read'] },
-  { id: 'organization-access', label: 'Доступ к организациям', permissions: ['organizationAccess.read'] },
-  { id: 'organizations', label: 'Организации', permissions: ['organizations.read'] },
-  { id: 'equipment-kits', label: 'Комплекты', permissions: ['assets.read'] },
-  { id: 'integrations', label: 'Интеграции', permissions: ['integrations.read'] },
-  { id: 'staff', label: 'Сотрудники', permissions: ['staff.roles.manage'] },
-  { id: 'audit', label: 'Audit Log', permissions: ['audit.read'] },
-];
+} from '../types';
 
 const priorities: Array<{ value: Priority | ''; label: string }> = [
     { value: '', label: 'Любой приоритет' },
@@ -44,296 +32,123 @@ const priorities: Array<{ value: Priority | ''; label: string }> = [
     { value: 'urgent', label: 'Срочный' },
 ];
 
-// prettier-ignore
-export function App() {
-  const [admin, setAdmin] = useState<Admin | null>(null);
-  const [checking, setChecking] = useState(true);
-  const [tab, setTab] = useState<Tab>('registrations');
-  const [summary, setSummary] = useState<Summary>({ newRegistrations: 0, activeServiceRequests: 0, openTickets: 0 });
-  const [status, setStatus] = useState('new');
-  const [platform, setPlatform] = useState('');
-  const [priority, setPriority] = useState('');
-  const [responsible, setResponsible] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [selection, setSelection] = useState<{ tab: Tab; id: number } | null>(null);
-  const [notice, setNotice] = useState('');
-  const visibleTabs = useMemo(() => tabs.filter((item) => item.permissions.some((permission) => admin?.permissions.includes(permission))), [admin]);
-
-  useEffect(() => {
-    api<{ admin: Admin }>('/admin/api/me')
-      .then((result) => setAdmin(result.admin))
-      .catch(() => setAdmin(null))
-      .finally(() => setChecking(false));
-  }, []);
-
-  useEffect(() => {
-    const expired = () => { setAdmin(null); setNotice('Сессия завершена. Войдите снова.'); };
-    const forbidden = (event: Event) => {
-      const message = event instanceof CustomEvent && typeof event.detail === 'string'
-        ? event.detail
-        : 'Недостаточно прав для этого действия.';
-      setNotice(message);
-    };
-    const notify = (event: Event) => {
-      if (event instanceof CustomEvent && typeof event.detail === 'string') {
-        setNotice(event.detail);
-      }
-    };
-    window.addEventListener('vitma:unauthorized', expired);
-    window.addEventListener('vitma:forbidden', forbidden);
-    window.addEventListener('vitma:notice', notify);
-    return () => {
-      window.removeEventListener('vitma:unauthorized', expired);
-      window.removeEventListener('vitma:forbidden', forbidden);
-      window.removeEventListener('vitma:notice', notify);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (admin && !visibleTabs.some((item) => item.id === tab) && visibleTabs[0]) setTab(visibleTabs[0].id);
-  }, [admin, tab, visibleTabs]);
-
-  const refresh = useCallback(() => {
-    setRefreshKey((key) => key + 1);
-    if (admin) api<Summary>('/admin/api/summary').then(setSummary).catch(() => undefined);
-  }, [admin]);
-
-  useEffect(() => { refresh(); }, [refresh]);
-
-  const navigate = (nextTab: Tab, id?: number) => {
-    setTab(nextTab);
-    if (id) setSelection({ tab: nextTab, id });
-    setStatus('all');
-    setPlatform('');
-    setPriority('');
-    setResponsible('');
-  };
-
-  if (checking) return <div className="center-screen"><div className="loader" />Проверяем сессию...</div>;
-  if (!admin) return <Login onLogin={setAdmin} />;
-
-  return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand"><span className="brand-mark">В</span><div><strong>Витма</strong><span>Рабочее место оператора</span></div></div>
-        <div className="topbar-actions">
-          <NotificationMenu notice={notice} onNotice={setNotice} />
-          <span className="admin-name">{admin.displayName} · {admin.roles.join(', ')}</span>
-          <button className="icon-button" title="Обновить" onClick={refresh}><RefreshCw size={18} /></button>
-          <button className="icon-button" title="Выйти" onClick={() => post('/admin/api/logout').finally(() => setAdmin(null))}><LogOut size={18} /></button>
-        </div>
-      </header>
-
-      <main>
-        {notice && <div className="notice"><Bell size={16} />{notice}<button title="Закрыть" onClick={() => setNotice('')}><X size={16} /></button></div>}
-        <section className="stats">
-          {can(admin, 'registrations.read') && <Stat label="Новые регистрации" count={summary.newRegistrations} onClick={() => navigate('registrations')} />}
-          {(can(admin, 'serviceRequests.read.all') || can(admin, 'serviceRequests.read.assigned')) && <Stat label="Активные заявки" count={summary.activeServiceRequests} onClick={() => navigate('service')} />}
-          {can(admin, 'tickets.read') && <Stat label="Открытые вопросы" count={summary.openTickets} onClick={() => navigate('tickets')} />}
-        </section>
-
-        <nav className="tabs">
-          {visibleTabs.map((item) => <button key={item.id} className={tab === item.id ? 'active' : ''} onClick={() => { setTab(item.id); setSelection(null); setStatus('new'); }}>{item.label}</button>)}
-        </nav>
-
-        {tab !== 'organization-access' && tab !== 'organizations' && tab !== 'equipment-kits' && tab !== 'opportunities' && tab !== 'integrations' && tab !== 'staff' && tab !== 'audit' && (
-          <section className="filters">
-            <select value={status} onChange={(event) => setStatus(event.target.value)}>
-              <option value="new">Новые</option><option value="in_work">В работе</option>
-              {tab === 'service' && <option value="waiting_payment">Ожидают оплату</option>}
-              <option value="closed">Закрытые</option><option value="all">Все</option>
-            </select>
-            <select value={platform} onChange={(event) => setPlatform(event.target.value)}>
-              <option value="">Все платформы</option><option value="telegram">Telegram</option><option value="max">MAX</option><option value="web">Web</option>
-            </select>
-            {tab !== 'tickets' && <select value={priority} onChange={(event) => setPriority(event.target.value)}>{priorities.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select>}
-            {tab === 'service' && <input value={responsible} onChange={(event) => setResponsible(event.target.value)} placeholder="Куратор или исполнитель" />}
-          </section>
-        )}
-
-        {tab === 'registrations' && <Registrations status={status} platform={platform} priority={priority} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} permissions={admin.permissions} />}
-        {tab === 'tickets' && <Tickets status={status} platform={platform} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} />}
-        {tab === 'service' && <ServiceRequests status={status} platform={platform} priority={priority} responsible={responsible} refreshKey={refreshKey} requestedId={selection?.tab === tab ? selection.id : undefined} onNavigate={navigate} onChanged={refresh} permissions={admin.permissions} />}
-        {tab === 'opportunities' && <Opportunities refreshKey={refreshKey} onChanged={refresh} onNavigate={navigate} />}
-        {tab === 'organization-access' && <OrganizationAccessQueue refreshKey={refreshKey} onChanged={refresh} canReview={admin.permissions.includes('organizationAccess.review')} />}
-        {tab === 'organizations' && <Organizations refreshKey={refreshKey} />}
-        {tab === 'equipment-kits' && <EquipmentKits refreshKey={refreshKey} onChanged={refresh} />}
-        {tab === 'integrations' && <IntegrationRuns refreshKey={refreshKey} permissions={admin.permissions} onChanged={refresh} />}
-        {tab === 'staff' && <StaffManagement refreshKey={refreshKey} onChanged={refresh} />}
-        {tab === 'audit' && <AuditLog refreshKey={refreshKey} />}
-        {!visibleTabs.length && <Empty text="Для назначенных ролей пока нет рабочих разделов" />}
-      </main>
-    </div>
-  );
-}
-
-function Login({ onLogin }: { onLogin: (admin: Admin) => void }) {
-    const [login, setLogin] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [busy, setBusy] = useState(false);
-    const submit = async (event: React.FormEvent) => {
-        event.preventDefault();
-        setBusy(true);
-        setError('');
-        try {
-            onLogin(
-                (
-                    await post<{ admin: Admin }>('/admin/api/login', {
-                        login,
-                        password,
-                    })
-                ).admin,
-            );
-        } catch {
-            setError('Неверный логин или пароль');
-        } finally {
-            setBusy(false);
-        }
-    };
-    return (
-        <div className="login-screen">
-            <form className="login-panel" onSubmit={submit}>
-                <div className="brand login-brand">
-                    <span className="brand-mark">В</span>
-                    <div>
-                        <strong>Витма</strong>
-                        <span>Административная панель</span>
-                    </div>
-                </div>
-                <h1>Вход для сотрудников</h1>
-                <label>
-                    Логин
-                    <input
-                        autoComplete="username"
-                        value={login}
-                        onChange={(e) => setLogin(e.target.value)}
-                        autoFocus
-                    />
-                </label>
-                <label>
-                    Пароль
-                    <input
-                        type="password"
-                        autoComplete="current-password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                    />
-                </label>
-                {error && <div className="form-error">{error}</div>}
-                <button className="primary" disabled={busy}>
-                    {busy ? 'Входим...' : 'Войти'}
-                </button>
-            </form>
-        </div>
-    );
-}
-
-function NotificationMenu({
-    notice,
-    onNotice,
+export function LegacyAdminSections({
+    admin,
+    tab,
+    refreshKey,
+    onChanged,
 }: {
-    notice: string;
-    onNotice: (value: string) => void;
+    admin: Admin;
+    tab: Tab;
+    refreshKey: number;
+    onChanged: () => void;
 }) {
-    const [open, setOpen] = useState(false);
-    const [settings, setSettings] = useState<NotificationSettings | null>(null);
-    useEffect(() => {
-        if (open && !settings)
-            api<NotificationSettings>('/admin/api/notification-bindings').then(
-                setSettings,
-            );
-    }, [open, settings]);
-    const toggle = async (key: keyof NotificationSettings) => {
-        if (!settings) return;
-        const next = { ...settings, [key]: !settings[key] };
-        setSettings(next);
-        await post('/admin/api/notification-bindings/settings', next);
+    const go = useNavigate();
+    const [params, setParams] = useSearchParams();
+    const status = params.get('status') || 'new';
+    const platform = params.get('platform') || '';
+    const priority = params.get('priority') || '';
+    const requestedId = Number(params.get('selected')) || undefined;
+    const navigate: Navigate = (next, id) =>
+        void go(
+            next === 'service'
+                ? `/requests/service${id ? `/${id}` : ''}`
+                : `${legacyRoutes[next]}?status=all${id ? `&selected=${id}` : ''}`,
+        );
+    const filter = (key: string, value: string) => {
+        const next = new URLSearchParams(params);
+        next.set(key, value);
+        next.delete('selected');
+        setParams(next);
     };
-    const bind = async (platform: 'telegram' | 'max') => {
-        const result = await post<{ command: string }>(
-            '/admin/api/notification-bindings/code',
-            { platform },
-        );
-        onNotice(
-            `Отправьте боту ${result.command} в ${platform === 'max' ? 'MAX' : 'Telegram'}`,
-        );
-        setOpen(false);
+    const props = {
+        status,
+        platform,
+        priority,
+        requestedId,
+        refreshKey,
+        onNavigate: navigate,
+        onChanged,
+        permissions: admin.permissions,
     };
     return (
-        <div className="menu-wrap">
-            <button
-                className="icon-button"
-                title="Уведомления"
-                onClick={() => setOpen(!open)}
-            >
-                <Bell size={18} />
-            </button>
-            {open && (
-                <div className="popover">
-                    <strong>Уведомления</strong>
-                    {settings ? (
-                        <>
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.notifyRegistrations}
-                                    onChange={() =>
-                                        toggle('notifyRegistrations')
-                                    }
-                                />{' '}
-                                Регистрации
-                            </label>
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.notifyTickets}
-                                    onChange={() => toggle('notifyTickets')}
-                                />{' '}
-                                Вопросы
-                            </label>
-                            <label>
-                                <input
-                                    type="checkbox"
-                                    checked={settings.notifyServiceRequests}
-                                    onChange={() =>
-                                        toggle('notifyServiceRequests')
-                                    }
-                                />{' '}
-                                Сервис
-                            </label>
-                            <div className="popover-actions">
-                                <button onClick={() => bind('telegram')}>
-                                    Код Telegram
-                                </button>
-                                <button onClick={() => bind('max')}>
-                                    Код MAX
-                                </button>
-                            </div>
-                        </>
-                    ) : (
-                        <span className="muted">Загрузка...</span>
+        <div className="legacy-admin-root">
+            {(tab === 'registrations' || tab === 'tickets') && (
+                <section className="filters" aria-label="Фильтры">
+                    <select
+                        aria-label="Статус"
+                        value={status}
+                        onChange={(e) => filter('status', e.target.value)}
+                    >
+                        <option value="new">Новые</option>
+                        <option value="in_work">В работе</option>
+                        <option value="closed">Закрытые</option>
+                        <option value="all">Все</option>
+                    </select>
+                    <select
+                        aria-label="Платформа"
+                        value={platform}
+                        onChange={(e) => filter('platform', e.target.value)}
+                    >
+                        <option value="">Все платформы</option>
+                        <option value="telegram">Telegram</option>
+                        <option value="max">MAX</option>
+                        <option value="web">Web</option>
+                    </select>
+                    {tab !== 'tickets' && (
+                        <select
+                            aria-label="Приоритет"
+                            value={priority}
+                            onChange={(e) => filter('priority', e.target.value)}
+                        >
+                            {priorities.map((item) => (
+                                <option key={item.value} value={item.value}>
+                                    {item.label}
+                                </option>
+                            ))}
+                        </select>
                     )}
-                </div>
+                </section>
             )}
+            {tab === 'registrations' && <Registrations {...props} />}
+            {tab === 'tickets' && <Tickets {...props} />}
+            {tab === 'opportunities' && (
+                <Opportunities
+                    refreshKey={refreshKey}
+                    onChanged={onChanged}
+                    onNavigate={navigate}
+                />
+            )}
+            {tab === 'organization-access' && (
+                <OrganizationAccessQueue
+                    refreshKey={refreshKey}
+                    onChanged={onChanged}
+                    canReview={admin.permissions.includes(
+                        'organizationAccess.review',
+                    )}
+                />
+            )}
+            {tab === 'organizations' && (
+                <Organizations refreshKey={refreshKey} />
+            )}
+            {tab === 'equipment-kits' && (
+                <EquipmentKits refreshKey={refreshKey} onChanged={onChanged} />
+            )}
+            {tab === 'integrations' && (
+                <IntegrationRuns
+                    refreshKey={refreshKey}
+                    permissions={admin.permissions}
+                    onChanged={onChanged}
+                />
+            )}
+            {tab === 'staff' && (
+                <StaffManagement
+                    refreshKey={refreshKey}
+                    onChanged={onChanged}
+                />
+            )}
+            {tab === 'audit' && <AuditLog refreshKey={refreshKey} />}
         </div>
-    );
-}
-
-function Stat({
-    label,
-    count,
-    onClick,
-}: {
-    label: string;
-    count: number;
-    onClick: () => void;
-}) {
-    return (
-        <button className="stat" onClick={onClick}>
-            <span>{label}</span>
-            <strong>{count}</strong>
-        </button>
     );
 }
 
@@ -468,7 +283,9 @@ function Registrations(props: ListProps) {
                     <RegistrationDetail
                         id={selected.id}
                         summary={selected}
-                        onCustomer={openCard}
+                        onCustomer={() =>
+                            void openCard().catch(reportLegacyError)
+                        }
                         onChanged={props.onChanged}
                         permissions={props.permissions || []}
                     />
@@ -646,7 +463,12 @@ function RegistrationDetail({
                                 value={priority}
                                 onChange={setPriority}
                             />
-                            <button className="primary" onClick={save}>
+                            <button
+                                className="primary"
+                                onClick={() =>
+                                    void save().catch(reportLegacyError)
+                                }
+                            >
                                 <Check size={16} />
                                 Сохранить
                             </button>
@@ -669,7 +491,11 @@ function RegistrationDetail({
                                         </option>
                                     ))}
                                 </select>
-                                <button onClick={linkKit}>
+                                <button
+                                    onClick={() =>
+                                        void linkKit().catch(reportLegacyError)
+                                    }
+                                >
                                     <Link size={16} />
                                     Привязать
                                 </button>
@@ -984,7 +810,7 @@ function TicketDetail({
     );
     useEffect(() => {
         setCard(null);
-        load();
+        void load().catch(reportLegacyError);
     }, [load]);
     if (!data) return <Empty text="Загрузка диалога..." />;
     const ticket = data.ticket;
@@ -1027,10 +853,10 @@ function TicketDetail({
             <DetailHeader
                 title={`Вопрос #${id} · ${ticket.name || ticket.username || ticket.userChatId}`}
                 subtitle={`${ticket.platform} · ${fmtDate(ticket.createdAt)}`}
-                onCustomer={openCard}
+                onCustomer={() => void openCard().catch(reportLegacyError)}
                 right={
                     !ticket.isAnswered ? (
-                        <button className="danger" onClick={close}>
+                        <button className="danger" onClick={() => void close().catch(reportLegacyError)}>
                             Закрыть
                         </button>
                     ) : (
@@ -1064,11 +890,11 @@ function TicketDetail({
                                 />
                             </label>
                             {file && (
-                                <button onClick={sendFile}>
+                                <button onClick={() => void sendFile().catch(reportLegacyError)}>
                                     Отправить файл
                                 </button>
                             )}
-                            <button className="primary" onClick={send}>
+                            <button className="primary" onClick={() => void send().catch(reportLegacyError)}>
                                 <Send size={16} />
                                 Отправить
                             </button>
@@ -1078,223 +904,7 @@ function TicketDetail({
             </div>
         </>
     );
-}
-
-function ServiceRequests(
-    props: ListProps & { responsible: string; permissions: string[] },
-) {
-    const statuses = serviceApiStatuses(props.status);
-    const paths = statuses.map(
-        (status) =>
-            `/admin/api/service-requests?${new URLSearchParams({ status, ...(props.platform ? { platform: props.platform } : {}) })}`,
-    );
-    const [items, setItems] = useState<ServiceRequest[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [selectedId, setSelectedId] = useState<number>();
-    const [manualOpen, setManualOpen] = useState(false);
-    const [manualSource, setManualSource] = useState<'phone' | 'admin'>(
-        'phone',
-    );
-    const [manualType, setManualType] = useState('kkt_remote_work');
-    const [manualName, setManualName] = useState('');
-    const [manualPhone, setManualPhone] = useState('');
-    const [manualDescription, setManualDescription] = useState('');
-    useEffect(() => {
-        setLoading(true);
-        Promise.all(paths.map((path) => api<ServiceRequest[]>(path)))
-            .then((groups) => setItems(groups.flat()))
-            .catch(() => setError('Ошибка загрузки'))
-            .finally(() => setLoading(false));
-    }, [paths.join('|'), props.refreshKey]);
-    const filtered = items.filter(
-        (item) =>
-            (!props.priority ||
-                (item.priority || 'normal') === props.priority) &&
-            (!props.responsible ||
-                `${item.responsibleOperatorStaffId || ''} ${item.assignedEngineerId || ''}`
-                    .toLowerCase()
-                    .includes(props.responsible.toLowerCase())),
-    );
-    useEffect(() => {
-        const id = props.requestedId || filtered[0]?.id;
-        if (id) setSelectedId(id);
-    }, [items, props.requestedId, props.priority, props.responsible]);
-    const createManual = async () => {
-        if (
-            !manualName.trim() ||
-            !manualPhone.trim() ||
-            !manualDescription.trim()
-        )
-            return;
-        const created = await post<{ request: ServiceRequest }>(
-            '/admin/api/service-requests/manual',
-            {
-                source: manualSource,
-                serviceTypeCode: manualType,
-                initialStatus: 'review_required',
-                contactSnapshot: {
-                    name: manualName,
-                    phone: manualPhone,
-                    preferredChannel: 'phone',
-                },
-                answers: {
-                    contactName: manualName,
-                    phone: manualPhone,
-                    description: manualDescription,
-                },
-            },
-        );
-        setManualOpen(false);
-        setManualName('');
-        setManualPhone('');
-        setManualDescription('');
-        setSelectedId(created.request.id);
-        props.onChanged();
-    };
-    return (
-        <>
-            {' '}
-            {props.permissions.includes('serviceRequests.update') && (
-                <div className="manual-request-tools">
-                    {' '}
-                    <button onClick={() => setManualOpen((value) => !value)}>
-                        {' '}
-                        <UserPlus size={16} /> Создать вручную{' '}
-                    </button>{' '}
-                    {manualOpen && (
-                        <div className="operator-panel manual-request-form">
-                            {' '}
-                            <div className="form-row">
-                                {' '}
-                                <select
-                                    value={manualSource}
-                                    onChange={(event) =>
-                                        setManualSource(
-                                            event.target.value as
-                                                | 'phone'
-                                                | 'admin',
-                                        )
-                                    }
-                                >
-                                    {' '}
-                                    <option value="phone">
-                                        {' '}
-                                        Обращение по телефону{' '}
-                                    </option>{' '}
-                                    <option value="admin">
-                                        {' '}
-                                        Создано администратором{' '}
-                                    </option>{' '}
-                                </select>{' '}
-                                <select
-                                    value={manualType}
-                                    onChange={(event) =>
-                                        setManualType(event.target.value)
-                                    }
-                                >
-                                    {' '}
-                                    <option value="kkt_remote_work">
-                                        {' '}
-                                        Удалённая работа с ККТ{' '}
-                                    </option>{' '}
-                                    <option value="firmware_update">
-                                        {' '}
-                                        Обновление прошивки{' '}
-                                    </option>{' '}
-                                    <option value="fn_replacement">
-                                        {' '}
-                                        Замена ФН{' '}
-                                    </option>{' '}
-                                </select>{' '}
-                            </div>{' '}
-                            <div className="form-row">
-                                {' '}
-                                <input
-                                    value={manualName}
-                                    onChange={(event) =>
-                                        setManualName(event.target.value)
-                                    }
-                                    placeholder="Контактное лицо"
-                                />{' '}
-                                <input
-                                    value={manualPhone}
-                                    onChange={(event) =>
-                                        setManualPhone(event.target.value)
-                                    }
-                                    placeholder="Телефон"
-                                />{' '}
-                            </div>{' '}
-                            <textarea
-                                value={manualDescription}
-                                onChange={(event) =>
-                                    setManualDescription(event.target.value)
-                                }
-                                placeholder="Описание обращения"
-                            />{' '}
-                            <button
-                                className="primary"
-                                onClick={() => void createManual()}
-                            >
-                                {' '}
-                                <Check size={16} /> Создать заявку{' '}
-                            </button>{' '}
-                        </div>
-                    )}{' '}
-                </div>
-            )}{' '}
-            <Workbench
-                title="Заявки по сервису"
-                items={filtered}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                loading={loading}
-                error={error}
-                row={(item) => (
-                    <>
-                        {' '}
-                        <div className="row-top">
-                            {' '}
-                            <strong>
-                                {' '}
-                                {item.requestNumber ||
-                                    `Заявка #${item.id}`} ·{' '}
-                                {item.serviceTypeTitle}{' '}
-                            </strong>{' '}
-                            <span>{fmtDate(item.createdAt)}</span>{' '}
-                        </div>{' '}
-                        <div className="badges">
-                            {' '}
-                            <Badge>{statusText(item.status)}</Badge>{' '}
-                            <Badge priority={item.priority}>
-                                {' '}
-                                {priorityText(item.priority)}{' '}
-                            </Badge>{' '}
-                        </div>{' '}
-                        <span className="row-preview">
-                            {' '}
-                            {item.assignedEngineerId
-                                ? `Исполнитель #${item.assignedEngineerId}`
-                                : item.source || item.platform}{' '}
-                        </span>{' '}
-                    </>
-                )}
-                detail={
-                    selectedId ? (
-                        <ServiceDetail
-                            id={selectedId}
-                            onNavigate={props.onNavigate}
-                            onChanged={props.onChanged}
-                            permissions={props.permissions}
-                        />
-                    ) : null
-                }
-            />{' '}
-        </>
-    );
-}
-
-function ServiceDetail({ id, onNavigate, onChanged, permissions, }: { id: number; onNavigate: Navigate; onChanged: () => void; permissions: string[]; }) { type Detail = { request: ServiceRequest; events: ServiceEvent[]; messages: ServiceMessage[]; attachments: ServiceAttachment[]; }; const [data, setData] = useState<Detail>(); const [card, setCard] = useState<CustomerCard | null>(null); const [priority, setPriority] = useState<Priority>('normal'); const [comment, setComment] = useState(''); const [invoice, setInvoice] = useState<File>(); const [address, setAddress] = useState(''); const [visitTime, setVisitTime] = useState(''); const [engineers, setEngineers] = useState<Staff[]>([]); const [engineerId, setEngineerId] = useState(''); const [message, setMessage] = useState(''); const [messageVisibility, setMessageVisibility] = useState< 'customer' | 'internal' >('customer'); const allowed = (permission: string) => permissions.includes(permission) && (permission !== 'serviceRequests.payment' || (data?.request.status === 'waiting_payment' && Boolean(data.request.paymentProofFileId))); const load = useCallback( () => api<Detail>(`/admin/api/service-requests/${id}`).then((result) => { setData(result); setPriority(result.request.priority || 'normal'); setComment(result.request.operatorComment || ''); setEngineerId( result.request.assignedEngineerId ? String(result.request.assignedEngineerId) : '', ); }), [id], ); useEffect(() => { setCard(null); void load(); }, [load]); useEffect(() => { if (allowed('serviceRequests.assign')) void api<Staff[]>('/admin/api/staff/engineers').then(setEngineers); }, [permissions.join('|')]); useEffect(() => { if ( data?.request.status !== 'waiting_payment' || data.request.paymentProofFileId ) return; const timer = window.setInterval(() => { void load(); }, 5000); return () => window.clearInterval(timer); }, [load, data?.request.status, data?.request.paymentProofFileId]); if (!data) return <Empty text="Загрузка заявки..." />; const request = data.request; const answers = Object.entries(request.answers || {}); if (request.paymentProofFileId) answers.unshift([ 'paymentProof', `/admin/api/service-requests/${id}/payment-proof`, ]); const save = async () => { await post(`/admin/api/service-requests/${id}/operator-state`, { priority, operatorComment: comment, }); await load(); onChanged(); }; const assign = async () => { if (!engineerId) return; await post(`/admin/api/service-requests/${id}/assign-engineer`, { assignedEngineerId: Number(engineerId), }); await load(); onChanged(); }; const uploadInvoice = async () => { if (!invoice) return; const form = new FormData(); form.append('file', invoice); await upload(`/admin/api/service-requests/${id}/invoice-file`, form); await load(); }; const action = async (status: string) => { await post(`/admin/api/service-requests/${id}/transition`, { status, expectedVersion: request.version }); await load(); onChanged(); }; const schedule = async () => { if (!address) return; await post(`/admin/api/service-requests/${id}/schedule`, { visitAddress: address, visitTime, operatorComment: comment, }); await load(); onChanged(); }; const sendMessage = async () => { if (!message.trim()) return; await post(`/admin/api/service-requests/${id}/messages`, { text: message, visibility: messageVisibility, }); setMessage(''); await load(); }; const openCard = async () => setCard(await loadCustomerCard(request)); if (card) return ( <CustomerCardView card={card} onClose={() => setCard(null)} onNavigate={onNavigate} /> ); return ( <> <DetailHeader title={`${request.requestNumber || `Заявка #${id}`} · ${request.serviceTypeTitle}`} subtitle={`${request.source || request.platform} · ${statusText(request.status)} · ${fmtDate(request.createdAt)}`} onCustomer={ allowed('organizations.read') ? openCard : undefined } /> <div className="detail-body"> <FieldGrid fields={[ ['Статус', statusText(request.status)], ['Приоритет', priorityText(request.priority)], ['Клиент', request.contactSnapshot?.name], ['Телефон', request.contactSnapshot?.phone], ['Куратор', request.responsibleOperatorStaffId ? `#${request.responsibleOperatorStaffId}` : undefined], ['Исполнитель', request.assignedEngineerId ? `#${request.assignedEngineerId}` : undefined], ['Внутренний комментарий', request.operatorComment], [ 'Стоимость', request.calculatedPrice ? `${request.calculatedPrice} ₽` : 'Не рассчитана', ], ...answers.map( ([key, val]) => [answerLabels[key] || key, val] as [ string, unknown, ], ), ]} /> {data.attachments.length > 0 && ( <div className="service-attachments"> <h3>Файлы заявки</h3> {data.attachments.map((attachment) => ( <a className="button" key={attachment.id} href={`/admin/api/service-requests/${id}/attachments/${attachment.id}`} target="_blank" rel="noreferrer" > <FileText size={16} /> {attachment.file.originalName || `Файл ${attachment.id}`} </a> ))} </div> )} <div className="messages event-list"> {data.events?.map((event) => ( <div className="message" key={`event-${event.id}`}> <div> {event.type === 'answered' && event.payload?.value !== undefined ? String(event.payload.value) : event.message || event.type} </div> <span> {event.actor} · {fmtDate(event.createdAt)} </span> </div> ))} {data.messages?.map((item) => ( <div className={`message ${item.visibility === 'internal' ? 'message--internal' : ''}`} key={`message-${item.id}`} > <div>{item.text}</div> <span> {item.authorType} ·{' '} {item.visibility === 'internal' ? 'внутреннее' : 'видит клиент'}{' '} · {fmtDate(item.createdAt)} </span> </div> ))} </div> {allowed('serviceRequests.update') && ( <div className="operator-panel"> <div className="form-row"> <PrioritySelect value={priority} onChange={setPriority} /> <button className="primary" onClick={save}> <Check size={16} /> Сохранить </button> </div> <textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Внутренний комментарий или поручение" /> <div className="form-row"> <select value={messageVisibility} onChange={(event) => setMessageVisibility( event.target.value as | 'customer' | 'internal', ) } > <option value="customer"> Сообщение клиенту </option> <option value="internal"> Внутренняя заметка </option> </select> <input value={message} onChange={(event) => setMessage(event.target.value) } placeholder={ messageVisibility === 'customer' ? 'Ответ клиенту' : 'Заметка для сотрудников' } /> <button onClick={() => void sendMessage()}> <Send size={16} /> Отправить </button> </div> {allowed('serviceRequests.assign') && ( <div className="form-row"> <select value={engineerId} onChange={(e) => setEngineerId(e.target.value) } > <option value="">Выберите инженера</option> {engineers.map((engineer) => ( <option value={engineer.id} key={engineer.id} > {engineer.displayName} </option> ))} </select> <button onClick={assign}>Назначить</button> </div> )} {allowed('serviceRequests.invoice') && ( <div className="form-row"> <input type="file" accept="application/pdf" onChange={(e) => setInvoice(e.target.files?.[0]) } /> <button onClick={uploadInvoice}> Загрузить PDF </button> {request.invoiceStoredFileId && ( <a className="button" href={`/admin/api/service-requests/${id}/invoice`} target="_blank" rel="noreferrer" > Скачать счёт </a> )} {request.signedConsentFileId && ( <a className="button" href={`/admin/api/service-requests/${id}/signed-consent`} target="_blank" rel="noreferrer" > Согласие </a> )} </div> )} {allowed('serviceRequests.schedule') && ( <div className="form-row"> <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Адрес визита" /> <input type="datetime-local" value={visitTime} onChange={(e) => setVisitTime(e.target.value) } /> <button onClick={schedule}> Назначить визит </button> </div> )} <div className="actions"> {allowed('serviceRequests.payment') && ( <button onClick={() => action('paid')} > Оплата получена </button> )} {allowed('serviceRequests.close') && ( <> <button onClick={() => action('completed')}> Завершить </button> <button className="danger" onClick={() => action('cancelled')} > Отменить </button> </> )} </div> </div> )} </div> </> ); } // prettier-ignore
+} // prettier-ignore
 
 function CustomerCardView({
     card,
@@ -1503,11 +1113,23 @@ function IntegrationRuns({ refreshKey, permissions, onChanged }: { refreshKey: n
 }
 
 function Organizations({ refreshKey }: { refreshKey: number }) {
-    const data = useList<any>('/admin/api/organizations', refreshKey);
+    const data = useList<{
+        id: number;
+        name?: string;
+        inn?: string;
+        kpp?: string;
+        ogrn?: string;
+        taxSystem?: string;
+        members?: unknown[];
+    }>('/admin/api/organizations', refreshKey);
     return (
         <section className="simple-grid">
             {data.loading ? (
                 <Empty text="Загрузка..." />
+            ) : data.error ? (
+                <Empty text={data.error} />
+            ) : !data.items.length ? (
+                <Empty text="Организаций пока нет" />
             ) : (
                 data.items.map((org) => (
                     <article className="simple-card" key={org.id}>
@@ -1714,10 +1336,22 @@ function OrganizationAccessDetail({
     );
 }
 
+type AuditRow = {
+    id: number;
+    action: string;
+    createdAt: string;
+    actorType: string;
+    actorStaffId?: number;
+    targetType?: string;
+    targetId?: string;
+    result: string;
+    reason?: string;
+    metadata?: Record<string, unknown>;
+};
 function AuditLog({ refreshKey }: { refreshKey: number }) {
     const [result, setResult] = useState('');
     const [action, setAction] = useState('');
-    const [data, setData] = useState<{ items: any[]; total: number }>({
+    const [data, setData] = useState<{ items: AuditRow[]; total: number }>({
         items: [],
         total: 0,
     });
@@ -1725,7 +1359,9 @@ function AuditLog({ refreshKey }: { refreshKey: number }) {
         const query = new URLSearchParams({ limit: '100' });
         if (result) query.set('result', result);
         if (action.trim()) query.set('action', action.trim());
-        api<{ items: any[]; total: number }>(`/admin/api/audit-events?${query}`)
+        api<{ items: AuditRow[]; total: number }>(
+            `/admin/api/audit-events?${query}`,
+        )
             .then(setData)
             .catch(() => setData({ items: [], total: 0 }));
     }, [refreshKey, result, action]);
@@ -1799,7 +1435,12 @@ function EquipmentKits({
     );
     return (
         <>
-            <form className="kit-form" onSubmit={create}>
+            <form
+                className="kit-form"
+                onSubmit={(event) =>
+                    void create(event).catch(reportLegacyError)
+                }
+            >
                 {input('cashRegisterModel', 'Модель ККТ')}
                 {input('cashRegisterSerial', 'Заводской номер ККТ')}
                 {input('fiscalDriveSerial', 'Номер ФН')}
@@ -1881,7 +1522,12 @@ function StaffManagement({
         }));
     return (
         <>
-            <form className="staff-form" onSubmit={create}>
+            <form
+                className="staff-form"
+                onSubmit={(event) =>
+                    void create(event).catch(reportLegacyError)
+                }
+            >
                 <div className="form-row">
                     <input
                         required
@@ -2002,7 +1648,11 @@ function StaffCard({
                         <input
                             type="checkbox"
                             checked={staff.roles.includes(role.value)}
-                            onChange={() => changeRole(role.value)}
+                            onChange={() =>
+                                void changeRole(role.value).catch(
+                                    reportLegacyError,
+                                )
+                            }
                         />
                         {role.label}
                     </label>
@@ -2016,19 +1666,24 @@ function StaffCard({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                 />
-                <button disabled={password.length < 12} onClick={resetPassword}>
+                <button
+                    disabled={password.length < 12}
+                    onClick={() =>
+                        void resetPassword().catch(reportLegacyError)
+                    }
+                >
                     <KeyRound size={16} />
                     Сбросить
                 </button>
             </div>
             <div className="actions">
-                <button onClick={revoke}>
+                <button onClick={() => void revoke().catch(reportLegacyError)}>
                     <ShieldCheck size={16} />
                     Отозвать сессии
                 </button>
                 <button
                     className={staff.isActive ? 'danger' : ''}
-                    onClick={toggleActive}
+                    onClick={() => void toggleActive().catch(reportLegacyError)}
                 >
                     {staff.isActive ? 'Отключить' : 'Активировать'}
                 </button>
@@ -2038,6 +1693,13 @@ function StaffCard({
 }
 
 type Navigate = (tab: Tab, id?: number) => void;
+function reportLegacyError() {
+    window.dispatchEvent(
+        new CustomEvent('vitma:notice', {
+            detail: 'Не удалось выполнить действие. Обновите данные и повторите попытку.',
+        }),
+    );
+}
 interface ListProps {
     status: string;
     platform: string;
@@ -2209,25 +1871,4 @@ function registrationApiStatus(status: string) {
           : status === 'all'
             ? 'all'
             : 'new';
-}
-function serviceApiStatuses(status: string) {
-    if (status === 'all') return ['all'];
-    if (status === 'closed') return ['completed', 'closed', 'cancelled'];
-    if (status === 'waiting_payment') return ['waiting_payment'];
-    if (status === 'in_work')
-        return [
-            'draft',
-            'submitted',
-            'price_confirmed',
-            'review_required',
-            'clarification_required',
-            'invoice_required',
-            'paid',
-            'scheduled',
-            'in_progress',
-        ];
-    return ['active'];
-}
-function can(admin: Admin, permission: string) {
-    return admin.permissions.includes(permission);
 }

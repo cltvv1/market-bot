@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
+import { verifyAdminWorkspace } from '../admin-ui/src/test-tools/browser-workflows.mjs';
 
 const candidates = [
     process.env.CHROME_PATH,
@@ -52,39 +53,33 @@ try {
         await page.locator('#root').waitFor();
     }
 
-    await page.goto(`${baseUrl}/admin`, { waitUntil: 'networkidle' });
-    await page.locator('.login-screen').waitFor();
+    await page.goto(`${baseUrl}/admin/requests/service`, { waitUntil: 'networkidle' });
+    await page.getByRole('heading', { name: 'Вход для сотрудников' }).waitFor();
     await page
         .locator('input[autocomplete="username"]')
         .fill(process.env.UI_SMOKE_ADMIN_LOGIN || '');
     await page
         .locator('input[autocomplete="current-password"]')
         .fill(process.env.UI_SMOKE_ADMIN_PASSWORD || '');
-    const summaryLoaded = page.waitForResponse(
+    const queueLoaded = page.waitForResponse(
         (response) =>
-            response.url().includes('/admin/api/summary') &&
-            response.status() === 200,
-    );
-    const registrationsLoaded = page.waitForResponse(
-        (response) =>
-            response.url().includes('/admin/api/registrations?') &&
+            response.url().includes('/admin/api/service-requests?') &&
             response.status() === 200,
     );
     await Promise.all([
-        page.locator('.login-panel button').click(),
-        summaryLoaded,
-        registrationsLoaded,
+        page.getByRole('button', { name: 'Войти', exact: true }).click(),
+        queueLoaded,
     ]);
-    await page.locator('.app-shell').waitFor();
-    await page.locator('.topbar-actions > button').last().click();
-    await page.locator('.login-screen').waitFor();
+    const workflowChecks = await verifyAdminWorkspace(page, baseUrl);
+    await page.getByRole('button', { name: 'Выйти', exact: true }).click();
+    await page.getByRole('heading', { name: 'Вход для сотрудников' }).waitFor();
 
     if (errors.length)
         throw new Error(
             `Browser console errors:\n${errors.join('\n')}\nFailed responses:\n${failedResponses.join('\n')}`,
         );
     process.stdout.write(
-        'Browser smoke passed for /site, nested /site route, and admin login/logout.\n',
+        `Browser smoke passed for client routes, nested admin login/logout and ${workflowChecks.length} production workspace checks.\n${workflowChecks.join('\n')}\n`,
     );
 } finally {
     await browser.close();
