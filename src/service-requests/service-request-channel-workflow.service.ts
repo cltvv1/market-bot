@@ -29,6 +29,7 @@ import { FilesService } from 'src/files/files.service';
 import { PdfGeneratorService } from 'src/pdf/pdf.service';
 import { ServiceFormService } from './service-form.service';
 import { transitionServiceRequest } from './service-request-status';
+import { SERVICE_REQUEST_ADMIN_VISIBLE_SQL } from './service-request-admin-visibility';
 import {
     ServiceRequestAttachmentEntity,
     ServiceRequestAttachmentKind,
@@ -204,13 +205,7 @@ export class ServiceRequestChannelWorkflowService {
     ) {
         const query = this.serviceRequestsRepo
             .createQueryBuilder('request')
-            .andWhere(
-                `(request.status <> 'draft'
-                    OR request.currentStep > 0
-                    OR request.assignedEngineerId IS NOT NULL
-                    OR request.responsibleOperatorStaffId IS NOT NULL
-                    OR request.operatorComment IS NOT NULL)`,
-            );
+            .andWhere(SERVICE_REQUEST_ADMIN_VISIBLE_SQL);
 
         if (status === 'active') {
             query.andWhere('request.status NOT IN (:...closedStatuses)', {

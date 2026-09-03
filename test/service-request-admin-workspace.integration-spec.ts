@@ -20,6 +20,7 @@ import { StoredFileEntity } from '../src/files/entities/stored-file.entity';
 import { OutboundDeliveryEntity } from '../src/outbound-deliveries/entities/outbound-delivery.entity';
 import { ServiceRequestAttachmentEntity } from '../src/service-requests/entities/service-request-attachment.entity';
 import { UiServingService } from '../src/ui/ui-serving.service';
+import { ServiceRequestsService } from '../src/service-requests/service-requests.service';
 
 const origin = 'http://localhost:5173';
 const password = 'Fe1b!TestPassword2026';
@@ -125,6 +126,269 @@ describe('production admin ServiceRequest workspace', () => {
         }
         throw new Error('Commands did not reach the database lock barrier');
     }
+
+    async function visibilityFixtures(
+        operator: Awaited<ReturnType<typeof staff>>,
+        engineerId: number,
+    ) {
+        const repo = db.getRepository(ServiceRequestEntity);
+        const base = await fixture(operator.agent, 'draft');
+        await repo.update(base.id, {
+            currentStep: 0,
+            responsibleOperatorStaffId: null,
+            assignedEngineerId: null,
+            operatorComment: null,
+            createdAt: new Date('2026-09-01T00:00:00Z'),
+        });
+        const { id: _id, ...copy } = await repo.findOneByOrFail({
+            id: base.id,
+        });
+        void _id;
+        const add = (
+            name: string,
+            fields: Partial<ServiceRequestEntity> = {},
+        ) =>
+            repo.save(
+                repo.create({
+                    ...copy,
+                    requestNumber: `VIS-${name}`,
+                    ...fields,
+                }),
+            );
+        const pristine = [
+            base.id,
+            (await add('pristine-2')).id,
+            (await add('pristine-3')).id,
+        ];
+        const telegram = await add('telegram', {
+            platform: 'telegram',
+            source: 'telegram',
+            currentStep: 1,
+        });
+        const max = await add('max', {
+            platform: 'max',
+            source: 'max',
+            currentStep: 1,
+        });
+        const owned = await add('owned', {
+            responsibleOperatorStaffId: operator.id,
+            priority: 'high',
+        });
+        const assigned = await add('assigned', {
+            assignedEngineerId: engineerId,
+        });
+        const commented = await add('commented', {
+            operatorComment: 'Synthetic operator note',
+        });
+        // Preserve IS NOT NULL semantics, including legacy empty comments.
+        const emptyComment = await add('empty-comment', {
+            operatorComment: '',
+        });
+        const drafts = [
+            telegram,
+            max,
+            owned,
+            assigned,
+            commented,
+            emptyComment,
+        ].map((row) => row.id);
+        const submitted = [
+            await add('submitted-1', { status: 'submitted' }),
+            await add('submitted-2', { status: 'submitted' }),
+        ];
+        const working = await add('working', { status: 'in_progress' });
+        const terminal = [] as number[];
+        for (const status of ['completed', 'closed', 'cancelled'] as const)
+            terminal.push((await add(status, { status })).id);
+        const active = [
+            ...drafts,
+            ...submitted.map((row) => row.id),
+            working.id,
+        ];
+        return {
+            pristine,
+            telegram,
+            max,
+            owned,
+            assigned,
+            drafts,
+            submitted,
+            active,
+            all: [...active, ...terminal],
+        };
+    }
+
+    it.each(['active', 'all', 'draft'] as const)(
+        'applies canonical draft visibility and assigned-only authorization for status=%s',
+        async (status) => {
+            const operator = await staff(['operator']);
+            const engineer = await staff(['engineer']);
+            const otherEngineer = await staff(['engineer']);
+            const rows = await visibilityFixtures(operator, engineer.id);
+            const expected = status === 'draft' ? rows.drafts : rows[status];
+            const ids = (response: request.Response) =>
+                (response.body.items as Array<{ id: number }>).map(
+                    (row) => row.id,
+                );
+            const list = (session: typeof operator, extra = '') =>
+                session.agent
+                    .get(`/admin/api/service-requests?status=${status}${extra}`)
+                    .expect(200);
+            const visible = await list(operator);
+            expect(ids(visible)).toEqual([...expected].sort((a, b) => b - a));
+            expect(visible.body.total).toBe(expected.length);
+            expect(ids(await list(operator, '&scope=mine'))).toEqual([
+                rows.owned.id,
+            ]);
+            expect(
+                ids(
+                    await list(
+                        operator,
+                        `&priority=high&platform=web&scope=mine&responsibleStaffId=${operator.id}`,
+                    ),
+                ),
+            ).toEqual([rows.owned.id]);
+            expect(
+                ids(await list(operator, '&platform=max&scope=unassigned')),
+            ).toEqual([rows.max.id]);
+            for (const extra of [
+                '',
+                '&scope=all',
+                '&scope=mine',
+                `&responsibleStaffId=${engineer.id}`,
+            ]) {
+                const own = await list(engineer, extra);
+                expect(ids(own)).toEqual([rows.assigned.id]);
+                expect(own.body.total).toBe(1);
+            }
+            for (const extra of [
+                '&scope=all',
+                `&responsibleStaffId=${engineer.id}`,
+            ]) {
+                const denied = await list(otherEngineer, extra);
+                expect(ids(denied)).toEqual([]);
+                expect(denied.body.total).toBe(0);
+            }
+            await otherEngineer.agent
+                .get(
+                    `/admin/api/service-requests?status=${status}&assignedEngineerId=${engineer.id}`,
+                )
+                .expect(400);
+            expect(
+                ids(
+                    await list(
+                        engineer,
+                        `&scope=unassigned&responsibleStaffId=${operator.id}`,
+                    ),
+                ),
+            ).toEqual([]);
+            await get(otherEngineer.agent, rows.assigned.id).expect(404);
+            const legacy = await app
+                .get(ServiceRequestsService)
+                .listForAdmin(status);
+            expect(legacy.map((row) => row.id).sort((a, b) => b - a)).toEqual(
+                [...expected].sort((a, b) => b - a),
+            );
+            expect(
+                (
+                    await app
+                        .get(ServiceRequestsService)
+                        .listForAdmin(status, undefined, engineer.id)
+                ).map((row) => row.id),
+            ).toEqual([rows.assigned.id]);
+        },
+    );
+
+    it.each(['active', 'all', 'draft'] as const)(
+        'counts and paginates only admin-visible matching rows for status=%s',
+        async (status) => {
+            const operator = await staff(['operator']);
+            const rows = await visibilityFixtures(
+                operator,
+                (await staff(['engineer'])).id,
+            );
+            const expected = (
+                status === 'draft' ? rows.drafts : rows[status]
+            ).sort((a, b) => b - a);
+            const acrossPages: number[] = [];
+            const limit = 4;
+            for (
+                let page = 1;
+                page <= Math.ceil(expected.length / limit) + 1;
+                page++
+            ) {
+                const result = await operator.agent
+                    .get(
+                        `/admin/api/service-requests?status=${status}&limit=${limit}&page=${page}`,
+                    )
+                    .expect(200);
+                const ids = (result.body.items as Array<{ id: number }>).map(
+                    (row) => row.id,
+                );
+                expect(result.body).toMatchObject({
+                    page,
+                    limit,
+                    total: expected.length,
+                    hasNext: page * limit < expected.length,
+                });
+                expect(ids).toEqual(
+                    expected.slice((page - 1) * limit, page * limit),
+                );
+                acrossPages.push(...ids);
+            }
+            expect(acrossPages).toEqual(expected);
+            expect(acrossPages.some((id) => rows.pristine.includes(id))).toBe(
+                false,
+            );
+            const submitted = await operator.agent
+                .get('/admin/api/service-requests?status=submitted')
+                .expect(200);
+            expect(submitted.body.total).toBe(rows.submitted.length);
+            expect(
+                (submitted.body.items as Array<{ id: number }>).map(
+                    (row) => row.id,
+                ),
+            ).toEqual(
+                rows.submitted.map((row) => row.id).sort((a, b) => b - a),
+            );
+        },
+    );
+
+    it('keeps a manual draft owned by its operator visible after repeated active queue reads', async () => {
+        const operator = await staff(['operator']);
+        const created = await operator.agent
+            .post('/admin/api/service-requests/manual')
+            .set('Origin', origin)
+            .send({
+                source: 'phone',
+                serviceTypeCode: 'firmware_update',
+                contactSnapshot: {
+                    name: 'Synthetic manual customer',
+                    phone: '+79990000000',
+                    preferredChannel: 'phone',
+                },
+                answers: { description: 'Manual draft visibility regression' },
+            })
+            .expect(201);
+        const id = created.body.request.id as number;
+        expect(
+            await db
+                .getRepository(ServiceRequestEntity)
+                .findOneByOrFail({ id }),
+        ).toMatchObject({
+            status: 'draft',
+            currentStep: 0,
+            responsibleOperatorStaffId: operator.id,
+        });
+        await get(operator.agent, id).expect(200);
+        for (let repeat = 0; repeat < 2; repeat++) {
+            const queue = await operator.agent
+                .get('/admin/api/service-requests?status=active&scope=mine')
+                .expect(200);
+            expect(queue.body.total).toBe(1);
+            expect(queue.body.items[0]).toMatchObject({ id, status: 'draft' });
+        }
+    });
 
     async function raceCommands(
         id: number,

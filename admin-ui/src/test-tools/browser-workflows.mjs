@@ -30,6 +30,18 @@ export async function verifyAdminWorkspace(page, baseUrl) {
     await page.waitForLoadState('networkidle');
     const detailUrl = page.url();
     checks.push('manual create redirects to real detail');
+    const detailPath = new URL(detailUrl).pathname;
+    await page.goto(`${baseUrl}/admin/requests/service?status=active`, { waitUntil: 'networkidle' });
+    const createdRow = page.locator(`article[data-request-id="${detailPath.split('/').at(-1)}"]`);
+    await createdRow.waitFor({ state: 'visible' });
+    assert.match(await createdRow.innerText(), /CI synthetic customer/);
+    checks.push('operator-owned manual draft stays in active queue after leaving detail');
+    await page.reload({ waitUntil: 'networkidle' });
+    await createdRow.waitFor({ state: 'visible' });
+    checks.push('active manual draft survives queue reload');
+    await createdRow.getByRole('link').click();
+    await page.waitForURL(detailUrl);
+    await page.waitForLoadState('networkidle');
     await page.getByRole('button', { name: 'Приоритет и комментарий', exact: true }).click();
     await page.getByRole('combobox', { name: 'Приоритет', exact: true }).selectOption('urgent');
     await page.getByRole('textbox', { name: 'Внутренний комментарий', exact: true }).fill('CI private comment');

@@ -16,6 +16,7 @@ import { ServiceRequestMessageEntity } from './entities/service-request-message.
 import { ServiceRequestEventEntity } from './entities/service-request-event.entity';
 import { ServiceTypeEntity } from './entities/service-type.entity';
 import { serviceRequestWorkflow } from './service-request-admin-policy';
+import { SERVICE_REQUEST_ADMIN_VISIBLE_SQL } from './service-request-admin-visibility';
 
 export function safeStaff(
     staff:
@@ -63,13 +64,14 @@ export class ServiceRequestAdminReadService {
         const builder = this.scope(
             this.db
                 .getRepository(ServiceRequestEntity)
-                .createQueryBuilder('request'),
+                .createQueryBuilder('request')
+                .andWhere(SERVICE_REQUEST_ADMIN_VISIBLE_SQL),
             admin,
         );
         const status = query.status ?? 'active';
         if (status === 'active')
             builder.andWhere('request.status NOT IN (:...terminal)', {
-                terminal: ['draft', 'completed', 'closed', 'cancelled'],
+                terminal: ['completed', 'closed', 'cancelled'],
             });
         else if (status !== 'all')
             builder.andWhere('request.status = :status', { status });

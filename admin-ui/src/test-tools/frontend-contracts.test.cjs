@@ -11,6 +11,26 @@ const api = require('../api');
 const {executeAction, conflictMessage, commandError, formText} = require('../features/service-requests/service-api');
 const read = file => fs.readFileSync(path.resolve(file),'utf8');
 
+test('disposable review password is required external input, with no literal or fallback', () => {
+    const ts = require('typescript');
+    const source = read('admin-ui/src/test-tools/seed-review.cjs');
+    const parsed = ts.createSourceFile('seed-review.cjs', source, ts.ScriptTarget.Latest, true);
+    const initializers = [];
+    const visit = node => {
+        if (ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'password')
+            initializers.push(node.initializer?.getText(parsed));
+        ts.forEachChild(node, visit);
+    };
+    visit(parsed);
+    assert.ok(initializers.length === 1 && initializers[0] === 'process.env.FE1B_REVIEW_PASSWORD', 'Seed must take its password only from the environment');
+    assert.ok(source.includes("typeof password === 'string' && password.length >= 16"), 'Seed requires at least 16 characters');
+    const report = read('docs/frontend/2026-09-03-admin-shell-service-production-migration.md');
+    assert.ok(report.includes('Supply `FE1B_REVIEW_PASSWORD`'));
+    assert.ok(!/(?:password|пароль)\s*[:=]\s*[`'"][^`'"\r\n]+[`'"]/i.test(report), 'Review documentation must not supply a literal password');
+    if (process.env.FE1B_REVIEW_PASSWORD)
+        assert.ok(!report.includes(process.env.FE1B_REVIEW_PASSWORD), 'Review documentation must not contain the supplied credential');
+});
+
 test('a single production entry and router replace admin reference dispatch', () => {
     assert.match(read('admin-ui/src/main.tsx'), /AdminApp/);
     assert.doesNotMatch(read('admin-ui/src/main.tsx'), /reference|REFERENCE_DEV_SERVER/);

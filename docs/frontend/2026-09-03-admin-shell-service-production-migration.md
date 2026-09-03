@@ -78,8 +78,26 @@ feedback. This is compatibility work, not a redesign of those screens.
 
 `GET /admin/api/service-requests` accepts canonical `status` plus `active|all`,
 `platform`, `priority`, `scope=all|mine|unassigned`, `responsibleStaffId`, `page`, `limit`.
-Default is active, page 1, limit 25; maximum limit 100. Active excludes draft,
-completed, closed and cancelled. Mine matches acting operator or assigned engineer;
+Default is active, page 1, limit 25; maximum limit 100. Both production and legacy/channel
+lists share `SERVICE_REQUEST_ADMIN_VISIBLE_SQL` using the fixed trusted alias `request`:
+
+```sql
+request.status <> 'draft'
+OR request.currentStep > 0
+OR request.assignedEngineerId IS NOT NULL
+OR request.responsibleOperatorStaffId IS NOT NULL
+OR request.operatorComment IS NOT NULL
+```
+
+The grouped predicate hides pristine/abandoned drafts. Progressed, assigned and
+operator-owned/commented drafts remain visible (including legacy non-null empty
+comments). After this visibility rule, active excludes only completed, closed and
+cancelled. All applies no further status exclusion but never exposes pristine
+drafts; explicit draft returns only admin-worthy drafts. Non-draft status filters
+retain their previous semantics. The same SQL builder applies authorization,
+all filters, count and pagination; no rows are discarded after pagination.
+
+Mine matches acting operator or assigned engineer;
 unassigned requires neither. Explicit filters never expand an assigned-only scope.
 Response: `{ items, page, limit, total, hasNext }`. Sorting is `createdAt DESC, id DESC`.
 Filtering/pagination happen in SQL, not by filtering a previously downloaded list.
@@ -217,10 +235,12 @@ Screenshots under `screenshots/2026-09-03-fe1b/`:
 
 `scripts/ui-browser-smoke.mjs` now invokes the production workflow suite in
 `admin-ui/src/test-tools/browser-workflows.mjs` using the existing offline CI harness.
-26 assertions/groups cover direct login/reload, URL filters, manual create, operator
+28 assertions/groups cover direct login/reload, URL filters, manual create, operator
 fields, submission, customer/internal messages, invoice upload/replacement,
 no-proof denial, cancellation, terminal messaging, history Back/Forward, all 11
 other owned routes, four viewport sizes and drawer Escape/focus/scroll restoration.
+Manual creation also returns to the active queue before submission, checks the
+new draft is visible, reloads the queue and reopens that same detail.
 Successful runs have no console errors, React warnings or unhandled page errors.
 
 Additional in-app browser checks against the disposable review DB:
@@ -235,7 +255,7 @@ Additional in-app browser checks against the disposable review DB:
 - Built Nest direct documents route and reload render without Vite.
 - Legacy registration data/controls remain inside the new shell.
 
-These extra review cases are not claimed to be 26 additional automated tests;
+These extra review cases are not claimed to be 28 additional automated tests;
 their backend equivalents are covered by the integration suite.
 
 ## 20. Reference cleanup
@@ -262,10 +282,10 @@ legacy features remain available, but this package does not certify them as rede
 
 - `npm ci` on the unchanged lockfile; inherited audit warnings not remediated here.
 - `lint:site`, both frontend TypeScript checks, Nest production build.
-- `ci:quality`: 33 suites / 249 tests, including 25 policy assertions.
+- `ci:quality`: 34 suites / 250 tests, including 25 policy assertions and the visibility contract.
 - Lint ratchet: no new violations; existing debt 705 errors / 6 warnings in 65 files.
-- Integration: 21 suites / 210 tests, including 14 focused workspace tests.
-- Offline e2e: 2 suites / 7 tests. Frontend contracts: 8 tests.
+- Integration: 21 suites / 217 tests, including 21 focused workspace tests.
+- Offline e2e: 2 suites / 7 tests. Frontend contracts: 9 tests.
 - Four controlled concurrency races: transition/transition, assignment/state,
   operator-state/schedule, invoice/invoice. A held DB row and observed lock waiters
   provide the barrier, not fixed sleeps. One winner, one 409, no lost update.
@@ -274,7 +294,7 @@ legacy features remain available, but this package does not certify them as rede
 - RBAC, forged generic transitions, missing version, multipart limits, PDF validation,
   assigned file scope, unavailable file and generic-attachment-not-proof tests pass.
 - 11 migrations unchanged; both isolated database schema logs report zero drift.
-- `ci:build`, `ci:offline-smoke` with 26 browser checks, and `test:site` pass.
+- `ci:build`, `ci:offline-smoke` with 28 browser checks, and `test:site` pass.
 - Hosted CI and GitGuardian must be checked at the exact final PR HEAD; the PR
   remains draft regardless of green checks. See the PR checks for immutable results.
 
@@ -320,3 +340,30 @@ GitGuardian flagged the initial disposable seed password as Generic Password
 incident 36871372. It was confined to guarded synthetic review setup, not a provider
 or production credential. A follow-up removes the literal in favor of the explicit
 environment value. No scanner exclusion or published-history rewrite was used.
+
+## 25. Draft visibility follow-up
+
+Starting HEAD: `f930eff1c641b747cf019391bf1ace8088a47b12` on the same FE-1B branch.
+The new read service had omitted the legacy admin-worthy predicate and treated
+every draft as inactive. This hid working/manual drafts in active and exposed
+pristine drafts in all/draft. Six PostgreSQL regressions failed against that HEAD
+before the fix (active total 3 instead of 9, all 15 instead of 12, draft 9 instead
+of 6 for the focused dataset).
+
+The fix shares one SQL constant between both list consumers, preserves IS NOT NULL
+semantics, and removes only draft from the active status exclusion. Detail access,
+permissions, command policy, transactions, versioning, files and manual-create
+business semantics are unchanged. Regression coverage adds one unit contract,
+seven focused PostgreSQL tests, two browser workflow checks and one tooling test.
+It covers pristine/progressed Telegram and MAX/operator-owned/assigned/commented
+drafts, mine/unassigned/combined filters, foreign engineer denial, rejected forged
+assignment query, stable page boundaries/counts, terminal exclusion and manual
+operator creation. No messenger provider is called.
+
+The owner supplied dashboard evidence for incident 36871372: **Ignored / Test
+credential**. The evidence image is not committed because it displays the retired
+synthetic credential. The seed still requires `FE1B_REVIEW_PASSWORD` with at least
+16 characters and no literal/default; tooling asserts that contract and prohibits
+an inline password recipe in this report. The initial historical credential was
+rotated and its synthetic sessions revoked. No history rewrite, scanner exclusion
+or skip is used; exact-head GitGuardian and hosted CI results belong to PR #27.
