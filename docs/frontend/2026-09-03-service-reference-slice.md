@@ -1,5 +1,11 @@
 # FE-1A Service reference review
 
+FE-1B branch update: the approved admin reference has been promoted/replaced by
+the [production admin workspace](2026-09-03-admin-shell-service-production-migration.md).
+Its duplicate runtime and admin reference-only tools were removed in that branch.
+The client reference remains unchanged. The URLs, commands and screenshots below
+are historical FE-1A approval evidence, not current FE-1B admin runtime instructions.
+
 Visual and information-architecture direction approved by the product owner
 on 2026-09-03. The reference queue, detail and client service page are accepted
 as the foundation for subsequent production packages. **FE-1A remains a
