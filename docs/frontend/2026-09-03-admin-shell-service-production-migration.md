@@ -311,6 +311,12 @@ Review URLs while the dedicated preview runs:
 - <http://localhost:5173/admin/requests/registrations>
 - Built Nest alternative: <http://localhost:3000/admin/requests/service>
 
-Synthetic login `fe1b-review`, password `Review-Only-2026!`. Engineer, sales and
-operator fixtures use `fe1b-engineer`, `fe1b-sales`, `fe1b-operator` with the same
+Synthetic login `fe1b-review`. Supply `FE1B_REVIEW_PASSWORD` (at least 16 characters)
+to `seed-review.cjs`; there is no embedded default. Engineer, sales and operator
+fixtures use `fe1b-engineer`, `fe1b-sales`, `fe1b-operator` with the supplied
 disposable password. Never deploy these accounts to a shared/production database.
+
+GitGuardian flagged the initial disposable seed password as Generic Password
+incident 36871372. It was confined to guarded synthetic review setup, not a provider
+or production credential. A follow-up removes the literal in favor of the explicit
+environment value. No scanner exclusion or published-history rewrite was used.

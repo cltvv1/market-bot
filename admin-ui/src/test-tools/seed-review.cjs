@@ -31,6 +31,8 @@ async function main() {
   assert.equal(process.env.OUTBOUND_DELIVERY_WORKER_ENABLED, 'false');
   assert.equal(process.env.MAX_BOT_TOKEN || '', '');
   assert.equal(path.basename(process.env.FILE_STORAGE_ROOT || ''), 'vitma-fe1b-review-storage');
+  const password = process.env.FE1B_REVIEW_PASSWORD;
+  assert.ok(typeof password === 'string' && password.length >= 16, 'Set FE1B_REVIEW_PASSWORD (at least 16 characters) for the disposable review accounts');
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
   app.get(getBotToken()).stop = () => undefined;
   try {
@@ -39,7 +41,6 @@ async function main() {
     const adminService = app.get(AdminService);
     const files = app.get(FilesService);
     assert.equal((await service.listForAdmin('all')).length, 0, 'Use an empty isolated test DB');
-    const password = 'Review-Only-2026!';
     const admin = await auth.createStaff({ login: 'fe1b-review', displayName: 'Анна · демо-оператор', roles: ['superadmin'], password });
     const engineer = await auth.createStaff({ login: 'fe1b-engineer', displayName: 'Михаил · демо-инженер', roles: ['engineer'], password });
     await auth.createStaff({ login: 'fe1b-sales', displayName: 'Демо-менеджер', roles: ['sales_manager'], password });
