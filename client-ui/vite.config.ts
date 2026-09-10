@@ -2,8 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
 
-export default defineConfig(({ command }) => ({
-    define: { 'import.meta.env.REFERENCE_DEV_SERVER': command === 'serve' },
+export default defineConfig({
     root: path.resolve(__dirname),
     cacheDir: path.resolve(__dirname, '..', 'node_modules', '.vite-client'),
     base: '/site/',
@@ -26,7 +25,7 @@ export default defineConfig(({ command }) => ({
         host: '0.0.0.0',
         port: 5174,
         proxy: {
-            '/api': 'http://localhost:3000',
+            '/api': process.env.CLIENT_API_PROXY || 'http://localhost:3000',
         },
     },
-}));
+});

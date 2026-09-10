@@ -20,6 +20,7 @@ import {
 import { company } from '../data/company';
 import { useCart } from '../context/CartContext';
 import { useCallbackRequest } from '../context/CallbackContext';
+import { ServiceLayout } from '../features/service/ServiceLayout';
 
 const nav = [
     { to: '/catalog', label: 'Каталог' },
@@ -31,7 +32,7 @@ const nav = [
     { to: '/contacts', label: 'Контакты' },
 ];
 
-export function Layout() {
+export function Layout({ variant }: { variant?: 'service' }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const [query, setQuery] = useState('');
     const { count, notice } = useCart();
@@ -80,6 +81,7 @@ export function Layout() {
         void navigate(`/search?q=${encodeURIComponent(query.trim())}`);
     };
 
+    if (variant === 'service') return <ServiceLayout />;
     return (
         <div className="app-shell">
             <a className="skip-link" href="#main">
