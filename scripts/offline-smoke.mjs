@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { pbkdf2Sync } from 'node:crypto';
+import { pbkdf2Sync, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import pg from 'pg';
 
@@ -11,7 +11,7 @@ if (!testDatabase) {
 const port = Number(process.env.OFFLINE_SMOKE_PORT || 3210);
 const baseUrl = `http://127.0.0.1:${port}`;
 const smokeLogin = 'ci-smoke-admin';
-const smokePassword = 'CI-Smoke-Password-42!';
+const smokePassword = randomBytes(32).toString('base64url');
 await ensureSmokeAdmin();
 const child = spawn(process.execPath, ['dist/src/main.js'], {
     env: {
@@ -93,7 +93,7 @@ try {
 }
 
 async function ensureSmokeAdmin() {
-    const salt = 'ci-offline-smoke-salt';
+    const salt = randomBytes(16).toString('base64url');
     const iterations = 1;
     const hash = pbkdf2Sync(
         smokePassword,
@@ -127,6 +127,13 @@ async function ensureSmokeAdmin() {
              ON CONFLICT ("userId", role) DO NOTHING`,
             [admin.id],
         );
+        const engineer = (await database.query(
+            `INSERT INTO admin_users (login, "displayName", "passwordHash", "isActive")
+             VALUES ('ci-smoke-engineer', 'Demo engineer', $1, true)
+             ON CONFLICT (login) DO UPDATE SET "isActive" = true RETURNING id`,
+            [`pbkdf2$${iterations}$${salt}$${hash}`],
+        )).rows[0];
+        await database.query(`INSERT INTO admin_user_roles ("userId", role) VALUES ($1, 'engineer') ON CONFLICT ("userId", role) DO NOTHING`, [engineer.id]);
     } finally {
         await database.end();
     }

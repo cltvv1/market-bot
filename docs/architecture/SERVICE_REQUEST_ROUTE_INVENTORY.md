@@ -1,6 +1,6 @@
 # Service request route inventory
 
-Updated for P-PROOF after FE-1B on 2026-09-10 (implementation branch; not merged).
+Updated for FE-1C after P-PROOF on 2026-09-10 (implementation branch; not merged).
 
 `ServiceRequestsController` is the only owner of authenticated customer HTTP
 routes. `PublicServiceRequestsController` owns bearer-token status access.
@@ -27,6 +27,23 @@ current OutboundDelivery. Controllers do not implement a parallel state machine.
 | `POST` | `/api/client/service-requests/:id/messages` | Add a customer message |
 | `POST` | `/api/client/service-requests/:id/messages/attachments` | Add a message attachment |
 | `GET` | `/api/client/service-requests/:id/attachments/:attachmentId` | Download an owned customer-visible attachment |
+
+## FE-1C owner contract addendum
+
+No new HTTP routes. Types now expose a safe published customer form projection;
+list returns up to 50 minimal `{request}` summaries including pristine drafts.
+GET detail authorizes the exact owner, then projects stage/version/answers/pinned
+form/safe snapshots/messages/files/events and additive workflow capabilities in
+one REPEATABLE READ snapshot. P-PROOF fields keep their accepted names/semantics.
+Current invoice is selected by canonical pointer, not the newest attachment.
+
+Draft creation returns `created` to distinguish resumed drafts. PATCH accepts
+optional bounded contact/location/manual-organization/equipment snapshots with
+answers and expectedVersion; linked IDs/type/form/user remain immutable. Row lock,
+normalized context and transactional Event/Audit prevent lost/split updates;
+equal input is a no-op. Customer mutations now require WebMutationOriginGuard;
+upload owner/state/origin guards remain before Multer. Commands recheck ownership.
+Owner reads/downloads are private/no-store and IDs bounded. No bearer relaxation.
 
 ## Public-token routes
 

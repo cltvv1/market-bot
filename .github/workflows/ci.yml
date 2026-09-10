@@ -63,6 +63,7 @@ jobs:
           npx tsc --noEmit -p admin-ui/tsconfig.json
           npm run lint:site
           node admin-ui/src/test-tools/frontend-contracts.test.cjs
+          node client-ui/src/test-tools/service-contracts.test.cjs
 
   database-and-tests:
     name: PostgreSQL, tests, and offline smoke
