@@ -146,6 +146,13 @@ number lookup; foreign/missing ID; session expiry clearing private DOM.
 Existing P-PROOF integration tests also cover formats, limits, rollback, missing
 binding/files and upload/replacement/confirmation races across web and bots.
 
+The first hosted push run passed, while its PR run exposed timing dependence in
+the proof lost-response test: an upload notice precedes the refreshed document
+projection. A test-only follow-up waits for the new document in the DOM before
+selecting another file and asserts HTTP 201 before dropping its response. The
+full 57-check browser flow also passed locally with the CI NODE_ENV=test build;
+application behavior and test counts did not change.
+
 Client viewports: 1440x1000, 1280x800, 768x1024, 390x844. Long local text/filename,
 no horizontal overflow, keyboard tabs, skip-link focus, menu Escape/focus,
 Back/Forward and built reload are checked. The skip-link is clipped when unfocused

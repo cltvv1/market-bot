@@ -200,14 +200,23 @@ export async function verifyClientService(browser, operator, baseUrl) {
         negative = false;
         await customer.getByRole('button', { name: 'Заменить документ', exact: true }).click();
         await customer.getByText('Платёжный документ передан. Оплату подтвердит сотрудник после проверки.', { exact: true }).waitFor();
+        await customer.locator('.svc-document-row strong').filter({ hasText: 'demo-proof-replacement.pdf' }).waitFor();
         checks.push('proof 409 preserves File and requires explicit review of fresh version before retry');
         await customer.waitForLoadState('networkidle');
         await customer.getByLabel('Заменить платёжное поручение', { exact: true }).setInputFiles({ ...proof, name: 'demo-proof-unknown.pdf' });
         const proofPosts = posts.filter(value => value.endsWith('/payment-proof')).length;
         negative = true;
-        await customer.route('**/payment-proof', async route => { if (route.request().method() === 'POST') { await route.fetch(); await route.abort('connectionreset'); } else await route.continue(); }, { times: 1 });
+        let interceptedUploadStatus;
+        await customer.route('**/payment-proof', async route => {
+            if (route.request().method() === 'POST') {
+                const response = await route.fetch();
+                interceptedUploadStatus = response.status();
+                await route.abort('connectionreset');
+            } else await route.continue();
+        }, { times: 1 });
         await customer.getByRole('button', { name: 'Заменить документ', exact: true }).click();
         await customer.getByRole('button', { name: 'Проверено: подготовить повторную загрузку', exact: true }).waitFor();
+        assert.equal(interceptedUploadStatus, 201, 'Fault injection must drop a committed upload response, not a failed command');
         assert.equal((await read()).documents.paymentProof.originalName, 'demo-proof-unknown.pdf');
         assert.equal(posts.filter(value => value.endsWith('/payment-proof')).length, proofPosts + 1);
         negative = false;
