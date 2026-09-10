@@ -60,6 +60,7 @@ describe('SEC-R1 HTTP resource protection', () => {
 
     async function browser() {
         const agent = request.agent(app.getHttpServer());
+        agent.set('Origin', 'http://localhost:5174');
         await agent
             .post('/api/client/session')
             .set('X-Forwarded-For', `10.140.0.${++ip}`)

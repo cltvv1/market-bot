@@ -76,6 +76,7 @@ describe('canonical service requests', () => {
 
     async function browser() {
         const agent = request.agent(app.getHttpServer());
+        agent.set('Origin', 'http://localhost:5174');
         agent.set('X-Forwarded-For', `10.80.0.${++ip}`);
         await agent.post('/api/client/session').send({}).expect(201);
         return agent;
@@ -196,6 +197,167 @@ describe('canonical service requests', () => {
             .getRepository(ServiceRequestEntity)
             .findOneByOrFail({ id: request.body.id });
         expect(storedRequest.formVersionId).toBe(current.formVersion.id);
+        const resumed = await client
+            .get(`/api/client/service-requests/${request.body.id}`)
+            .expect(200);
+        expect(resumed.body.form).toMatchObject({
+            id: current.formVersion.id,
+            version: 1,
+            status: 'retired',
+            supported: true,
+        });
+        expect(
+            (
+                resumed.body.form.schema.fields as Array<{
+                    key: string;
+                    label: string;
+                }>
+            ).find((field) => field.key === 'description')?.label,
+        ).not.toBe('Новое описание задачи');
+    });
+
+    it('keeps owner answers, snapshots and version coherent; rejects stale edits and preserves no-op versions', async () => {
+        const owner = await browser();
+        const draft = await owner
+            .post('/api/client/service-requests/drafts')
+            .send(completeDraft())
+            .expect(201);
+        const saved = await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: draft.body.version,
+                answers: {
+                    contactName: 'Новый контакт',
+                    phone: '+79990000001',
+                    city: 'Новый город',
+                    equipmentModel: 'Новая модель',
+                },
+            })
+            .expect(200);
+        expect(saved.body.version).toBe(draft.body.version + 1);
+        expect(saved.body.contactSnapshot).toMatchObject({
+            name: 'Новый контакт',
+            phone: '+79990000001',
+        });
+        expect(saved.body.locationSnapshot.city).toBe('Новый город');
+        expect(saved.body.equipmentSnapshot.model).toBe('Новая модель');
+        const noop = await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: saved.body.version,
+                answers: {},
+            })
+            .expect(200);
+        expect(noop.body.version).toBe(saved.body.version);
+        await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: draft.body.version,
+                answers: { contactName: 'Старое окно' },
+            })
+            .expect(409);
+        await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: saved.body.version,
+                answers: { contactName: 'Ответ' },
+                contactSnapshot: { name: 'Другой снимок' },
+            })
+            .expect(400);
+        const detail = await owner
+            .get(`/api/client/service-requests/${draft.body.id}`)
+            .expect(200);
+        expect(detail.headers['cache-control']).toBe('private, no-store');
+        expect(detail.body.request).toMatchObject({
+            version: saved.body.version,
+            answers: { contactName: 'Новый контакт' },
+            contactSnapshot: { name: 'Новый контакт' },
+        });
+        expect(detail.body.customerWorkflow.editDraft.allowed).toBe(true);
+        expect(detail.body.request).not.toHaveProperty('userId');
+        expect(detail.body.request).not.toHaveProperty('operatorComment');
+    });
+
+    it('rejects missing/cross origin owner commands and malformed uploads before body parsing', async () => {
+        const owner = await browser();
+        await owner
+            .post('/api/client/service-requests/drafts')
+            .unset('Origin')
+            .send(completeDraft())
+            .expect(403);
+        await owner
+            .post('/api/client/service-requests/drafts')
+            .set('Origin', 'https://foreign.example.test')
+            .send(completeDraft())
+            .expect(403);
+        const draft = await owner
+            .post('/api/client/service-requests/drafts')
+            .send(completeDraft())
+            .expect(201);
+        await owner
+            .post(
+                `/api/client/service-requests/drafts/${draft.body.id}/attachments`,
+            )
+            .unset('Origin')
+            .set('Content-Type', 'multipart/form-data; boundary=missing')
+            .send('broken')
+            .expect(403);
+        expect(await dataSource.getRepository(StoredFileEntity).count()).toBe(
+            0,
+        );
+        const foreign = await browser();
+        const forbidden = await foreign
+            .get(`/api/client/service-requests/${draft.body.id}`)
+            .expect(404);
+        const missing = await foreign
+            .get('/api/client/service-requests/2147483647')
+            .expect(404);
+        expect(forbidden.body.message).toBe(missing.body.message);
+    });
+
+    it('filters private and conditional form values and uses events rather than internal comments as history', async () => {
+        const owner = await browser();
+        const draft = await owner
+            .post('/api/client/service-requests/drafts')
+            .send(completeDraft())
+            .expect(201);
+        const row = await dataSource
+            .getRepository(ServiceRequestEntity)
+            .findOneByOrFail({ id: draft.body.id });
+        const form = await dataSource
+            .getRepository(ServiceFormVersionEntity)
+            .findOneByOrFail({ id: row.formVersionId });
+        form.schema.fields.push({
+            key: 'staffOnly',
+            type: 'text',
+            label: 'Hidden staff label',
+            customerVisible: false,
+        });
+        await dataSource.getRepository(ServiceFormVersionEntity).save(form);
+        row.answers = {
+            ...row.answers,
+            staffOnly: 'secret internal answer',
+            clientType: 'individual',
+        };
+        row.operatorComment = 'secret internal note';
+        await dataSource.getRepository(ServiceRequestEntity).save(row);
+        await dataSource.getRepository(ServiceRequestMessageEntity).save({
+            serviceRequestId: row.id,
+            authorType: 'staff',
+            visibility: 'internal',
+            text: 'secret staff message',
+        });
+        const detail = await owner
+            .get(`/api/client/service-requests/${row.id}`)
+            .expect(200);
+        expect(JSON.stringify(detail.body)).not.toContain('secret');
+        expect(JSON.stringify(detail.body.form)).not.toContain('staffOnly');
+        expect(detail.body.request.answers).not.toHaveProperty('organization');
+        expect(detail.body.events).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'draft_created' }),
+            ]),
+        );
     });
 
     it('creates, submits, and reads one request using session or bearer token', async () => {

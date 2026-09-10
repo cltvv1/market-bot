@@ -4,6 +4,7 @@ import {
     Controller,
     Delete,
     Get,
+    Header,
     Param,
     Patch,
     Post,
@@ -49,15 +50,17 @@ export class ServiceRequestsController {
     ) {}
 
     @Get('types')
+    @Header('Cache-Control', 'private, no-store')
     @ApiOperation({
         summary: 'List active service types and published form versions',
     })
     @RateLimit('public-read', 120, 60)
     getTypes() {
-        return this.serviceRequestsService.getTypesWithForms();
+        return this.serviceRequestsService.getWebTypesWithForms();
     }
 
     @Get()
+    @Header('Cache-Control', 'private, no-store')
     @ApiOperation({
         summary: 'List service requests owned by the current web session',
     })
@@ -67,6 +70,7 @@ export class ServiceRequestsController {
     }
 
     @Post('drafts')
+    @UseGuards(WebMutationOriginGuard)
     @ApiOperation({
         summary: 'Create or resume a server-side service request draft',
     })
@@ -79,6 +83,7 @@ export class ServiceRequestsController {
     }
 
     @Patch('drafts/:id')
+    @UseGuards(WebMutationOriginGuard)
     @ApiOperation({ summary: 'Partially update structured draft answers' })
     @RateLimit('public-form', 60, 600)
     updateDraft(
@@ -91,10 +96,12 @@ export class ServiceRequestsController {
             Number(params.id),
             body.answers,
             body.expectedVersion,
+            body,
         );
     }
 
     @Post('drafts/:id/submit')
+    @UseGuards(WebMutationOriginGuard)
     @ApiOperation({ summary: 'Validate and idempotently submit a draft' })
     @RateLimit('public-form', 20, 600)
     submitDraft(
@@ -112,7 +119,7 @@ export class ServiceRequestsController {
 
     @Post('drafts/:id/attachments')
     @ApiOperation({ summary: 'Upload a validated draft attachment' })
-    @UseGuards(DraftServiceRequestUploadGuard)
+    @UseGuards(WebMutationOriginGuard, DraftServiceRequestUploadGuard)
     @UseInterceptors(
         FileInterceptor(
             'file',
@@ -139,6 +146,7 @@ export class ServiceRequestsController {
     }
 
     @Delete('drafts/:id/attachments/:attachmentId')
+    @UseGuards(WebMutationOriginGuard)
     @ApiOperation({ summary: 'Remove an attachment before submit' })
     @RateLimit('public-form', 30, 600)
     removeAttachment(
@@ -154,6 +162,7 @@ export class ServiceRequestsController {
     }
 
     @Get(':id')
+    @Header('Cache-Control', 'private, no-store')
     @ApiOperation({
         summary: 'Read a request owned by the current web session',
     })
@@ -227,6 +236,7 @@ export class ServiceRequestsController {
     }
 
     @Post(':id/messages')
+    @UseGuards(WebMutationOriginGuard)
     @ApiOperation({ summary: 'Add a customer-visible message' })
     @RateLimit('public-form', 30, 600)
     addMessage(
@@ -243,7 +253,7 @@ export class ServiceRequestsController {
 
     @Post(':id/messages/attachments')
     @ApiOperation({ summary: 'Attach a file to the customer conversation' })
-    @UseGuards(MessageServiceRequestUploadGuard)
+    @UseGuards(WebMutationOriginGuard, MessageServiceRequestUploadGuard)
     @UseInterceptors(
         FileInterceptor(
             'file',
@@ -285,10 +295,14 @@ export class ServiceRequestsController {
                 Number(attachmentId),
             );
         response.setHeader('Content-Type', file.mimeType);
+        response.setHeader('Content-Length', file.sizeBytes);
+        response.setHeader('Cache-Control', 'private, no-store');
+        response.setHeader('X-Content-Type-Options', 'nosniff');
         response.setHeader(
             'Content-Disposition',
-            `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName || 'file')}`,
+            paymentProofContentDisposition(file.originalName || 'file'),
         );
+        stream.on('error', () => response.destroy());
         stream.pipe(response);
     }
 }

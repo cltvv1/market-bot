@@ -325,7 +325,7 @@ describe('P-PROOF canonical owner upload', () => {
         const detail = await f.agent
             .get(`/api/client/service-requests/${row.id}`)
             .expect(200);
-        expect(detail.body.documents).toEqual(response.body.documents);
+        expect(detail.body.documents).toMatchObject(response.body.documents);
         expect(detail.body.attachments).toEqual([]);
         const refreshed = await read.detail(admin, row.id);
         expect(

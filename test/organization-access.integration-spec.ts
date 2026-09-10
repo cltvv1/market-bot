@@ -58,6 +58,7 @@ describe('organization access approval', () => {
 
     async function browser() {
         const agent = request.agent(app.getHttpServer());
+        agent.set('Origin', 'http://localhost:5174');
         await agent
             .post('/api/client/session')
             .set('X-Forwarded-For', nextIp())
