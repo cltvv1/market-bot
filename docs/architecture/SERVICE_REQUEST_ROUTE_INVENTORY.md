@@ -1,6 +1,6 @@
 # Service request route inventory
 
-Updated for the FE-1B draft branch on 2026-09-03.
+Updated for P-PROOF after FE-1B on 2026-09-10 (implementation branch; not merged).
 
 `ServiceRequestsController` is the only owner of authenticated customer HTTP
 routes. `PublicServiceRequestsController` owns bearer-token status access.
@@ -22,6 +22,8 @@ current OutboundDelivery. Controllers do not implement a parallel state machine.
 | `POST` | `/api/client/service-requests/drafts/:id/attachments` | Add a validated draft attachment |
 | `DELETE` | `/api/client/service-requests/drafts/:id/attachments/:attachmentId` | Remove a draft attachment |
 | `GET` | `/api/client/service-requests/:id` | Read an owned request |
+| `POST` | `/api/client/service-requests/:id/payment-proof` | Owner-session canonical proof upload/replacement; same-origin, required multipart `expectedVersion`, strict PDF/JPEG/PNG/WebP, 20 MiB |
+| `GET` | `/api/client/service-requests/:id/payment-proof` | Owner-session download of the available current canonical proof only |
 | `POST` | `/api/client/service-requests/:id/messages` | Add a customer message |
 | `POST` | `/api/client/service-requests/:id/messages/attachments` | Add a message attachment |
 | `GET` | `/api/client/service-requests/:id/attachments/:attachmentId` | Download an owned customer-visible attachment |
@@ -35,7 +37,16 @@ current OutboundDelivery. Controllers do not implement a parallel state machine.
 | `POST` | `/api/public/service-requests/:token/messages/attachments` | Customer attachment |
 | `GET` | `/api/public/service-requests/:token/attachments/:attachmentId` | Customer-visible download |
 
-The display request number is not accepted as a token.
+The display request number is not accepted as a token. There is no public-token
+payment-proof endpoint. Public detail excludes proof attachments, document metadata
+and owner workflow. Both public and authenticated generic attachment downloads deny
+`payment_proof`; only the dedicated authenticated owner route serves the current proof.
+
+P-PROOF owner upload requires `waiting_payment` and an existing invoice pointer.
+Session, mutation origin and owner/state preflight run before Multer. A versioned,
+row-locked command atomically activates the pending file, replaces the proof
+attachment and canonical pointer, and records Event/Audit/activity/staff delivery
+intent. Upload never marks the request paid; staff verification remains mandatory.
 
 ## Admin routes
 

@@ -2,6 +2,7 @@ import { serviceButtons } from './keyboards/service.keyboard';
 import { TelegramUpdate } from './telegram.update';
 import { STALE_SERVICE_REQUEST_CALLBACK_MESSAGE } from 'src/inbound-commands/service-request-callback';
 import { StaleServiceRequestChannelCommandException } from 'src/service-requests/service-request-channel-workflow.service';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 describe('TelegramUpdate admin callbacks', () => {
     const registrations = {
@@ -180,6 +181,7 @@ describe('TelegramUpdate admin callbacks', () => {
     it('attaches a customer document to the latest request awaiting payment', async () => {
         serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue({
             id: 10,
+            version: 4,
         });
         jest.spyOn(global, 'fetch').mockResolvedValue(
             new Response(Buffer.from('%PDF-1.7 payment')),
@@ -211,6 +213,7 @@ describe('TelegramUpdate admin callbacks', () => {
             clientWorkflow.submitServiceRequestPaymentProof,
         ).toHaveBeenCalledWith(
             expect.objectContaining({ platform: 'telegram', chatId: '100' }),
+            { requestId: 10, expectedVersion: 4 },
             expect.objectContaining({
                 buffer: Buffer.from('%PDF-1.7 payment'),
                 fileName: 'payment.pdf',
@@ -221,6 +224,69 @@ describe('TelegramUpdate admin callbacks', () => {
 
         jest.restoreAllMocks();
     });
+
+    it.each([ConflictException, BadRequestException])(
+        'does not acknowledge a rejected payment proof as saved (%p)',
+        async (ErrorType) => {
+            const selected = { id: 10, version: 4 };
+            serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue(
+                selected,
+            );
+            jest.spyOn(global, 'fetch').mockImplementationOnce(() => {
+                selected.id = 99;
+                selected.version = 7;
+                return Promise.resolve(new Response(pdfBytes));
+            });
+            const pdfBytes = Buffer.from('%PDF-1.4 Synthetic');
+            clientWorkflow.submitServiceRequestPaymentProof.mockRejectedValueOnce(
+                new ErrorType('Synthetic rejection'),
+            );
+            const mediaCtx = {
+                update: { update_id: 1100 },
+                from: { id: 100 },
+                chat: { id: 100 },
+                message: {
+                    document: {
+                        file_id: 'proof',
+                        file_unique_id: 'unique-proof',
+                        file_name: 'proof.pdf',
+                        mime_type: 'application/pdf',
+                    },
+                },
+                telegram: {
+                    getFileLink: jest
+                        .fn()
+                        .mockResolvedValue(new URL('https://media.test/proof')),
+                },
+                reply: jest.fn().mockResolvedValue(undefined),
+            };
+            try {
+                await update.handleMessage(mediaCtx as never);
+                expect(
+                    serviceRequests.getLatestWaitingPaymentForClient,
+                ).toHaveBeenCalledTimes(1);
+                expect(
+                    clientWorkflow.submitServiceRequestPaymentProof,
+                ).toHaveBeenCalledWith(
+                    expect.anything(),
+                    { requestId: 10, expectedVersion: 4 },
+                    expect.anything(),
+                );
+                expect(mediaCtx.reply).toHaveBeenCalledTimes(1);
+                expect(mediaCtx.reply).toHaveBeenCalledWith(
+                    expect.stringMatching(
+                        ErrorType === ConflictException
+                            ? /Заявка изменилась/
+                            : /Не удалось принять файл/,
+                    ),
+                    expect.anything(),
+                );
+                expect(tickets.getActiveTicket).not.toHaveBeenCalled();
+            } finally {
+                jest.restoreAllMocks();
+            }
+        },
+    );
 
     it('rejects a replayed service-request callback without changing dialog state', async () => {
         serviceRequests.answer.mockRejectedValue(

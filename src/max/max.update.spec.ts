@@ -5,6 +5,7 @@ import {
     registerMaxBotCommands,
 } from './max.update';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 describe('MaxUpdate media handling', () => {
     const enqueueOperatorMedia = jest.fn(
@@ -112,6 +113,7 @@ describe('MaxUpdate media handling', () => {
     it('attaches customer media to the latest request awaiting payment', async () => {
         serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue({
             id: 10,
+            version: 4,
         });
 
         await update.handleMaxMedia(ctx, 'IDLE', {
@@ -125,13 +127,58 @@ describe('MaxUpdate media handling', () => {
             clientWorkflow.submitServiceRequestPaymentProof,
         ).toHaveBeenCalledWith(
             expect.objectContaining({ platform: 'max', chatId: '55' }),
+            { requestId: 10, expectedVersion: 4 },
             expect.objectContaining({
                 buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
-                fileName: 'image.jpg',
+                fileName: undefined,
             }),
         );
         expect(tickets.getActiveTicket).not.toHaveBeenCalled();
     });
+
+    it.each([ConflictException, BadRequestException])(
+        'does not acknowledge a rejected payment proof as saved (%p)',
+        async (ErrorType) => {
+            const selected = { id: 10, version: 4 };
+            serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue(
+                selected,
+            );
+            jest.mocked(global.fetch).mockImplementationOnce(() => {
+                selected.id = 99;
+                selected.version = 7;
+                return Promise.resolve(
+                    new Response(Uint8Array.from([255, 216, 255, 0])),
+                );
+            });
+            clientWorkflow.submitServiceRequestPaymentProof.mockRejectedValueOnce(
+                new ErrorType('Synthetic rejection'),
+            );
+            await update.handleMaxMedia(ctx, 'IDLE', {
+                messageType: 'image',
+                fileId: 'synthetic-proof',
+                externalUrl: 'https://media.test/proof',
+            });
+            expect(
+                serviceRequests.getLatestWaitingPaymentForClient,
+            ).toHaveBeenCalledTimes(1);
+            expect(
+                clientWorkflow.submitServiceRequestPaymentProof,
+            ).toHaveBeenCalledWith(
+                expect.anything(),
+                { requestId: 10, expectedVersion: 4 },
+                expect.anything(),
+            );
+            expect(ctx.reply).toHaveBeenCalledTimes(1);
+            expect(ctx.reply).toHaveBeenCalledWith(
+                expect.stringMatching(
+                    ErrorType === ConflictException
+                        ? /Заявка изменилась/
+                        : /Не удалось принять файл/,
+                ),
+            );
+            expect(tickets.getActiveTicket).not.toHaveBeenCalled();
+        },
+    );
 
     it('routes the MAX OFD callback to the existing operator ticket workflow', async () => {
         expect(MAX_OFD_CALLBACK).toBe('wantToOfd');

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { CustomerActivityEntity, CustomerActivityType } from './entities/customer-activity.entity';
+import { type EntityManager, Repository } from 'typeorm';
+import {
+    CustomerActivityEntity,
+    CustomerActivityType,
+} from './entities/customer-activity.entity';
 import type { UserPlatform } from 'src/users/entities/user.entity';
 
 interface AddActivityInput {
@@ -22,21 +25,26 @@ export class CustomerActivityService {
     constructor(
         @InjectRepository(CustomerActivityEntity)
         private readonly activityRepo: Repository<CustomerActivityEntity>,
-    ) { }
+    ) {}
 
-    add(input: AddActivityInput) {
-        return this.activityRepo.save(this.activityRepo.create({
-            userId: input.userId,
-            organizationId: input.organizationId,
-            platform: input.platform,
-            chatId: input.chatId,
-            type: input.type,
-            title: input.title ?? null,
-            description: input.description ?? null,
-            ticketId: input.ticketId,
-            serviceRequestId: input.serviceRequestId,
-            payload: input.payload ?? null,
-        }));
+    add(input: AddActivityInput, manager?: EntityManager) {
+        const repository = manager
+            ? manager.getRepository(CustomerActivityEntity)
+            : this.activityRepo;
+        return repository.save(
+            repository.create({
+                userId: input.userId,
+                organizationId: input.organizationId,
+                platform: input.platform,
+                chatId: input.chatId,
+                type: input.type,
+                title: input.title ?? null,
+                description: input.description ?? null,
+                ticketId: input.ticketId,
+                serviceRequestId: input.serviceRequestId,
+                payload: input.payload ?? null,
+            }),
+        );
     }
 
     listForContext(userId?: number, organizationId?: number) {

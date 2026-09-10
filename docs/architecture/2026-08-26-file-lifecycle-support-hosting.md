@@ -31,7 +31,7 @@ columns such as old `fileId` values are not `StoredFile` identities.
 | Registration customer evidence/photo | `registration-evidence` / `registration-photo` policy at ingress | `registration_evidence.storedFileId` | Attached after requirement checks; failed attachment is logically deleted. |
 | Ticket customer/staff media | `ticket-image`, `ticket-document`, `ticket-audio`, `ticket-video` | `ticket_messages.storedFileId` | Attached in the ticket transaction; failed/no-op message is logically deleted. |
 | Service invoice | `service-invoice` | `service_requests.invoiceStoredFileId` and attachment/message relations | Attached by the invoice workflow; failed attachment is logically deleted. |
-| Customer payment proof | `payment-proof` | `service_requests.paymentProofFileId` and attachment/message relations | Attached by the service workflow; replaced/failed files are logically deleted. |
+| Customer payment proof | `payment-proof` | `service_requests.paymentProofFileId` and current `service_request_attachments.storedFileId` | P-PROOF branch: shared strict web/Telegram/MAX command; pending file activated and attached transactionally; replacement retires the old file only after commit; failure rejects pending. No proof message is created. |
 | Generated ATOL consent | `atol-consent` | `service_requests.generatedConsentFileId` and attachment/message relations | Attached after generation; cancellation/replacement can logically delete it. |
 | Signed ATOL consent | `signed-document` | `service_requests.signedConsentFileId` and attachment/message relations | Attached after customer upload; failed attachment is logically deleted. |
 | General service upload | `service-attachment` | `service_request_attachments.storedFileId` or `service_request_messages.storedFileId` | Attached after domain authorization; removal/failure logically deletes it. |
@@ -39,6 +39,15 @@ columns such as old `fileId` values are not `StoredFile` identities.
 | Hosted Support upload | `support-resource` | `support_resource_versions.storedFileId` | Created pending, then attached and activated transactionally; loser becomes rejected. |
 | Order invoice | `order-invoice` | `order_documents.storedFileId` | Created pending and attached transactionally; all current and superseded revisions remain referenced. |
 | Order customer payment proof | `order-payment-proof` | `order_documents.storedFileId` | Created pending and attached transactionally; every proof revision remains active and referenced. |
+
+P-PROOF addendum (implementation branch, 2026-09-10): ServiceRequest proof owners
+remain the existing FK surfaces, with no migration. Row locks serialize replacement
+and pending activation. Reference-aware reconciliation/purge still protects the
+current file. A failed upload becomes `rejected`; failed cleanup and crash gaps are
+handled by existing lifecycle reconciliation and operator-run cleanup, not a new
+scheduler. Retired proofs retain bytes for the existing grace period. Public bearer
+access cannot list or download canonical proofs, including through generic attachment
+routes; owner-session download verifies the current pointer, provenance and metadata.
 
 Every current modeled `StoredFile` owner is protected by a PostgreSQL FK. The
 catalog inspector discovers those FKs dynamically, including tickets,

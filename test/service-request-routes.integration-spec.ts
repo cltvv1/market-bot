@@ -117,6 +117,8 @@ describe('service-request HTTP route ownership', () => {
             for (const key of [
                 'GET /api/client/service-requests/types',
                 'GET /api/client/service-requests',
+                'POST /api/client/service-requests/:id/payment-proof',
+                'GET /api/client/service-requests/:id/payment-proof',
                 'POST /api/client/service-requests/drafts',
                 'PATCH /api/client/service-requests/drafts/:id',
                 'POST /api/client/service-requests/drafts/:id/submit',
@@ -130,6 +132,10 @@ describe('service-request HTTP route ownership', () => {
                 ]);
             }
             for (const removedRoute of [
+                'POST /api/public/service-requests/:token/payment-proof',
+                'GET /api/public/service-requests/:token/payment-proof',
+                'GET /api/client/files/:id',
+                'GET /api/public/files/:id',
                 'POST /api/client/service-requests/start',
                 'POST /api/client/service-requests/:id/answers',
                 'POST /api/client/service-requests/:id/confirm-price',

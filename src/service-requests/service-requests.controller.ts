@@ -19,12 +19,17 @@ import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ClientIdParamDto } from 'src/client/dto/client-api.dto';
 import { CurrentWebSession } from 'src/web-session/web-session.decorators';
 import { WebSessionGuard } from 'src/web-session/web-session.guard';
+import { WebMutationOriginGuard } from 'src/web-session/web-mutation-origin.guard';
+import { ServiceRequestPaymentProofService } from './service-request-payment-proof.service';
+import { PaymentProofServiceRequestUploadGuard } from './service-request-payment-proof-upload.guard';
+import { paymentProofContentDisposition } from './service-request-payment-proof';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import { ServiceRequestsService } from './service-requests.service';
 import { RateLimit } from 'src/security/rate-limit';
 import {
     CreateServiceRequestDraftDto,
     ServiceRequestMessageDto,
+    ServiceRequestPaymentProofDto,
     SubmitServiceRequestDto,
     UpdateServiceRequestDraftDto,
 } from './dto/canonical-service-request.dto';
@@ -40,6 +45,7 @@ import {
 export class ServiceRequestsController {
     constructor(
         private readonly serviceRequestsService: ServiceRequestsService,
+        private readonly paymentProofs: ServiceRequestPaymentProofService,
     ) {}
 
     @Get('types')
@@ -160,6 +166,64 @@ export class ServiceRequestsController {
             session,
             Number(params.id),
         );
+    }
+
+    @Post(':id/payment-proof')
+    @ApiOperation({
+        summary:
+            'Upload or replace the owned current payment proof; payment remains unconfirmed',
+    })
+    @UseGuards(WebMutationOriginGuard, PaymentProofServiceRequestUploadGuard)
+    @UseInterceptors(
+        FileInterceptor('file', multipartOptionsForPurpose('payment-proof', 1)),
+    )
+    @RateLimit('public-payment-proof', 10, 600)
+    uploadPaymentProof(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: ServiceRequestPaymentProofDto,
+        @UploadedFile()
+        file?: { buffer: Buffer; originalname?: string; mimetype?: string },
+    ) {
+        if (!file)
+            throw new BadRequestException('Payment proof file is required');
+        return this.paymentProofs.attachForWeb(
+            session,
+            Number(params.id),
+            body.expectedVersion,
+            {
+                buffer: file.buffer,
+                originalName: file.originalname,
+                mimeType: file.mimetype,
+            },
+        );
+    }
+
+    @Get(':id/payment-proof')
+    @ApiOperation({
+        summary:
+            'Download only the current canonical payment proof as its authenticated owner',
+    })
+    @RateLimit('public-sensitive-read', 60, 60)
+    async downloadPaymentProof(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param('id') id: string,
+        @Res() response: Response,
+    ) {
+        const { file, stream } = await this.paymentProofs.openForWeb(
+            session,
+            Number(id),
+        );
+        response.setHeader('Content-Type', file.mimeType);
+        response.setHeader('Content-Length', file.sizeBytes);
+        response.setHeader(
+            'Content-Disposition',
+            paymentProofContentDisposition(file.originalName),
+        );
+        response.setHeader('Cache-Control', 'private, no-store');
+        response.setHeader('X-Content-Type-Options', 'nosniff');
+        stream.on('error', () => response.destroy());
+        stream.pipe(response);
     }
 
     @Post(':id/messages')

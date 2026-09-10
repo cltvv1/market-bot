@@ -1,5 +1,5 @@
 import { Context, Markup } from 'telegraf';
-import { Optional } from '@nestjs/common';
+import { HttpException, Optional } from '@nestjs/common';
 import { removeKeyboard } from 'telegraf/markup';
 import { TG_TEXTS } from 'src/texts/telegram.texts';
 import { UsersService } from 'src/users/users.service';
@@ -253,16 +253,34 @@ export class TelegramUpdate {
                     );
                     return;
                 }
-                await this.clientWorkflow.submitServiceRequestPaymentProof(
-                    this.toClientIdentity(ctx),
-                    {
-                        buffer: await this.downloadMediaBuffer(media),
-                        fileName:
-                            media.fileName ||
-                            `payment_${waitingPayment.id}.${media.messageType === 'image' ? 'jpg' : 'pdf'}`,
-                        mimeType: media.mimeType,
-                    },
-                );
+                const target = {
+                    requestId: waitingPayment.id,
+                    expectedVersion: waitingPayment.version,
+                };
+                try {
+                    await this.clientWorkflow.submitServiceRequestPaymentProof(
+                        this.toClientIdentity(ctx),
+                        target,
+                        {
+                            buffer: await this.downloadMediaBuffer(media),
+                            fileName: media.fileName,
+                            mimeType: media.mimeType,
+                        },
+                    );
+                } catch (error) {
+                    if (
+                        !(error instanceof HttpException) ||
+                        ![400, 404, 409, 413].includes(error.getStatus())
+                    )
+                        throw error;
+                    await ctx.reply(
+                        error.getStatus() === 409 || error.getStatus() === 404
+                            ? 'Заявка изменилась. Проверьте актуальный счёт и отправьте платёжное поручение повторно.'
+                            : 'Не удалось принять файл. Отправьте PDF, JPEG, PNG или WebP размером до 20 МБ.',
+                        mainMenuButton(),
+                    );
+                    return;
+                }
                 await ctx.reply(
                     'Платежное поручение получено. Оператор проверит документ и подтвердит оплату.',
                     mainMenuButton(),

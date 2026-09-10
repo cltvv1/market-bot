@@ -25,6 +25,7 @@ import { ServiceTypeEntity } from '../src/service-requests/entities/service-type
 import { ServiceFormService } from '../src/service-requests/service-form.service';
 import { ServiceRequestChannelWorkflowService } from '../src/service-requests/service-request-channel-workflow.service';
 import { ServiceRequestsService } from '../src/service-requests/service-requests.service';
+import { ServiceRequestPaymentProofService } from '../src/service-requests/service-request-payment-proof.service';
 import { TicketMessageEntity } from '../src/tickets/entities/ticket-message.entity';
 import { TicketEntity } from '../src/tickets/entities/ticket.entity';
 import { TicketsService } from '../src/tickets/tickets.service';
@@ -90,6 +91,26 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     );
     const files = {
         saveBuffer: saveStoredFile,
+        savePendingBuffer: jest.fn(
+            (input: Parameters<FilesService['savePendingBuffer']>[0]) =>
+                dataSource.getRepository(StoredFileEntity).save({
+                    provider: 'local',
+                    objectKey: `characterization/${++storedFileSequence}/proof.pdf`,
+                    originalName: input.originalName,
+                    mimeType: input.mimeType,
+                    sizeBytes: String(input.buffer.length),
+                    sha256: 'b'.repeat(64),
+                    status: 'pending',
+                    createdByCustomerId: input.createdByCustomerId,
+                    metadata: { purpose: input.purpose, ...input.metadata },
+                }),
+        ),
+        exists: jest.fn().mockResolvedValue(true),
+        rejectPendingById: jest.fn((id: number) =>
+            dataSource
+                .getRepository(StoredFileEntity)
+                .update(id, { status: 'rejected' }),
+        ),
         logicalDelete: jest.fn().mockResolvedValue(undefined),
     };
     const readiness = {
@@ -229,6 +250,13 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             dataSource,
             outbound,
             channelWorkflow,
+            new ServiceRequestPaymentProofService(
+                dataSource,
+                files as unknown as FilesService,
+                auditService,
+                activityService,
+                notifications as unknown as AdminNotificationsService,
+            ),
         );
     });
 
@@ -557,16 +585,20 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             ),
         ).rejects.toThrow('Payment proof must be attached');
 
+        const proofTarget =
+            await serviceRequestsService.getLatestWaitingPaymentForClient(
+                requestIdentity,
+            );
         // prettier-ignore
         const paymentProof =
-            await serviceRequestsService.attachPaymentProof(requestIdentity, {
+            await serviceRequestsService.attachPaymentProof(requestIdentity, { requestId: proofTarget!.id, expectedVersion: proofTarget!.version }, {
                 buffer: Buffer.from('%PDF-1.7 payment'),
-                fileName: 'payment.pdf',
+                originalName: 'payment.pdf',
                 mimeType: 'application/pdf',
             });
         expect(paymentProof?.request.id).toBe(started.request.id);
         expect(paymentProof?.request.status).toBe('waiting_payment');
-        expect(typeof paymentProof?.request.paymentProofFileId).toBe('number');
+        expect(paymentProof.documents.paymentProof.downloadable).toBe(true);
 
         const paid = await serviceRequestsService.transitionByStaff(
             operator.id,

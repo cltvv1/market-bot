@@ -33,6 +33,7 @@ import { transitionServiceRequest } from './service-request-status';
 import { defaultServiceTypes } from './service-request.flows';
 import { OutboundDeliveriesService } from 'src/outbound-deliveries/outbound-deliveries.service';
 import { ServiceRequestChannelWorkflowService } from './service-request-channel-workflow.service';
+import { ServiceRequestPaymentProofService } from './service-request-payment-proof.service';
 
 @Injectable()
 export class ServiceRequestsService {
@@ -57,6 +58,7 @@ export class ServiceRequestsService {
         private readonly dataSource: DataSource,
         private readonly outbound: OutboundDeliveriesService,
         private readonly channelWorkflow: ServiceRequestChannelWorkflowService,
+        private readonly paymentProofs: ServiceRequestPaymentProofService,
     ) {}
 
     getRequest(
@@ -135,10 +137,10 @@ export class ServiceRequestsService {
 
     attachPaymentProof(
         ...args: Parameters<
-            ServiceRequestChannelWorkflowService['attachPaymentProof']
+            ServiceRequestPaymentProofService['attachForChannel']
         >
     ) {
-        return this.channelWorkflow.attachPaymentProof(...args);
+        return this.paymentProofs.attachForChannel(...args);
     }
 
     answerLatestDraft(
@@ -446,7 +448,12 @@ export class ServiceRequestsService {
     }
 
     async getForWeb(session: WebSessionPrincipal, id: number) {
-        return this.details(await this.requireOwnedRequest(session.userId, id));
+        return {
+            ...(await this.details(
+                await this.requireOwnedRequest(session.userId, id),
+            )),
+            ...(await this.paymentProofs.ownerView(session, id)),
+        };
     }
 
     async getByPublicToken(token: string) {
@@ -998,7 +1005,7 @@ export class ServiceRequestsService {
                 customerVisible: true,
             },
         });
-        if (!attachment)
+        if (!attachment || attachment.kind === 'payment_proof')
             throw new NotFoundException('Attachment was not found');
         return this.files.open(attachment.storedFileId);
     }
@@ -1136,9 +1143,11 @@ export class ServiceRequestsService {
                       })),
                   ]
                 : events,
-            attachments: attachments.map((item) =>
-                this.attachmentView(item, item.storedFile),
-            ),
+            attachments: attachments
+                .filter(
+                    (item) => includeInternal || item.kind !== 'payment_proof',
+                )
+                .map((item) => this.attachmentView(item, item.storedFile)),
             ...(includeInternal ? { deliveries } : {}),
         };
     }

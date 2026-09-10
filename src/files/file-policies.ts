@@ -112,7 +112,9 @@ export const FILE_POLICIES: Record<FilePurpose, FilePolicy> = {
         ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
         ['.pdf', '.jpg', '.jpeg', '.png', '.webp'],
         false,
+        true,
         false,
+        true,
     ),
     'service-attachment': policy(
         20 * MB,

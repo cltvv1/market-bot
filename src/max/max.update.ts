@@ -1,4 +1,5 @@
 import {
+    HttpException,
     Inject,
     Injectable,
     Logger,
@@ -1238,20 +1239,38 @@ export class MaxUpdate implements OnModuleInit, OnModuleDestroy {
                     );
                     return;
                 }
-                const storedMedia = await materializeMaxMedia(
-                    media,
-                    this.filesService.getPolicy('payment-proof').maxBytes,
-                );
-                await this.clientWorkflow.submitServiceRequestPaymentProof(
-                    this.toClientIdentity(ctx),
-                    {
-                        buffer: storedMedia.buffer!,
-                        fileName:
-                            storedMedia.fileName ||
-                            `payment_${waitingPayment.id}.${media.messageType === 'image' ? 'jpg' : 'pdf'}`,
-                        mimeType: storedMedia.mimeType,
-                    },
-                );
+                const target = {
+                    requestId: waitingPayment.id,
+                    expectedVersion: waitingPayment.version,
+                };
+                try {
+                    const storedMedia = await materializeMaxMedia(
+                        media,
+                        this.filesService.getPolicy('payment-proof').maxBytes,
+                    );
+                    await this.clientWorkflow.submitServiceRequestPaymentProof(
+                        this.toClientIdentity(ctx),
+                        target,
+                        {
+                            buffer: storedMedia.buffer!,
+                            fileName: media.fileName,
+                            mimeType: media.mimeType,
+                        },
+                    );
+                } catch (error) {
+                    if (
+                        !(error instanceof HttpException) ||
+                        ![400, 404, 409, 413].includes(error.getStatus())
+                    )
+                        throw error;
+                    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+                    await ctx.reply(
+                        error.getStatus() === 409 || error.getStatus() === 404
+                            ? 'Заявка изменилась. Проверьте актуальный счёт и отправьте платёжное поручение повторно.'
+                            : 'Не удалось принять файл. Отправьте PDF, JPEG, PNG или WebP размером до 20 МБ.',
+                    );
+                    return;
+                }
                 // eslint-disable-next-line @typescript-eslint/no-unsafe-call
                 await ctx.reply(
                     'Платежное поручение получено. Оператор проверит документ и подтвердит оплату.',

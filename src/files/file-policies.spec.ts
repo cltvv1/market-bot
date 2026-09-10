@@ -49,10 +49,10 @@ describe('file policies', () => {
     // prettier-ignore
     it('accepts PDF and image payment proofs', () => {
         expect(
-            assertFilePolicy('payment-proof', pdf, 'application/pdf').mime,
+            assertFilePolicy('payment-proof', pdf, 'application/pdf', false, 'proof.pdf').mime,
         ).toBe('application/pdf');
         expect(
-            assertFilePolicy('payment-proof', jpeg, 'image/jpeg').mime,
+            assertFilePolicy('payment-proof', jpeg, 'image/jpeg', false, 'proof.jpg').mime,
         ).toBe('image/jpeg');
     });
 
