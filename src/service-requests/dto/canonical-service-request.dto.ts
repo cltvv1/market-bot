@@ -78,6 +78,26 @@ export class CreateServiceRequestDraftDto {
 }
 
 export class UpdateServiceRequestDraftDto {
+    @ApiPropertyOptional({ type: Object })
+    @IsOptional()
+    @IsObject()
+    contactSnapshot?: Record<string, unknown>;
+
+    @ApiPropertyOptional({ type: Object })
+    @IsOptional()
+    @IsObject()
+    organizationSnapshot?: Record<string, unknown>;
+
+    @ApiPropertyOptional({ type: Object })
+    @IsOptional()
+    @IsObject()
+    locationSnapshot?: Record<string, unknown>;
+
+    @ApiPropertyOptional({ type: Object })
+    @IsOptional()
+    @IsObject()
+    equipmentSnapshot?: Record<string, unknown>;
+
     @ApiProperty({
         type: Object,
         description: 'Partial structured form values',
@@ -89,6 +109,7 @@ export class UpdateServiceRequestDraftDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(2_147_483_647)
     expectedVersion: number;
 }
 

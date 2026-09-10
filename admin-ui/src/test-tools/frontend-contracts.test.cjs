@@ -50,11 +50,11 @@ test('permission-filtered navigation, disabled domains, sales and engineer separ
     assert.match(read('admin-ui/src/app/AdminApp.tsx'), /admin-nav-disabled/);
     assert.match(read('admin-ui/src/app/AdminApp.tsx'), /aria-disabled="true"/);
 });
-test('client reference stays dev-server-only and production client is unchanged', () => {
-    assert.match(read('client-ui/src/main.tsx'), /import\.meta\.env\.DEV/);
-    assert.match(read('client-ui/src/main.tsx'), /REFERENCE_DEV_SERVER/);
-    assert.match(read('client-ui/vite.config.ts'), /command === 'serve'/);
-    if (fs.existsSync('client-ui/dist/site.js')) assert.doesNotMatch(read('client-ui/dist/site.js'), /FE-1A|reference-client|ReferenceClientApp/);
+test('FE-1C promotes client service without restoring duplicate reference dispatch', () => {
+    assert.doesNotMatch(read('client-ui/src/main.tsx'), /ReferenceClientApp|REFERENCE_DEV_SERVER/);
+    assert.equal(fs.existsSync('client-ui/src/reference/ReferenceClientApp.tsx'), false);
+    assert.match(read('client-ui/src/App.tsx'), /path="service\/requests\/:id"/);
+    if (fs.existsSync('client-ui/dist/site.js')) assert.doesNotMatch(read('client-ui/dist/site.js'), /ReferenceClientApp/);
 });
 test('new CSS is scoped; no green palette tokens or client CSS imports', () => {
     for (const dir of ['admin-ui/src/app','admin-ui/src/features/service-requests']) for (const file of fs.readdirSync(dir)) {

@@ -1,5 +1,11 @@
 # FE-1A Service reference review
 
+FE-1C branch addendum (2026-09-10): the approved client reference is now promoted
+to normal production Service routes. Duplicate client reference runtime/styles
+are removed or moved; `/site/reference/service` redirects to `/site/service`.
+Historical approval/screenshots below remain evidence, not a second maintained
+runtime. See [FE-1C report](2026-09-10-client-service-production-migration.md).
+
 FE-1B branch update: the approved admin reference has been promoted/replaced by
 the [production admin workspace](2026-09-03-admin-shell-service-production-migration.md).
 Its duplicate runtime and admin reference-only tools were removed in that branch.

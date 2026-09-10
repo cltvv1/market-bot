@@ -167,6 +167,16 @@ localStorage. Direct detail entry falls back to the default queue.
 | Registration auth ordering and service bearer security: SECURITY_BLOCKER | `RegistrationReadinessService.clientDetails` lazy initialization before owner check; bearer lifecycle findings retained in PSR-1 | Broader production rollout remains constrained | Not isolated reference; production gates remain | Existing SEC follow-up, no backend fixes here |
 | New queue, Redis, Task table, cross-domain state machine: NOT_REQUIRED | Existing domain APIs cover the reference read slice | Unnecessary infrastructure would expand scope | No | None |
 
+## FE-1C implementation addendum (2026-09-10)
+
+On the FE-1C branch, the approved client Service reference is promoted into normal
+routes with owner drafts/list/detail, messages, invoice and P-PROOF. The web proof
+UI_NOT_CONNECTED gap above is resolved for current-browser owners, not public
+tokens. Supporting read/snapshot/origin additions are bounded to ServiceRequest.
+Identity, registration resume and other domains remain separate. Historical
+evidence above describes its original checkpoint, not current main.
+See [FE-1C implementation and acceptance](2026-09-10-client-service-production-migration.md).
+
 ## Migration decision
 
 The approved reference direction is the foundation for a separate FE-1B package.

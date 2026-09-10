@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { INestApplication } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { getBotToken } from 'nestjs-telegraf';
 import request from 'supertest';
@@ -76,6 +77,7 @@ describe('canonical service requests', () => {
 
     async function browser() {
         const agent = request.agent(app.getHttpServer());
+        agent.set('Origin', 'http://localhost:5174');
         agent.set('X-Forwarded-For', `10.80.0.${++ip}`);
         await agent.post('/api/client/session').send({}).expect(201);
         return agent;
@@ -131,6 +133,109 @@ describe('canonical service requests', () => {
             consent: true,
         },
     });
+
+    const privateAnswers = {
+        staffOnly: 'synthetic-private-answer',
+        dependentStaff: 'synthetic-private-dependent',
+        transitiveStaff: 'synthetic-private-transitive',
+    };
+
+    function expectPrivateValuesAbsent(body: unknown) {
+        const json = JSON.stringify(body);
+        for (const [key, value] of Object.entries(privateAnswers)) {
+            expect(json.includes(key)).toBe(false);
+            expect(json.includes(value)).toBe(false);
+        }
+        for (const marker of [
+            'unknownAnswer',
+            'synthetic-unknown-answer',
+            'synthetic-internal-comment',
+            'synthetic-internal-message',
+        ])
+            expect(json.includes(marker)).toBe(false);
+    }
+
+    async function privateDraftFixture() {
+        const owner = await browser();
+        const draft = await owner
+            .post('/api/client/service-requests/drafts')
+            .send(completeDraft())
+            .expect(201);
+        const repository = dataSource.getRepository(ServiceRequestEntity);
+        const row = await repository.findOneByOrFail({ id: draft.body.id });
+        const versions = dataSource.getRepository(ServiceFormVersionEntity);
+        const form = await versions.findOneByOrFail({ id: row.formVersionId });
+        // Test-only V1 fixture: domain-valid staff values must survive serialization.
+        form.schema.fields.push(
+            {
+                key: 'staffOnly',
+                type: 'text',
+                label: 'Private',
+                customerVisible: false,
+            },
+            {
+                key: 'transitiveStaff',
+                type: 'text',
+                label: 'Transitive',
+                condition: {
+                    field: 'dependentStaff',
+                    equals: privateAnswers.dependentStaff,
+                },
+            },
+            {
+                key: 'dependentStaff',
+                type: 'text',
+                label: 'Dependent',
+                condition: {
+                    field: 'staffOnly',
+                    equals: privateAnswers.staffOnly,
+                },
+            },
+            { key: 'publicChoice', type: 'text', label: 'Choice' },
+            {
+                key: 'publicConditional',
+                type: 'text',
+                label: 'Conditional',
+                condition: { field: 'publicChoice', equals: 'yes' },
+            },
+            {
+                key: 'unmatchedConditional',
+                type: 'text',
+                label: 'Unmatched',
+                condition: { field: 'publicChoice', equals: 'no' },
+            },
+            { key: 'visibleInV1', type: 'text', label: 'Pinned public value' },
+        );
+        await versions.save(form);
+        row.answers = {
+            ...row.answers,
+            ...privateAnswers,
+            publicChoice: 'yes',
+            publicConditional: 'synthetic-public-conditional',
+            unmatchedConditional: 'synthetic-unmatched-conditional',
+            visibleInV1: 'synthetic-public-v1',
+        };
+        row.operatorComment = 'synthetic-internal-comment';
+        await repository.save(row);
+        await dataSource.getRepository(ServiceRequestMessageEntity).save({
+            serviceRequestId: row.id,
+            authorType: 'staff',
+            visibility: 'internal',
+            text: 'synthetic-internal-message',
+        });
+        const type = await dataSource
+            .getRepository(ServiceTypeEntity)
+            .findOneByOrFail({ code: 'firmware_update' });
+        const v2 = await forms.createDraftVersion(type, {
+            ...form.schema,
+            fields: form.schema.fields.map((field) => ({
+                ...field,
+                customerVisible: field.key !== 'visibleInV1',
+            })),
+        });
+        await forms.publishVersion(v2.id);
+        return { owner, row, form };
+    }
 
     it('publishes a versioned server form', async () => {
         const client = await browser();
@@ -196,6 +301,313 @@ describe('canonical service requests', () => {
             .getRepository(ServiceRequestEntity)
             .findOneByOrFail({ id: request.body.id });
         expect(storedRequest.formVersionId).toBe(current.formVersion.id);
+        const resumed = await client
+            .get(`/api/client/service-requests/${request.body.id}`)
+            .expect(200);
+        expect(resumed.body.form).toMatchObject({
+            id: current.formVersion.id,
+            version: 1,
+            status: 'retired',
+            supported: true,
+        });
+        expect(
+            (
+                resumed.body.form.schema.fields as Array<{
+                    key: string;
+                    label: string;
+                }>
+            ).find((field) => field.key === 'description')?.label,
+        ).not.toBe('Новое описание задачи');
+    });
+
+    it('keeps owner answers, snapshots and version coherent; rejects stale edits and preserves no-op versions', async () => {
+        const owner = await browser();
+        const draft = await owner
+            .post('/api/client/service-requests/drafts')
+            .send(completeDraft())
+            .expect(201);
+        const saved = await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: draft.body.version,
+                answers: {
+                    contactName: 'Новый контакт',
+                    phone: '+79990000001',
+                    city: 'Новый город',
+                    equipmentModel: 'Новая модель',
+                },
+            })
+            .expect(200);
+        expect(saved.body.version).toBe(draft.body.version + 1);
+        expect(saved.body.contactSnapshot).toMatchObject({
+            name: 'Новый контакт',
+            phone: '+79990000001',
+        });
+        expect(saved.body.locationSnapshot.city).toBe('Новый город');
+        expect(saved.body.equipmentSnapshot.model).toBe('Новая модель');
+        const noop = await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: saved.body.version,
+                answers: {},
+            })
+            .expect(200);
+        expect(noop.body.version).toBe(saved.body.version);
+        await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: draft.body.version,
+                answers: { contactName: 'Старое окно' },
+            })
+            .expect(409);
+        await owner
+            .patch(`/api/client/service-requests/drafts/${draft.body.id}`)
+            .send({
+                expectedVersion: saved.body.version,
+                answers: { contactName: 'Ответ' },
+                contactSnapshot: { name: 'Другой снимок' },
+            })
+            .expect(400);
+        const detail = await owner
+            .get(`/api/client/service-requests/${draft.body.id}`)
+            .expect(200);
+        expect(detail.headers['cache-control']).toBe('private, no-store');
+        expect(detail.body.request).toMatchObject({
+            version: saved.body.version,
+            answers: { contactName: 'Новый контакт' },
+            contactSnapshot: { name: 'Новый контакт' },
+        });
+        expect(detail.body.customerWorkflow.editDraft.allowed).toBe(true);
+        expect(detail.body.request).not.toHaveProperty('userId');
+        expect(detail.body.request).not.toHaveProperty('operatorComment');
+    });
+
+    it('rejects missing/cross origin owner commands and malformed uploads before body parsing', async () => {
+        const owner = await browser();
+        await owner
+            .post('/api/client/service-requests/drafts')
+            .unset('Origin')
+            .send(completeDraft())
+            .expect(403);
+        await owner
+            .post('/api/client/service-requests/drafts')
+            .set('Origin', 'https://foreign.example.test')
+            .send(completeDraft())
+            .expect(403);
+        const draft = await owner
+            .post('/api/client/service-requests/drafts')
+            .send(completeDraft())
+            .expect(201);
+        await owner
+            .post(
+                `/api/client/service-requests/drafts/${draft.body.id}/attachments`,
+            )
+            .unset('Origin')
+            .set('Content-Type', 'multipart/form-data; boundary=missing')
+            .send('broken')
+            .expect(403);
+        expect(await dataSource.getRepository(StoredFileEntity).count()).toBe(
+            0,
+        );
+        const foreign = await browser();
+        const forbidden = await foreign
+            .get(`/api/client/service-requests/${draft.body.id}`)
+            .expect(404);
+        const missing = await foreign
+            .get('/api/client/service-requests/2147483647')
+            .expect(404);
+        expect(forbidden.body.message).toBe(missing.body.message);
+    });
+
+    it('filters private and conditional form values and uses events rather than internal comments as history', async () => {
+        const { owner, row, form } = await privateDraftFixture();
+        const resumed = await owner
+            .post('/api/client/service-requests/drafts')
+            .send(completeDraft())
+            .expect(201);
+        expect(resumed.body).toMatchObject({ id: row.id, created: false });
+        expectPrivateValuesAbsent(resumed.body);
+        expect(resumed.body.answers.visibleInV1).toBe('synthetic-public-v1');
+        expect(resumed.body.answers.publicConditional).toBe(
+            'synthetic-public-conditional',
+        );
+        expect(
+            JSON.stringify(resumed.body).includes(
+                'synthetic-unmatched-conditional',
+            ),
+        ).toBe(false);
+        const patched = await owner
+            .patch(`/api/client/service-requests/drafts/${row.id}`)
+            .send({
+                expectedVersion: row.version,
+                answers: { clientType: 'individual', publicChoice: 'no' },
+            })
+            .expect(200);
+        expectPrivateValuesAbsent(patched.body);
+        expect(patched.body.answers).not.toHaveProperty('publicConditional');
+        const detail = await owner
+            .get(`/api/client/service-requests/${row.id}`)
+            .expect(200);
+        expectPrivateValuesAbsent(detail.body);
+        expect(detail.body.form).toMatchObject({
+            id: form.id,
+            version: 1,
+            status: 'retired',
+        });
+        expect(detail.body.request.answers.visibleInV1).toBe(
+            'synthetic-public-v1',
+        );
+        expect(detail.body.request.answers).not.toHaveProperty('organization');
+        expect(detail.body.request.answers).not.toHaveProperty(
+            'publicConditional',
+        );
+        expect(detail.body.customerWorkflow).toBeDefined();
+        const stored = await dataSource
+            .getRepository(ServiceRequestEntity)
+            .findOneByOrFail({ id: row.id });
+        expect(stored.answers).toMatchObject(privateAnswers);
+        expect(detail.body.events).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ type: 'draft_created' }),
+            ]),
+        );
+    });
+
+    it.each(['first submit', 'submit replay', 'public detail'])(
+        'applies pinned customer answer privacy to %s without deleting staff data',
+        async (surface) => {
+            const { owner, row, form } = await privateDraftFixture();
+            const before = await owner
+                .get(`/api/client/service-requests/${row.id}`)
+                .expect(200);
+            expectPrivateValuesAbsent(before.body);
+            expect(before.body.request.answers).toMatchObject({
+                description: completeDraft().answers.description,
+                publicConditional: 'synthetic-public-conditional',
+                visibleInV1: 'synthetic-public-v1',
+            });
+            expect(
+                JSON.stringify(before.body).includes(
+                    'synthetic-unmatched-conditional',
+                ),
+            ).toBe(false);
+            const command = {
+                expectedVersion: row.version,
+                idempotencyKey: randomUUID(),
+            };
+            const submitted = await owner
+                .post(`/api/client/service-requests/drafts/${row.id}/submit`)
+                .send(command)
+                .expect(201);
+            const response =
+                surface === 'submit replay'
+                    ? await owner
+                          .post(
+                              `/api/client/service-requests/drafts/${row.id}/submit`,
+                          )
+                          .send(command)
+                          .expect(201)
+                    : surface === 'public detail'
+                      ? await request(app.getHttpServer())
+                            .get(
+                                `/api/public/service-requests/${submitted.body.publicToken}`,
+                            )
+                            .expect(200)
+                      : submitted;
+            expectPrivateValuesAbsent(response.body);
+            expect(response.body.request.answers).toMatchObject({
+                description: completeDraft().answers.description,
+                publicConditional: 'synthetic-public-conditional',
+                visibleInV1: 'synthetic-public-v1',
+            });
+            expect(
+                JSON.stringify(response.body).includes(
+                    'synthetic-unmatched-conditional',
+                ),
+            ).toBe(false);
+            for (const key of [
+                'customerWorkflow',
+                'expectedVersion',
+                'paymentProofFileId',
+                'paymentProof',
+                'publicTokenHash',
+                'operatorComment',
+            ]) {
+                expect(JSON.stringify(response.body).includes(`"${key}"`)).toBe(
+                    false,
+                );
+            }
+            if (surface === 'submit replay')
+                expect(
+                    response.body.publicToken === submitted.body.publicToken,
+                ).toBe(true);
+            const stored = await dataSource
+                .getRepository(ServiceRequestEntity)
+                .findOneByOrFail({ id: row.id });
+            expect(stored.formVersionId).toBe(form.id);
+            expect(stored.answers).toMatchObject(privateAnswers);
+            expect(stored.operatorComment).toBe('synthetic-internal-comment');
+            const pinned = await dataSource
+                .getRepository(ServiceFormVersionEntity)
+                .findOneByOrFail({ id: form.id });
+            expect(
+                pinned.schema.fields.find((field) => field.key === 'staffOnly')
+                    ?.customerVisible,
+            ).toBe(false);
+            const operator = await staff('privacy-operator', ['operator']);
+            const staffView = await operator
+                .get(`/admin/api/service-requests/${row.id}`)
+                .expect(200);
+            expect(staffView.body.request.answers).toMatchObject(
+                privateAnswers,
+            );
+            expect(JSON.stringify(staffView.body)).toContain(
+                'synthetic-internal-comment',
+            );
+            const after = await owner
+                .get(`/api/client/service-requests/${row.id}`)
+                .expect(200);
+            expectPrivateValuesAbsent(after.body);
+            expect(after.body.customerWorkflow).toBeDefined();
+        },
+    );
+
+    it('excludes unknown persisted answers from owner and public reads without deleting them', async () => {
+        const { owner, row } = await privateDraftFixture();
+        const submitted = await owner
+            .post(`/api/client/service-requests/drafts/${row.id}/submit`)
+            .send({
+                expectedVersion: row.version,
+                idempotencyKey: randomUUID(),
+            })
+            .expect(201);
+        const repository = dataSource.getRepository(ServiceRequestEntity);
+        const stored = await repository.findOneByOrFail({ id: row.id });
+        stored.answers.unknownAnswer = 'synthetic-unknown-answer';
+        await repository.save(stored);
+        const ownerView = await owner
+            .get(`/api/client/service-requests/${row.id}`)
+            .expect(200);
+        const publicView = await request(app.getHttpServer())
+            .get(`/api/public/service-requests/${submitted.body.publicToken}`)
+            .expect(200);
+        for (const response of [ownerView, publicView]) {
+            expectPrivateValuesAbsent(response.body);
+            expect(response.body.request.answers.visibleInV1).toBe(
+                'synthetic-public-v1',
+            );
+        }
+        const unchanged = await repository.findOneByOrFail({ id: row.id });
+        expect(unchanged.answers).toEqual(stored.answers);
+        expect(unchanged.answers).toMatchObject(privateAnswers);
+        await request(app.getHttpServer())
+            .post(
+                `/api/public/service-requests/${submitted.body.publicToken}/messages`,
+            )
+            .send({
+                text: 'Synthetic public reply after privacy projection',
+            })
+            .expect(201);
     });
 
     it('creates, submits, and reads one request using session or bearer token', async () => {

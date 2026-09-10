@@ -25,6 +25,7 @@ import { ServiceFormService } from './service-form.service';
 import { PublicServiceRequestsController } from './public-service-requests.controller';
 import { OutboundDeliveriesModule } from 'src/outbound-deliveries/outbound-deliveries.module';
 import { ServiceRequestPaymentProofService } from './service-request-payment-proof.service';
+import { ServiceRequestOwnerReadService } from './service-request-owner-read.service';
 import { PaymentProofServiceRequestUploadGuard } from './service-request-payment-proof-upload.guard';
 import {
     DraftServiceRequestUploadGuard,
@@ -56,6 +57,7 @@ import {
     ],
     controllers: [ServiceRequestsController, PublicServiceRequestsController],
     providers: [
+        ServiceRequestOwnerReadService,
         ServiceRequestPaymentProofService,
         PaymentProofServiceRequestUploadGuard,
         ServiceRequestAdminReadService,

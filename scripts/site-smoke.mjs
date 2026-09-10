@@ -74,28 +74,30 @@ try {
         .click();
     await desktop.locator('.cart-link').click();
     await desktop.locator('.cart-item').first().waitFor();
+    await desktop.goto(`${baseUrl}/site/checkout`, { waitUntil: 'networkidle' });
+    await desktop.getByRole('heading', { name: 'Оформление заказа', exact: true }).waitFor();
 
     await desktop.goto(`${baseUrl}/site/service/request`, {
         waitUntil: 'networkidle',
     });
-    await desktop
-        .getByLabel('Вид сервисной заявки')
-        .selectOption('kkt_remote_work');
-    await desktop.getByLabel('Название организации').fill('ООО Демо');
-    await desktop.getByLabel('ИНН').fill('2460000000');
+    if (!skipBackend) {
+    await desktop.getByLabel('Услуга', { exact: true }).selectOption('kkt_remote_work');
     await desktop.getByLabel('Контактное лицо').fill('Анна Петрова');
     await desktop.getByLabel('Телефон').fill('9131234567');
-    await desktop.getByLabel('Email').fill('demo@example.ru');
-    await desktop.getByRole('button', { name: /Продолжить/ }).click();
+    await desktop.getByRole('button', { name: 'Создать черновик', exact: true }).click();
+    await desktop.waitForURL(/\/service\/requests\/\d+\/edit$/);
+    await desktop.getByLabel('Тип клиента').selectOption('individual');
+    await desktop.getByLabel('Тип оборудования').selectOption('Касса');
     await desktop.getByLabel('Модель').fill('АТОЛ 30Ф');
-    await desktop.getByRole('button', { name: /Продолжить/ }).click();
+    await desktop.getByLabel('Срочность').selectOption('normal');
+    await desktop.getByLabel('Формат помощи').selectOption('remote');
     await desktop
-        .getByLabel('Подробное описание')
+        .getByLabel('Описание')
         .fill('Касса перестала печатать чеки после обновления программы.');
-    await desktop.getByRole('button', { name: /Продолжить/ }).click();
-    await desktop.getByText(/согласен на обработку/).click();
+    await desktop.getByLabel('Согласие на обработку данных').check();
     await desktop.getByRole('button', { name: /Отправить заявку/ }).click();
-    await desktop.getByText(/Заявка отправлена/).waitFor();
+    await desktop.locator('.svc-stage').getByText('Заявка отправлена', { exact: true }).waitFor();
+    }
 
     if (!skipBackend) {
         await desktop.goto(`${baseUrl}/site/cash-registration`, {
@@ -105,6 +107,8 @@ try {
             .getByRole('heading', { name: 'Регистрация онлайн-кассы' })
             .waitFor();
         await desktop.getByLabel(/название организации/i).waitFor();
+        await desktop.goto(`${baseUrl}/site/organizations`, { waitUntil: 'networkidle' });
+        await desktop.getByRole('heading', { name: 'Мои организации', exact: true }).waitFor();
     }
 
     const mobile = await browser.newPage({

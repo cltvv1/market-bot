@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { chromium } from 'playwright-core';
 import { verifyAdminWorkspace } from '../admin-ui/src/test-tools/browser-workflows.mjs';
+import { verifyClientService } from '../client-ui/src/test-tools/service-browser-workflows.mjs';
 
 const candidates = [
     process.env.CHROME_PATH,
@@ -71,6 +72,7 @@ try {
         queueLoaded,
     ]);
     const workflowChecks = await verifyAdminWorkspace(page, baseUrl);
+    const clientChecks = await verifyClientService(browser, page, baseUrl);
     await page.getByRole('button', { name: 'Выйти', exact: true }).click();
     await page.getByRole('heading', { name: 'Вход для сотрудников' }).waitFor();
 
@@ -79,7 +81,7 @@ try {
             `Browser console errors:\n${errors.join('\n')}\nFailed responses:\n${failedResponses.join('\n')}`,
         );
     process.stdout.write(
-        `Browser smoke passed for client routes, nested admin login/logout and ${workflowChecks.length} production workspace checks.\n${workflowChecks.join('\n')}\n`,
+        `Browser smoke passed: ${workflowChecks.length} admin checks and ${clientChecks.length} client checks.\n${workflowChecks.join('\n')}\n${clientChecks.join('\n')}\n`,
     );
 } finally {
     await browser.close();

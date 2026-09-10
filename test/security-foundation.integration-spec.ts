@@ -87,6 +87,7 @@ describe('security foundation API contracts', () => {
 
     async function createBrowserSession() {
         const agent = request.agent(app.getHttpServer());
+        agent.set('Origin', 'http://localhost:5174');
         const response = await agent
             .post('/api/client/session')
             .set('X-Forwarded-For', nextIp())

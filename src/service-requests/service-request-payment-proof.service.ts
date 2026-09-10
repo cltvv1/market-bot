@@ -95,7 +95,7 @@ export class ServiceRequestPaymentProofService {
 
     async ownerView(session: WebSessionPrincipal, id: number) {
         const row = await this.owned(id, session.userId);
-        return this.project(row);
+        return this.projectOwnedRow(row);
     }
 
     async openForWeb(session: WebSessionPrincipal, id: number) {
@@ -409,8 +409,12 @@ export class ServiceRequestPaymentProofService {
         }
     }
 
-    private async project(row: ServiceRequestEntity) {
-        const bound = await this.current(row);
+    // Internal composition only: callers must have authorized this exact row first.
+    async projectOwnedRow(
+        row: ServiceRequestEntity,
+        manager = this.db.manager,
+    ) {
+        const bound = await this.current(row, manager);
         return {
             documents: {
                 paymentProof: row.paymentProofFileId

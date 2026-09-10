@@ -291,7 +291,16 @@ review seed signature adaptation. Documentation updates are this report, route
 inventory, FS-1 lifecycle addendum, interface architecture gap and FE-1B limitation
 addendum. No canonical project status/roadmap/audit status was rewritten as merged.
 
-Remaining boundaries: UI_NOT_CONNECTED until FE-1C; staff verifies actual money;
+FE-1C handoff addendum (2026-09-10, implementation branch): the production client
+detail now connects the dedicated proof upload/replacement/download controls to
+the accepted owner workflow and expectedVersion contract. Generic attachments
+remain ordinary; public proof is absent; paid remains a staff-only decision.
+409/lost-response review and client/operator browser acceptance are covered in
+[the FE-1C report](../frontend/2026-09-10-client-service-production-migration.md).
+The projection builder accepts the authorized row/transaction manager so detail
+version, status and proof workflow are one consistent snapshot; commands unchanged.
+
+Historical P-PROOF boundaries: UI_NOT_CONNECTED until FE-1C; staff verifies actual money;
 legacy incomplete proof provenance stays unavailable to owner download; crash gaps
 use existing FS-1 reconciliation rather than a newly introduced scheduler. No EM-0,
 bank/OCR/1C/EDO or OrderDocument work was started.

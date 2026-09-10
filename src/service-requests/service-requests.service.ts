@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import {
     BadRequestException,
     ConflictException,
@@ -16,6 +17,7 @@ import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import type {
     AdminCreateServiceRequestDto,
     CreateServiceRequestDraftDto,
+    UpdateServiceRequestDraftDto,
 } from './dto/canonical-service-request.dto';
 import { ServiceFormVersionEntity } from './entities/service-form-version.entity';
 import { ServiceRequestAttachmentEntity } from './entities/service-request-attachment.entity';
@@ -34,6 +36,12 @@ import { defaultServiceTypes } from './service-request.flows';
 import { OutboundDeliveriesService } from 'src/outbound-deliveries/outbound-deliveries.service';
 import { ServiceRequestChannelWorkflowService } from './service-request-channel-workflow.service';
 import { ServiceRequestPaymentProofService } from './service-request-payment-proof.service';
+import { ServiceRequestOwnerReadService } from './service-request-owner-read.service';
+import {
+    canCustomerMessage,
+    ownerAnswers,
+    ownerForm,
+} from './service-request-owner-contract';
 
 @Injectable()
 export class ServiceRequestsService {
@@ -59,6 +67,7 @@ export class ServiceRequestsService {
         private readonly outbound: OutboundDeliveriesService,
         private readonly channelWorkflow: ServiceRequestChannelWorkflowService,
         private readonly paymentProofs: ServiceRequestPaymentProofService,
+        private readonly ownerRead: ServiceRequestOwnerReadService,
     ) {}
 
     getRequest(
@@ -209,12 +218,25 @@ export class ServiceRequestsService {
         );
     }
 
+    async getWebTypesWithForms() {
+        return (await this.getTypesWithForms()).map((type) => ({
+            code: type.code,
+            title: type.title,
+            description: type.description,
+            formVersion: ownerForm(type.formVersion),
+        }));
+    }
+
     async createWebDraft(
         session: WebSessionPrincipal,
         input: CreateServiceRequestDraftDto,
     ) {
         const type = await this.requireType(input.serviceTypeCode);
         const formVersion = await this.forms.getPublishedForType(type);
+        if (!ownerForm(formVersion)?.supported)
+            throw new BadRequestException(
+                'This service requires a specialized workflow',
+            );
         const contact = this.normalizeContact(
             input.contactSnapshot,
             'web',
@@ -228,6 +250,15 @@ export class ServiceRequestsService {
               )
             : null;
         await this.assertCashRegister(input.cashRegisterId, organization?.id);
+        const allowedKeys = new Set(
+            ownerForm(formVersion)!.schema.fields.map((field) => field.key),
+        );
+        if (
+            Object.keys(input.answers ?? {}).some(
+                (key) => !allowedKeys.has(key),
+            )
+        )
+            throw new BadRequestException('Unsupported answer field');
         const answers = this.forms.validate(
             formVersion.schema,
             input.answers ?? {},
@@ -273,6 +304,7 @@ export class ServiceRequestsService {
                 equipmentSnapshot: this.cleanSnapshot(input.equipmentSnapshot),
                 priority: this.priorityFromAnswers(answers),
             });
+            Object.assign(request, this.webDraftContext(request, answers, {}));
             const saved = await repository.save(request);
             await this.addEvent(
                 saved.id,
@@ -293,7 +325,10 @@ export class ServiceRequestsService {
                 targetId: result.request.id,
             });
         }
-        return this.draftView(result.request);
+        return {
+            ...(await this.draftView(result.request)),
+            created: result.created,
+        };
     }
 
     async updateWebDraft(
@@ -301,57 +336,78 @@ export class ServiceRequestsService {
         id: number,
         answers: Record<string, unknown>,
         expectedVersion: number,
+        context: Partial<UpdateServiceRequestDraftDto> = {},
     ) {
-        const request = await this.requireOwnedRequest(session.userId, id);
-        if (request.status !== 'draft')
-            throw new BadRequestException('Only a draft can be edited');
-        if (request.version !== expectedVersion) {
-            const alreadyApplied = Object.entries(answers).every(
-                ([key, value]) =>
-                    JSON.stringify(request.answers?.[key]) ===
-                    JSON.stringify(value),
+        await this.requireOwnedRequest(session.userId, id);
+        const saved = await this.dataSource.transaction(async (manager) => {
+            const repository = manager.getRepository(ServiceRequestEntity);
+            const row = await repository.findOne({
+                where: { id, userId: session.userId },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!row)
+                throw new NotFoundException('Service request was not found');
+            if (row.status !== 'draft')
+                throw new BadRequestException('Only a draft can be edited');
+            const form = await this.requireForm(row.formVersionId, manager);
+            const visible = ownerForm(form);
+            if (!visible?.supported)
+                throw new BadRequestException(
+                    'This form cannot be edited on the website',
+                );
+            const keys = new Set(
+                visible.schema.fields.map((field) => field.key),
             );
-            if (alreadyApplied) return this.draftView(request);
-            throw new ConflictException(
-                'Service request was updated in another session',
+            if (Object.keys(answers).some((key) => !keys.has(key)))
+                throw new BadRequestException('Unsupported answer field');
+            const normalized = this.forms.validate(
+                form.schema,
+                { ...row.answers, ...answers },
+                false,
             );
-        }
-        const form = await this.requireForm(request.formVersionId);
-        const merged = { ...(request.answers ?? {}), ...answers };
-        const normalized = this.forms.validate(form.schema, merged, false);
-        const result = await this.requests
-            .createQueryBuilder()
-            .update(ServiceRequestEntity)
-            .set({
-                answers: () => ':answers',
+            const next = this.webDraftContext(row, normalized, context);
+            const changed =
+                !isDeepStrictEqual(row.answers, normalized) ||
+                Object.entries(next).some(
+                    ([key, value]) =>
+                        !isDeepStrictEqual(
+                            row[key as keyof ServiceRequestEntity],
+                            value,
+                        ),
+                );
+            if (!changed) return row;
+            if (row.version !== expectedVersion)
+                throw new ConflictException(
+                    'Service request was updated in another session',
+                );
+            Object.assign(row, next, {
+                answers: normalized,
                 priority: this.priorityFromAnswers(normalized),
-            })
-            .where(
-                'id = :id AND "userId" = :userId AND status = :status AND version = :version',
-                {
-                    id,
-                    userId: session.userId,
-                    status: 'draft',
-                    version: expectedVersion,
-                },
-            )
-            .setParameters({ answers: JSON.stringify(normalized) })
-            .execute();
-        if (!result.affected)
-            throw new ConflictException(
-                'Service request was updated in another session',
+            });
+            await repository.save(row);
+            await this.addEvent(
+                id,
+                'draft_updated',
+                'customer',
+                'Сохранены данные заявки',
+                undefined,
+                manager,
             );
-        await this.audit.record({
-            actorType: 'customer',
-            actorCustomerId: session.userId,
-            action: 'service_request.draft.update',
-            targetType: 'service_request',
-            targetId: id,
-            metadata: { fieldCount: Object.keys(answers).length },
+            await this.audit.record(
+                {
+                    actorType: 'customer',
+                    actorCustomerId: session.userId,
+                    actorWebSessionId: session.sessionId,
+                    action: 'service_request.draft.update',
+                    targetType: 'service_request',
+                    targetId: id,
+                    metadata: { fieldCount: Object.keys(answers).length },
+                },
+                manager,
+            );
+            return row;
         });
-        return this.draftView(
-            await this.requireOwnedRequest(session.userId, id),
-        );
+        return this.draftView(saved);
     }
 
     async submitWebDraft(
@@ -439,21 +495,11 @@ export class ServiceRequestsService {
     }
 
     async listForWeb(session: WebSessionPrincipal) {
-        const items = await this.requests.find({
-            where: { userId: session.userId },
-            order: { createdAt: 'DESC' },
-            take: 50,
-        });
-        return Promise.all(items.map((item) => this.details(item)));
+        return this.ownerRead.list(session);
     }
 
     async getForWeb(session: WebSessionPrincipal, id: number) {
-        return {
-            ...(await this.details(
-                await this.requireOwnedRequest(session.userId, id),
-            )),
-            ...(await this.paymentProofs.ownerView(session, id)),
-        };
+        return this.ownerRead.detail(session, id);
     }
 
     async getByPublicToken(token: string) {
@@ -503,7 +549,11 @@ export class ServiceRequestsService {
                     const count = await repository.count({
                         where: { serviceRequestId: id, kind: 'customer' },
                     });
-                    if (count >= 5)
+                    const form = await this.requireForm(
+                        locked.formVersionId,
+                        manager,
+                    );
+                    if (count >= Math.min(5, form.schema.maxAttachments ?? 5))
                         throw new BadRequestException(
                             'No more than five attachments are allowed',
                         );
@@ -546,6 +596,13 @@ export class ServiceRequestsService {
         id: number,
         attachmentId: number,
     ) {
+        await this.requireOwnedRequest(session.userId, id);
+        if (
+            !Number.isInteger(attachmentId) ||
+            attachmentId < 1 ||
+            attachmentId > 2_147_483_647
+        )
+            throw new NotFoundException('Attachment was not found');
         const attachment = await this.dataSource.transaction(
             async (manager) => {
                 const request = await manager
@@ -612,7 +669,7 @@ export class ServiceRequestsService {
                         'Service request was not found',
                     );
                 }
-                if (['draft', 'closed', 'cancelled'].includes(request.status)) {
+                if (!canCustomerMessage(request.status)) {
                     throw new BadRequestException(
                         'Messages are not accepted in the current status',
                     );
@@ -976,6 +1033,12 @@ export class ServiceRequestsService {
         attachmentId: number,
     ) {
         await this.requireOwnedRequest(session.userId, requestId);
+        if (
+            !Number.isInteger(attachmentId) ||
+            attachmentId < 1 ||
+            attachmentId > 2_147_483_647
+        )
+            throw new NotFoundException('Attachment was not found');
         return this.openAttachment(requestId, attachmentId);
     }
 
@@ -1035,6 +1098,8 @@ export class ServiceRequestsService {
                         });
                     if (
                         !locked ||
+                        (customerId !== undefined &&
+                            locked.userId !== customerId) ||
                         ['draft', 'closed', 'cancelled'].includes(locked.status)
                     ) {
                         throw new BadRequestException(
@@ -1127,7 +1192,7 @@ export class ServiceRequestsService {
         return {
             request: includeInternal
                 ? this.adminView(request)
-                : this.customerView(request),
+                : await this.customerView(request),
             messages,
             events: includeInternal
                 ? [
@@ -1152,7 +1217,8 @@ export class ServiceRequestsService {
         };
     }
 
-    private draftView(request: ServiceRequestEntity) {
+    private async draftView(request: ServiceRequestEntity) {
+        const form = ownerForm(await this.requireForm(request.formVersionId));
         return {
             id: request.id,
             requestNumber: request.requestNumber,
@@ -1161,7 +1227,7 @@ export class ServiceRequestsService {
             source: request.source,
             status: request.status,
             customerStatus: request.customerStatus,
-            answers: request.answers,
+            answers: ownerAnswers(form?.schema, request.answers),
             contactSnapshot: request.contactSnapshot,
             organizationSnapshot: request.organizationSnapshot,
             locationSnapshot: request.locationSnapshot,
@@ -1177,7 +1243,8 @@ export class ServiceRequestsService {
         };
     }
 
-    private customerView(request: ServiceRequestEntity) {
+    private async customerView(request: ServiceRequestEntity) {
+        const form = ownerForm(await this.requireForm(request.formVersionId));
         return {
             id: request.id,
             requestNumber: request.requestNumber,
@@ -1185,7 +1252,7 @@ export class ServiceRequestsService {
             serviceTypeTitle: request.serviceTypeTitle,
             source: request.source,
             customerStatus: request.customerStatus,
-            answers: request.answers,
+            answers: ownerAnswers(form?.schema, request.answers),
             contactSnapshot: request.contactSnapshot,
             organizationSnapshot: request.organizationSnapshot,
             locationSnapshot: request.locationSnapshot,
@@ -1270,6 +1337,8 @@ export class ServiceRequestsService {
     }
 
     private async requireOwnedRequest(userId: number, id: number) {
+        if (!Number.isInteger(id) || id < 1 || id > 2_147_483_647)
+            throw new NotFoundException('Service request was not found');
         const request = await this.requests.findOne({ where: { id, userId } });
         if (!request)
             throw new NotFoundException('Service request was not found');
@@ -1277,7 +1346,7 @@ export class ServiceRequestsService {
     }
 
     private assertMessageAttachmentStatus(request: ServiceRequestEntity) {
-        if (['draft', 'closed', 'cancelled'].includes(request.status)) {
+        if (!canCustomerMessage(request.status)) {
             throw new BadRequestException(
                 'Attachments are not accepted in the current status',
             );
@@ -1336,6 +1405,99 @@ export class ServiceRequestsService {
             preferredChannel: allowed.includes(preferred)
                 ? (preferred as ServiceRequestContactSnapshot['preferredChannel'])
                 : 'phone',
+        };
+    }
+
+    private webDraftContext(
+        row: ServiceRequestEntity,
+        answers: Record<string, unknown>,
+        patch: Partial<UpdateServiceRequestDraftDto>,
+    ) {
+        const bounded = (
+            input: Record<string, unknown> | undefined,
+            keys: string[],
+        ) => {
+            if (!input) return {};
+            if (Object.keys(input).some((key) => !keys.includes(key)))
+                throw new BadRequestException(
+                    'Unsupported draft context field',
+                );
+            if (
+                Object.values(input).some(
+                    (value) => typeof value !== 'string' || value.length > 2000,
+                )
+            )
+                throw new BadRequestException('Invalid draft context');
+            return this.cleanSnapshot(input) ?? {};
+        };
+        const derive = (
+            mapping: Record<string, string>,
+            input?: Record<string, unknown>,
+        ) => {
+            const value = bounded(input, Object.keys(mapping));
+            for (const [key, answer] of Object.entries(mapping)) {
+                if (
+                    Object.hasOwn(answers, answer) ||
+                    Object.hasOwn(row.answers, answer)
+                ) {
+                    const next = answers[answer] ?? '';
+                    if (Object.hasOwn(value, key) && value[key] !== next)
+                        throw new BadRequestException(
+                            'Contact or context must match the form answers',
+                        );
+                    value[key] = next;
+                }
+            }
+            return value;
+        };
+        if (row.organizationId && patch.organizationSnapshot)
+            throw new BadRequestException('Linked organization is read-only');
+        if (row.cashRegisterId && patch.equipmentSnapshot)
+            throw new BadRequestException('Linked equipment is read-only');
+        const contact = this.normalizeContact(
+            {
+                ...row.contactSnapshot,
+                ...derive(
+                    { name: 'contactName', phone: 'phone', email: 'email' },
+                    patch.contactSnapshot,
+                ),
+            },
+            'web',
+            row.chatId,
+        );
+        return {
+            contactSnapshot: contact,
+            organizationSnapshot: row.organizationId
+                ? row.organizationSnapshot
+                : this.cleanSnapshot({
+                      ...row.organizationSnapshot,
+                      ...derive(
+                          { name: 'organization', inn: 'inn' },
+                          patch.organizationSnapshot,
+                      ),
+                      verified: false,
+                  }),
+            locationSnapshot: this.cleanSnapshot({
+                ...row.locationSnapshot,
+                ...derive(
+                    { city: 'city', address: 'address' },
+                    patch.locationSnapshot,
+                ),
+            }),
+            equipmentSnapshot: row.cashRegisterId
+                ? row.equipmentSnapshot
+                : this.cleanSnapshot({
+                      ...row.equipmentSnapshot,
+                      ...derive(
+                          {
+                              type: 'equipmentType',
+                              model: 'equipmentModel',
+                              serialNumber: 'serialNumber',
+                              software: 'software',
+                          },
+                          patch.equipmentSnapshot,
+                      ),
+                  }),
         };
     }
 
