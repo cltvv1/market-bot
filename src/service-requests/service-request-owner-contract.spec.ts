@@ -22,6 +22,12 @@ describe('FE-1C owner contract', () => {
                     customerVisible: false,
                 },
                 {
+                    key: 'transitive',
+                    type: 'text',
+                    label: 'Transitive',
+                    condition: { field: 'dependent', equals: 'yes' },
+                },
+                {
                     key: 'dependent',
                     type: 'text',
                     label: 'Dependent',
@@ -50,9 +56,26 @@ describe('FE-1C owner contract', () => {
                 name: 'no',
                 private: 'secret',
                 dependent: 'secret',
+                transitive: 'secret',
                 conditional: 'hidden',
+                unknown: 'secret',
             }),
         ).toEqual({ name: 'no' });
+    });
+    it('retains matching public conditions while excluding private dependency chains', () => {
+        expect(
+            ownerAnswers(ownerForm(form)!.schema, {
+                name: 'yes',
+                private: 'yes',
+                dependent: 'yes',
+                transitive: 'secret',
+                conditional: 'public',
+                unknown: 'secret',
+            }),
+        ).toEqual({ name: 'yes', conditional: 'public' });
+    });
+    it('does not project answers without a pinned schema', () => {
+        expect(ownerAnswers(undefined, { name: 'unverified' })).toEqual({});
     });
     it('fails closed for missing or specialized forms', () => {
         expect(ownerForm(null)).toBeNull();

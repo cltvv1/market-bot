@@ -1192,7 +1192,7 @@ export class ServiceRequestsService {
         return {
             request: includeInternal
                 ? this.adminView(request)
-                : this.customerView(request),
+                : await this.customerView(request),
             messages,
             events: includeInternal
                 ? [
@@ -1243,7 +1243,8 @@ export class ServiceRequestsService {
         };
     }
 
-    private customerView(request: ServiceRequestEntity) {
+    private async customerView(request: ServiceRequestEntity) {
+        const form = ownerForm(await this.requireForm(request.formVersionId));
         return {
             id: request.id,
             requestNumber: request.requestNumber,
@@ -1251,7 +1252,7 @@ export class ServiceRequestsService {
             serviceTypeTitle: request.serviceTypeTitle,
             source: request.source,
             customerStatus: request.customerStatus,
-            answers: request.answers,
+            answers: ownerAnswers(form?.schema, request.answers),
             contactSnapshot: request.contactSnapshot,
             organizationSnapshot: request.organizationSnapshot,
             locationSnapshot: request.locationSnapshot,

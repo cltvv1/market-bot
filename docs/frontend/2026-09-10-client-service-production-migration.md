@@ -227,6 +227,91 @@ cleanup of user files or linked node_modules. Original worktree branch/dirty
 files are preserved; lockfile SHA-256 remains
 `DA7D210AA534FCCC784F308E64CE20D7816AAC84618F9C4CA519EA7C37710666`.
 
+## Follow-up: consistent customer answer privacy
+
+Starting HEAD: `b5c04a32d1bbab82325e0ab2cb45a2d901a04088`, same draft PR #29
+and unchanged main baseline. The owner read already filtered answers, but first
+submit, submit replay and public-token detail used `customerView()` returning
+raw persisted answers. Domain validation is not a privacy serializer.
+
+`customerView()` now loads only `request.formVersionId` and reuses the existing
+`ownerForm()` then `ownerAnswers()` contract before HTTP serialization. There is
+no second privacy ruleset or fallback to the latest published form. Hidden
+fields, direct/transitive private dependents, unmatched public conditions and
+unknown keys are excluded; matching public values remain. The existing required
+pinned-form lookup is reused, without changing legacy public status/reply.
+
+| Customer response surface | Answer projection |
+|---|---|
+| First create / existing draft resume | Existing `draftView()` with pinned shared filtering |
+| PATCH draft | Existing `draftView()` with pinned shared filtering |
+| Owner detail | Existing owner read with pinned shared filtering |
+| First submit / same-key replay | Fixed `details(false)` -> async `customerView()` with pinned shared filtering |
+| Public-token detail | Same fixed customer serializer, not owner read |
+| Owner list / service types | Summaries / public form schema, no stored answers |
+| Owner/public message and file commands, proof upload | Message / attachment / proof projections, no request answers |
+| Upload access guards | Return internal entities only to guards/services, not HTTP bodies |
+| Staff detail / commands | Staff-only serializers unchanged |
+
+The fix performs reads/projection only: domain-valid private answers and the
+pinned schema remain in PostgreSQL and in authorized staff views. No answer
+backfill, form-version rewrite, state/version/idempotency change or new schema.
+Public responses do not gain owner workflows, expectedVersion, proof metadata,
+proof controls or owner permissions. Existing P-PROOF denial tests stay intact.
+No bearer format/issuance/revocation or session behavior is changed.
+
+### Regression evidence
+
+On the original runtime, the focused HTTP tests produced **3 failures** (first
+submit, same-key replay, public detail) while owner/resume/PATCH privacy passed.
+Failures asserted key presence without printing response JSON or bearer values.
+The same tests passed after the serializer fix. Fixtures contain synthetic values
+only and explicitly modify V1 inside the test, then publish a contradictory V2:
+V1-private values remain hidden and a V1-public value remains visible.
+
+Four added integration cases cover those three paths plus unknown persisted
+answers. The existing owner privacy case additionally
+covers resume/PATCH and matching/unmatched conditions. All compare the entire
+customer JSON for private markers, assert retained PostgreSQL answers, and the
+three submit cases assert authorized staff access. Two added unit cases and the
+extended existing fixture cover transitive dependencies, unknown keys, matching
+conditions and missing schemas. PostgreSQL requires formVersionId; an initially
+attempted null-form integration fixture was rejected by that constraint and was
+corrected rather than weakening the schema. The no-schema helper guard is tested
+at unit level. Existing submit/replay and payment-proof suites remain unchanged.
+
+Final local follow-up verification (supersedes the initial-package counts above):
+
+| Check | Result |
+|---|---|
+| `ci:quality` | 290 unit / 38 suites; unchanged lint ratchet (692 errors, 6 warnings, 64 files) |
+| `ci:database` | 277 integration / 22 suites; 7 e2e / 2 suites |
+| Canonical ServiceRequest suite | 16 tests, including all privacy/pinned/replay cases |
+| Owner contract unit suite | 7 tests |
+| Frontend contracts | 9 admin + 15 client, unchanged |
+| `ci:build`, frontend typechecks and `lint:site` | Passed; no UI source/dependency changes |
+| `ci:offline-smoke` | 28 admin + 29 client browser checks, passed |
+| `test:site` | Passed against the rebuilt isolated API/UI; no browser page errors |
+| Application/test migration and schema checks | 11 applied, 0 pending, 0 drift |
+
+Temporary follow-up API/browser processes were stopped after verification;
+pre-existing review servers and the user's original worktree were not changed.
+Synthetic logs/storage remain local and ignored. No real provider calls or
+production resources were used. Exact new-head hosted CI/GitGuardian evidence
+is recorded in PR #29 after push, not attributed to the previous head's CI run.
+
+### Separate DTO hardening findings
+
+The inspected legacy customer serializer still returns raw customer-visible
+message rows (including authorCustomerId/authorStaffId/storedFileId), attachment
+file IDs, and less-restricted snapshots including messenger identity. These are
+pre-existing DTO-minimization gaps compared with the new owner projection, not
+new fields added by this patch. Message commands also return message entities.
+They are recorded for a separate narrow DTO-hardening review; this follow-up
+does not broaden into snapshot/message transport or permission redesign.
+Internal-visibility messages, operatorComment, token hashes, submit keys and
+payment-proof bindings are not included in the legacy customer detail.
+
 ## Acceptance and deferred work
 
 No blocking domain gap was found for this bounded current-browser service slice.
