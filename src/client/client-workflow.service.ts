@@ -292,6 +292,7 @@ export class ClientWorkflowService {
 
     async submitServiceRequestPaymentProof(
         input: ClientIdentity,
+        target: { requestId: number; expectedVersion: number },
         file: {
             buffer: Buffer;
             fileName?: string;
@@ -301,14 +302,13 @@ export class ClientWorkflowService {
         const identity = await this.resolveServiceRequestIdentity(input);
         const result = await this.serviceRequestsService.attachPaymentProof(
             identity,
-            file,
+            target,
+            {
+                buffer: file.buffer,
+                originalName: file.fileName,
+                mimeType: file.mimeType,
+            },
         );
-        if (!result) {
-            return {
-                status: 'not_found',
-                message: 'Service request waiting for payment was not found.',
-            };
-        }
 
         return {
             status: 'completed',

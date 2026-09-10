@@ -75,7 +75,8 @@ async function main() {
     await adminService.assignEngineer(payment.id, engineer.id, admin.id);
     const invoice = await files.saveBuffer({ purpose: 'service-invoice', buffer: await pdf('Invoice. Demo FN replacement. 15900 RUB. Not for payment.'), originalName: 'Счёт-DEMO-014.pdf', mimeType: 'application/pdf', createdByStaffId: admin.id });
     await service.attachInvoice(payment.id, invoice.id, admin.id);
-    await service.attachPaymentProof(identity, { buffer: await pdf('Payment proof. Synthetic example. No real payment.'), fileName: 'Платёжное-поручение-DEMO-014.pdf', mimeType: 'application/pdf' });
+    const paymentTarget = await service.getLatestWaitingPaymentForClient(identity);
+    await service.attachPaymentProof(identity, { requestId: paymentTarget.id, expectedVersion: paymentTarget.version }, { buffer: await pdf('Payment proof. Synthetic example. No real payment.'), originalName: 'Платёжное-поручение-DEMO-014.pdf', mimeType: 'application/pdf' });
     await service.addStaffMessage(admin.id, payment.id, 'Счёт подготовлен. После оплаты приложите платёжное поручение.', 'customer');
     await service.addStaffMessage(admin.id, payment.id, 'Перед выездом связаться с контактным лицом.', 'internal');
     console.log(JSON.stringify({ paymentRequestId: payment.id, requests: ids.length + 1, login: admin.login, synthetic: true }));

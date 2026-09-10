@@ -190,6 +190,13 @@ The operator must independently verify actual receipt of money. A generic web me
 attachment is not canonical proof and does not enable payment confirmation.
 P-PROOF customer upload remains a separate package; FE-1B adds no customer endpoint.
 
+P-PROOF branch follow-up (2026-09-10, not merged): the dedicated authenticated web
+owner upload now creates this canonical pointer through the shared web/Telegram/MAX
+command. Admin refresh can therefore enable the existing versioned confirmation
+action. Generic message attachments still do not qualify. Connecting the client
+interface is deferred to FE-1C; independent staff verification remains mandatory.
+This addendum does not change FE-1B visual approval or its verification history.
+
 ## 15. Event/Audit transaction
 
 Migrated mutations, ServiceRequestEvent, applicable CH-R2 OutboundDelivery intent

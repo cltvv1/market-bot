@@ -118,6 +118,15 @@ export class ServiceRequestMessageDto {
     text: string;
 }
 
+export class ServiceRequestPaymentProofDto {
+    @ApiProperty({ minimum: 1, maximum: 2_147_483_647 })
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(2_147_483_647)
+    expectedVersion: number;
+}
+
 export class AdminServiceRequestMessageDto extends ServiceRequestMessageDto {
     @ApiPropertyOptional({
         enum: ['customer', 'internal'],

@@ -24,6 +24,8 @@ import { ServiceRequestMessageEntity } from './entities/service-request-message.
 import { ServiceFormService } from './service-form.service';
 import { PublicServiceRequestsController } from './public-service-requests.controller';
 import { OutboundDeliveriesModule } from 'src/outbound-deliveries/outbound-deliveries.module';
+import { ServiceRequestPaymentProofService } from './service-request-payment-proof.service';
+import { PaymentProofServiceRequestUploadGuard } from './service-request-payment-proof-upload.guard';
 import {
     DraftServiceRequestUploadGuard,
     MessageServiceRequestUploadGuard,
@@ -54,6 +56,8 @@ import {
     ],
     controllers: [ServiceRequestsController, PublicServiceRequestsController],
     providers: [
+        ServiceRequestPaymentProofService,
+        PaymentProofServiceRequestUploadGuard,
         ServiceRequestAdminReadService,
         ServiceRequestAdminCommandsService,
         ServiceRequestsService,
@@ -64,6 +68,7 @@ import {
         PublicServiceRequestUploadGuard,
     ],
     exports: [
+        ServiceRequestPaymentProofService,
         ServiceRequestsService,
         ServiceRequestAdminReadService,
         ServiceRequestAdminCommandsService,
