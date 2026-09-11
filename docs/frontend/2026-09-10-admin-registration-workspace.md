@@ -166,6 +166,8 @@ No bundle-optimization package was started. The normal CI-equivalent test-enviro
 
 ## Review and remaining limitations
 
+A subsequent hosted run exposed an unchanged client keyboard-test synchronization gap: after clicking Overview, the test could issue ArrowRight before that tab transition committed, then observe the previous Messages selection. The test now waits for Overview to be selected before exercising the keyboard transition. The existing assertions/check count and client application/bundle are unchanged; no timing sleeps or automatic test retries were added.
+
 The initial hosted browser run also exposed an initialization-order issue in the new smoke script: CI starts with built UI disabled, and Nest validates configuration at module import time. The script now enables built UI before importing AppModule and explicitly checks the route's HTTP status before login; it is rerun with the initial CI value disabled. No application serving defaults were changed.
 
 Hosted CI follow-up: the first run exposed a pre-existing random-password fixture failure in the P-PROOF Audit-rollback test. Base64url output does not guarantee three character groups. A test-only generator now validates runtime candidates with the actual password policy, including login exclusion, and retries with a bounded limit. The P-PROOF operator fixture and new Registration fixtures use it; no application password policy or payment-proof behavior changed. GitGuardian incident 37171012 flagged the original Registration fixture's random-password template expression, not a usable committed credential. Its historical occurrence still requires false-positive triage; no published history or check policy was rewritten.
