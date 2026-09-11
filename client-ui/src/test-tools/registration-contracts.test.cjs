@@ -14,8 +14,8 @@ const originalFetch = global.fetch;
 after(() => { global.fetch = originalFetch; delete global.window; });
 const read = file => fs.readFileSync(file, 'utf8');
 const fields = [
-    { name: 'orgName', label: '<Organization>', step: 2, required: true, inputKind: 'text', maxLength: 1000 },
-    { name: 'phoneToCall', label: 'Contact', step: 3, required: true, inputKind: 'tel', maxLength: 1000 },
+    { name: 'orgName', label: '<Organization>', step: 2, required: true, inputKind: 'text', maxLength: 10000 },
+    { name: 'phoneToCall', label: 'Contact', step: 3, required: true, inputKind: 'tel', maxLength: 10000 },
     { name: 'bankReqs', label: 'Bank', step: 4, required: false, inputKind: 'textarea', maxLength: 10000 },
 ];
 test('canonical registration routes use one router and remove old monolith/auto-bootstrap helper', () => {
@@ -34,15 +34,28 @@ test('bounded registration identifiers reject coercion before any request', () =
 test('draft validation allows partial/empty values, submit requires current required fields', () => {
     assert.deepEqual(registrationFormErrors(fields, {}, false), {});
     assert.deepEqual(Object.keys(registrationFormErrors(fields, {}, true)), ['orgName', 'phoneToCall']);
-    assert.ok(registrationFormErrors(fields, { orgName: 'x'.repeat(1001) }, false).orgName);
+    assert.ok(registrationFormErrors(fields, { orgName: 'x'.repeat(10001) }, false).orgName);
 });
 test('form uses safe labels, bound inputs, maxlength and accessible inline errors', () => {
     const html = renderToStaticMarkup(createElement(RegistrationFormRenderer, { fields, values: { orgName: 'Saved' }, errors: { orgName: 'Required' }, onChange() {} }));
     assert.ok(html.includes('&lt;Organization&gt;'));
     assert.ok(html.includes('value="Saved"'));
     assert.ok(html.includes('aria-describedby="registration-field-orgName-error"'));
-    assert.ok(html.includes('maxLength="1000"'));
+    assert.ok(html.includes('maxLength="10000"'));
     assert.ok(html.includes('<textarea'));
+});
+test('long existing values stay complete and can be saved with another field', async () => {
+    for (const length of [1500, 10000]) {
+        const values = { orgName: 'x'.repeat(length), phoneToCall: 'Updated contact' };
+        assert.deepEqual(registrationFormErrors(fields, values, true), {});
+        const html = renderToStaticMarkup(createElement(RegistrationFormRenderer, { fields, values, errors: {}, onChange() {} }));
+        assert.ok(html.includes(`value="${values.orgName}"`));
+        global.fetch = async (_url, init) => {
+            assert.deepEqual(JSON.parse(init.body).values, values);
+            return Response.json({});
+        };
+        await registrationApi.save(7, 'timestamp', values);
+    }
 });
 test('401 list/detail never create a new identity or return an empty list', async () => {
     const calls = [];

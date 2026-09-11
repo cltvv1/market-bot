@@ -318,7 +318,7 @@ describe('FE-REG-2 owned registrations', () => {
         for (const values of [
             { orgName: 12 },
             { orgName: null },
-            { orgName: 'x'.repeat(1001) },
+            { orgName: 'x'.repeat(10001) },
             { bankReqs: 'x'.repeat(10001) },
         ])
             await agent
@@ -733,6 +733,136 @@ describe('FE-REG-2 owned registrations', () => {
         expect((result.body as { data: { status: string } }).data.status).toBe(
             'new',
         );
+    });
+    it.each([1500, 10000, 10001])(
+        'compatibility form preserves the historical %i-character boundary',
+        async (length) => {
+            const agent = await customer();
+            const orgName = 'x'.repeat(length);
+            await agent
+                .post('/api/client/registrations/form')
+                .send({
+                    values: { orgName, innKpp: '123', phoneToCall: '100' },
+                })
+                .expect(length <= 10000 ? 201 : 400);
+            if (length > 10000) {
+                expect(await db.manager.count(RegistrationRequestEntity)).toBe(
+                    0,
+                );
+                expect(renderPdf).not.toHaveBeenCalled();
+            } else {
+                const row = await db.manager.findOneByOrFail(
+                    RegistrationRequestEntity,
+                    {},
+                );
+                expect(row.orgName).toBe(orgName);
+                expect(row.status).toBe('new');
+                expect(renderPdf).toHaveBeenCalledWith(
+                    expect.objectContaining({ orgName }),
+                    expect.any(Array),
+                    expect.any(Object),
+                );
+            }
+        },
+    );
+    it.each([1500, 10000, 10001])(
+        'compatibility answer preserves the historical %i-character boundary',
+        async (length) => {
+            const agent = await customer();
+            await agent
+                .post('/api/client/registrations/start')
+                .send({})
+                .expect(201);
+            const row = await db.manager.findOneByOrFail(
+                RegistrationRequestEntity,
+                {},
+            );
+            expect(row.currentStep).toBe(2);
+            const orgName = 'x'.repeat(length);
+            await agent
+                .post('/api/client/registrations/answer')
+                .send({ value: orgName })
+                .expect(length <= 10000 ? 201 : 400);
+            const detail = (
+                await agent
+                    .get(`/api/client/registrations/${row.id}`)
+                    .expect(200)
+            ).body as Detail;
+            expect(detail.application.orgName).toBe(
+                length <= 10000 ? orgName : '',
+            );
+            expect(detail.registration.currentStep).toBe(
+                length <= 10000 ? 3 : 2,
+            );
+            await agent
+                .get(`/api/client/registrations/${row.id}/checklist`)
+                .expect(200);
+        },
+    );
+    it.each([1500, 10000, 10001])(
+        'canonical draft preserves the historical %i-character boundary through submit',
+        async (length) => {
+            const { agent, data, base } = await fixture();
+            const orgName = 'x'.repeat(length);
+            await agent
+                .patch(`${base}/draft`)
+                .send({
+                    expectedUpdatedAt: data.customerWorkflow.expectedUpdatedAt,
+                    values: { orgName, innKpp: '123', phoneToCall: '100' },
+                })
+                .expect(length <= 10000 ? 200 : 400);
+            const detail = (await agent.get(base).expect(200)).body as Detail;
+            expect(detail.application.orgName).toBe(
+                length <= 10000 ? orgName : '',
+            );
+            if (length <= 10000) {
+                await agent
+                    .post(`${base}/submit`)
+                    .send({
+                        expectedUpdatedAt:
+                            detail.customerWorkflow.expectedUpdatedAt,
+                    })
+                    .expect(201);
+                expect(renderPdf).toHaveBeenCalledWith(
+                    expect.objectContaining({ orgName }),
+                    expect.any(Array),
+                    expect.any(Object),
+                );
+            } else {
+                expect(detail.customerWorkflow.expectedUpdatedAt).toBe(
+                    data.customerWorkflow.expectedUpdatedAt,
+                );
+                expect(renderPdf).not.toHaveBeenCalled();
+            }
+        },
+    );
+    it('compatibility resume preserves an existing long value while saving another field', async () => {
+        const { agent, base, id } = await fixture();
+        const orgName = 'x'.repeat(1500);
+        // Represent a draft persisted before the canonical web routes existed.
+        await db.manager.update(RegistrationRequestEntity, id, { orgName });
+        const detail = (await agent.get(base).expect(200)).body as Detail;
+        expect(detail.application.orgName).toBe(orgName);
+        const saved = (
+            await agent
+                .patch(`${base}/draft`)
+                .send({
+                    expectedUpdatedAt:
+                        detail.customerWorkflow.expectedUpdatedAt,
+                    values: {
+                        orgName: detail.application.orgName,
+                        kktModel: 'Updated model',
+                    },
+                })
+                .expect(200)
+        ).body as Detail;
+        expect(saved.application.orgName).toBe(orgName);
+        expect(saved.application.kktModel).toBe('Updated model');
+        const reloaded = (await agent.get(base).expect(200)).body as Detail;
+        expect(reloaded.application.orgName).toBe(orgName);
+        expect(
+            reloaded.form.fields.every((field) => field.maxLength === 10000),
+        ).toBe(true);
     });
     it('missing required field definitions disable editing without a read repair', async () => {
         const { agent, base, data } = await fixture();

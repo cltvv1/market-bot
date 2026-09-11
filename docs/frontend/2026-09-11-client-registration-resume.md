@@ -102,9 +102,31 @@ disable editing without erasing saved application values.
 Current registration_fields are projected to name/label/step/inputKind/required/
 maxLength and availability, not raw entities. Only the 18 existing application
 fields are editable; equipmentPhoto is excluded and handled as readiness evidence.
-The existing required fields are orgName, innKpp and phoneToCall. Text limits are
-1000 characters, bankReqs 10000; overlong input is rejected, never truncated.
+The existing required fields are orgName, innKpp and phoneToCall. Current
+Registration application values retain the historical bounded 10000-character
+web contract; FE-REG-2 does not introduce new per-field domain limits. Overlong
+input is rejected, never truncated. `CLIENT_REGISTRATION_VALUE_MAX` is shared by
+the compatibility DTOs, canonical normalization and form maxLength projection.
 Drafts may omit required values. Submit validates them again on the server.
+
+Compatibility follow-up to `583fc43388bbfae20979eaf09e98eb27e2cf3413`:
+baseline `e66ca52` already bounded RegistrationValuesConstraint and
+RegistrationAnswerDto at 10000 characters; old fillRegistration trimmed and
+assigned supported values without a 1000-character limit. The initial FE-REG-2
+policy unintentionally narrowed ordinary fields to 1000. On that unchanged
+production code, ten new HTTP regression cases yielded seven failures (400 for
+1500/10000-character form, answer and draft values, and saving another field
+alongside an existing 1500-character value); the three 10001 rejection cases
+passed. After the fix all ten pass, including complete owner reads, reload and
+the untruncated snapshot supplied to PDF generation on canonical submit.
+
+Every supported application field is characterized at 10000/10001 in DTO and
+policy tests. Browser coverage resumes an existing 1500-character draft and
+saves a different field without shortening the original value. The renderer
+continues to use the server projection; React/UI production code is unchanged.
+Empty draft values still clear to null, omitted fields remain unchanged, the
+three required fields still gate submit, and the editable allowlist, owner,
+Origin, concurrency, readiness and protected-document boundaries are unchanged.
 
 ## 10. Non-versioned form limitation
 
@@ -262,12 +284,12 @@ retain their text/File and require explicit reconciliation.
 
 | Verification | Result |
 | --- | --- |
-| Unit / bot / characterization / config | 357 tests, 41 suites |
-| PostgreSQL integration / security / file / workflow | 406 tests, 24 suites; includes 64 new registration cases |
+| Unit / bot / characterization / config | 358 tests, 41 suites |
+| PostgreSQL integration / security / file / workflow | 416 tests, 24 suites; includes 74 new registration cases |
 | E2E | 7 tests, 2 suites |
-| Frontend contracts | 46: admin 9, admin registration 10, client service 15, client registration 12 |
+| Frontend contracts | 47: admin 9, admin registration 10, client service 15, client registration 13 |
 | Existing browser suites | 28 admin shell/service + 29 client service + 27 admin registration |
-| New client/operator browser suite | 22 checks; 106 browser checks in total |
+| New client/operator browser suite | 23 checks; 107 browser checks in total |
 | Production builds | NestJS, admin, client passed; both TypeScript projects checked |
 | Offline bootstrap / health / built UI | Passed with synthetic fixtures and disabled messengers |
 | Vite and site smoke | Passed; explicit draft save/reload/list/Back additionally checked through Vite |
@@ -281,6 +303,10 @@ customer value versus re-request. Failure-injection logs contain synthetic error
 
 Production bundles are measured with the same normal build environment (not a
 test-mode React development bundle). Admin JS/CSS are byte-identical to baseline.
+The compatibility follow-up changes neither admin nor client production assets:
+all four JS/CSS files are byte-identical to `583fc433` (follow-up delta: zero bytes).
+The full CI-equivalent quality/database/build/offline suites, site smoke, frontend
+contracts and both registration browser workflows were rerun successfully.
 
 | Asset | Baseline bytes | Final bytes | Delta | Percent |
 | --- | ---: | ---: | ---: | ---: |

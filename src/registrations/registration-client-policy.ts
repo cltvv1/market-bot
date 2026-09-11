@@ -29,6 +29,7 @@ export const CLIENT_REGISTRATION_FIELDS = [
     'ofd',
     'bankReqs',
 ] as const;
+export const CLIENT_REGISTRATION_VALUE_MAX = 10_000;
 export type ClientRegistrationField =
     (typeof CLIENT_REGISTRATION_FIELDS)[number];
 export type ClientRegistrationValues = Partial<
@@ -61,7 +62,7 @@ export function clientRegistrationForm(fields: RegistrationFieldEntity[]) {
                       : ['phone', 'phoneToCall'].includes(field.name)
                         ? ('tel' as const)
                         : ('text' as const),
-                maxLength: field.name === 'bankReqs' ? 10000 : 1000,
+                maxLength: CLIENT_REGISTRATION_VALUE_MAX,
             })),
     };
 }
@@ -77,8 +78,7 @@ export function normalizeRegistrationValues(
             typeof value !== 'string'
         )
             throw new BadRequestException('Unsupported registration field');
-        const maximum = key === 'bankReqs' ? 10000 : 1000;
-        if (value.length > maximum)
+        if (value.length > CLIENT_REGISTRATION_VALUE_MAX)
             throw new BadRequestException(
                 `Registration field ${key} is too long`,
             );
