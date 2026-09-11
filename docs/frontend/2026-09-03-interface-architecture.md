@@ -179,6 +179,19 @@ See [FE-1C implementation and acceptance](2026-09-10-client-service-production-m
 
 ## Migration decision
 
+### FE-REG-1 implementation addendum (2026-09-11)
+
+On `codex/fe-reg-1-admin-registration-workspace`, the registration queue and
+direct detail routes above now use a production feature module instead of the
+legacy tab. Authorized SQL pagination, masked read projections, requirement
+version guards and existing readiness/evidence/PDF/handoff commands are connected.
+Old selected/closed links have a frontend compatibility adapter. This is draft
+PR work, not a retrospective change to the historical inventory or a claim of
+merge. Customer registration discovery/resume remains deferred.
+See [FE-REG-1 implementation and acceptance](2026-09-10-admin-registration-workspace.md).
+
+### Original migration decision
+
 The approved reference direction is the foundation for a separate FE-1B package.
 Its proposed scope is to migrate the admin shell and ServiceRequest production
 queue/detail, add real versioned commands with existing RBAC and browser workflow

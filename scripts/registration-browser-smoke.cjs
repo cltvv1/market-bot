@@ -1,0 +1,296 @@
+require('reflect-metadata');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { randomBytes } = require('node:crypto');
+const { Test } = require('@nestjs/testing');
+const { chromium } = require('playwright-core');
+const { getBotToken } = require('nestjs-telegraf');
+const { DataSource } = require('typeorm');
+const { AppModule } = require('../src/app.module');
+const { configureApplication } = require('../src/app.bootstrap');
+const { MESSENGER_SERVICE } = require('../src/messenger/messenger.types');
+const { RegistrationReadinessService } = require('../src/registrations/registration-readiness.service');
+const { RegistrationRequestEntity } = require('../src/registrations/entities/registration.entity');
+const { RegistrationEvidenceEntity } = require('../src/registrations/entities/registration-evidence.entity');
+const { AdminUserEntity } = require('../src/admin/entities/admin-user.entity');
+const { FilesService } = require('../src/files/files.service');
+const { seedRegistrationWorkspace } = require('../admin-ui/src/test-tools/registration-fixtures.cjs');
+
+async function main() {
+    assert.equal(process.env.NODE_ENV, 'test');
+    assert.equal(process.env.BOT_POLLING_ENABLED, 'false');
+    assert.equal(process.env.OUTBOUND_DELIVERY_WORKER_ENABLED, 'false');
+    process.env.SERVE_BUILT_UI = 'true';
+    let failDelivery = true;
+    let providerCalls = 0;
+    const fake = { sendMessage: async () => { providerCalls++; if (failDelivery) throw new Error('Synthetic delivery failure'); }, sendDocument: async () => undefined, sendImage: async () => undefined };
+    const module = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(MESSENGER_SERVICE).useValue(fake).compile();
+    const app = module.createNestApplication({ bodyParser: false, logger: false });
+    configureApplication(app);
+    app.get(getBotToken()).stop = () => undefined;
+    let browser;
+    try {
+        const review = process.argv.includes('--review');
+        await app.listen(review ? Number(process.env.PORT || 3013) : 0, '127.0.0.1');
+        const base = await app.getUrl();
+        const fixture = await seedRegistrationWorkspace(app, review);
+        if (review) {
+            process.stdout.write(`Synthetic FE-REG-1 review ready: ${base}/admin/requests/registrations\nLogin: vitma-admin; password is supplied locally, never logged.\n`);
+            await new Promise(resolve => { process.once('SIGTERM', resolve); process.once('SIGINT', resolve); });
+            return;
+        }
+        const executablePath = [process.env.CHROME_PATH, 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean).find(candidate => fs.existsSync(candidate));
+        assert.ok(executablePath, 'Chrome or Chromium is required');
+        browser = await chromium.launch({ executablePath, headless: true });
+        const errors = [];
+        const checks = [];
+        const check = title => { checks.push(title); process.stdout.write(`PASS registration browser: ${title}\n`); };
+        const readiness = app.get(RegistrationReadinessService);
+        const db = app.get(DataSource);
+        const queue = '/admin/requests/registrations';
+        const mainUrl = `${base}${queue}/${fixture.main.id}`;
+        const card = (page, kind = 'Заводской номер ККТ') => page.getByRole('article', { name: kind, exact: true });
+        async function login(actor, route = queue) {
+            const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+            const page = await context.newPage();
+            page.on('pageerror', error => errors.push(error.name));
+            await page.goto(`${base}${route}`);
+            await page.getByRole('heading', { name: 'Вход для сотрудников' }).waitFor();
+            await page.locator('input[autocomplete="username"]').fill(fixture.actors[actor].login);
+            await page.locator('input[autocomplete="current-password"]').fill(fixture.password);
+            await page.getByRole('button', { name: 'Войти', exact: true }).click();
+            await page.getByRole('button', { name: 'Выйти', exact: true }).waitFor();
+            return page;
+        }
+        async function goto(page, id, tab = 'readiness') {
+            await page.goto(`${base}${queue}/${id}?tab=${tab}`);
+            await page.getByRole('tab', { name: 'Комплектность', exact: true }).waitFor();
+        }
+        async function refresh(page) {
+            const response = page.waitForResponse(r => /\/admin\/api\/registrations\/\d+$/.test(r.url()) && r.ok());
+            await page.getByRole('button', { name: 'Обновить данные', exact: true }).click();
+            await response;
+        }
+        async function dialog(page, trigger, fill, title) {
+            await trigger.click();
+            const modal = page.getByRole('dialog');
+            await modal.waitFor();
+            if (fill) await fill(modal);
+            await modal.getByRole('button', { name: title, exact: true }).click();
+            await modal.waitFor({ state: 'hidden' });
+            await page.waitForLoadState('networkidle');
+        }
+        async function more(page, kind, name) {
+            const section = card(page, kind);
+            await section.locator('summary').click();
+            return section.getByRole('button', { name, exact: true });
+        }
+        async function verify(page, kind) {
+            await dialog(page, card(page, kind).getByRole('button', { name: 'Подтвердить проверку' }), null, 'Подтвердить проверку');
+            await card(page, kind).getByText('Проверено', { exact: true }).waitFor();
+        }
+        const page = await login('operator');
+        await page.getByRole('heading', { name: 'Регистрации ККТ' }).waitFor();
+        await page.locator('.reg-filters label').filter({ hasText: 'Приоритет' }).locator('select').selectOption('high');
+        await page.reload();
+        assert.match(page.url(), /priority=high/);
+        await page.locator(`[data-registration-id="${fixture.main.id}"] a`).click();
+        await page.getByRole('heading', { name: fixture.main.orgName }).waitFor();
+        assert.equal(await page.getByRole('button', { name: 'Передать инженеру', exact: true }).isDisabled(), true);
+        check('queue filters survive reload; canonical detail and incomplete handoff gate');
+        await page.getByRole('link', { name: 'К очереди регистраций' }).click();
+        assert.match(page.url(), /priority=high/);
+        await page.goBack(); await page.goForward(); await page.goBack();
+        await page.getByRole('tab', { name: 'Комплектность' }).waitFor();
+        check('queue context, selected-row focus and browser Back/Forward');
+        await dialog(page, await more(page, 'Заводской номер ККТ', 'Запросить у клиента'), modal => modal.getByLabel('Текст запроса клиенту').fill('Пожалуйста, передайте заводской номер кассы.'), 'Запросить у клиента');
+        await page.getByRole('tab', { name: 'Запросы и история' }).click();
+        await page.getByText('Доступен на сайте', { exact: true }).waitFor();
+        assert.equal(providerCalls, 0);
+        check('web request published in existing lifecycle, with no outbound provider notification');
+        await readiness.provideValue(fixture.identity(fixture.main), fixture.main.id, 'kkt_serial', 'DEMO-KKT-001');
+        const uploaded = await readiness.uploadEvidence(fixture.identity(fixture.main), fixture.main.id, 'kkt_serial', { buffer: fixture.buffer, fileName: 'Подтверждение-ККТ.pdf', mimeType: 'application/pdf' });
+        await page.getByRole('tab', { name: 'Комплектность' }).click(); await refresh(page);
+        await card(page).getByText('Получено, не проверено', { exact: true }).waitFor();
+        await verify(page, 'Заводской номер ККТ');
+        check('real customer value/evidence commands produce provided; operator verifies separately');
+        await dialog(page, page.getByRole('button', { name: 'Способ подключения ОФД', exact: true }), modal => modal.getByRole('combobox', { name: 'Способ подключения', exact: true }).selectOption('purchase_from_vitma'), 'Способ подключения ОФД');
+        const rawCode = randomBytes(20).toString('hex');
+        await readiness.provideStaffValue(fixture.main.id, 'ofd_code', fixture.actors.operator.id, rawCode, 'sold_by_vitma');
+        await readiness.provideValue(fixture.identity(fixture.main), fixture.main.id, 'fiscal_drive_serial', 'DEMO-FN-001');
+        await refresh(page);
+        await dialog(page, await more(page, 'Номер фискального накопителя', 'Связать подтверждение'), modal => modal.getByRole('combobox', { name: 'Подтверждение', exact: true }).selectOption(String(uploaded.id)), 'Связать подтверждение');
+        check('evidence can be linked through the UI without automatically verifying another requirement');
+        assert.equal((await page.locator('body').innerText()).includes(rawCode), false);
+        await page.getByRole('button', { name: 'Показать код ОФД' }).click();
+        await page.getByRole('button', { name: 'Скрыть код ОФД' }).waitFor();
+        assert.equal((await page.locator('body').innerText()).includes(rawCode), true);
+        await page.getByRole('tab', { name: 'Анкета', exact: true }).click();
+        await page.getByRole('tab', { name: 'Комплектность' }).click();
+        assert.equal((await page.locator('body').innerText()).includes(rawCode), false);
+        check('VITMA responsibility and explicit scoped OFD reveal, masked after tab close');
+        await verify(page, 'Номер фискального накопителя'); await verify(page, 'Код активации ОФД');
+        await page.getByText('Данные проверены', { exact: true }).waitFor();
+        await page.getByRole('tab', { name: 'Документы', exact: true }).click();
+        await dialog(page, page.getByRole('button', { name: 'Подготовить финальный PDF', exact: true }), null, 'Подготовить финальный PDF');
+        await page.getByText('Финальный документ', { exact: true }).waitFor();
+        const downloadPromise = page.waitForEvent('download');
+        await page.locator('.reg-documents > section').first().getByRole('button', { name: /^Скачать / }).click();
+        const download = await downloadPromise;
+        assert.equal(await download.failure(), null);
+        check('gated real final PDF generation and authenticated browser download');
+        await dialog(page, page.getByRole('button', { name: 'Передать инженеру', exact: true }), modal => modal.getByRole('combobox', { name: 'Инженер', exact: true }).selectOption(String(fixture.actors.engineer.id)), 'Передать инженеру');
+        await page.locator('.reg-detail-status').getByText('Обработана', { exact: true }).waitFor();
+        check('handoff sets internal processed and assigned engineer, not an external FNS result');
+        const engineer = await login('engineer', `${queue}/${fixture.main.id}?tab=documents`);
+        await engineer.getByText('Финальный документ', { exact: true }).waitFor();
+        assert.equal(await engineer.getByRole('button', { name: 'Подготовить финальный PDF' }).count(), 0);
+        assert.equal(await engineer.getByRole('button', { name: 'Передать инженеру' }).count(), 0);
+        const engineerDownload = engineer.waitForEvent('download');
+        await engineer.locator('.reg-documents > section').first().getByRole('button', { name: /^Скачать / }).click();
+        assert.equal(await (await engineerDownload).failure(), null);
+        check('assigned engineer has scoped read/download without mutation controls');
+        await db.getRepository(RegistrationRequestEntity).update(fixture.main.id, { assignedEngineerId: null });
+        await engineer.getByRole('button', { name: 'Обновить данные', exact: true }).click();
+        await engineer.getByRole('heading', { name: 'Заявка недоступна' }).waitFor();
+        assert.equal(await engineer.getByText('Финальный документ', { exact: true }).count(), 0);
+        await db.getRepository(RegistrationRequestEntity).update(fixture.main.id, { assignedEngineerId: fixture.actors.engineer.id });
+        check('revoked assignment removes previously displayed documents on the next read');
+        const foreign = await login('foreign', `${queue}/${fixture.main.id}`);
+        await foreign.getByRole('heading', { name: 'Заявка недоступна', exact: true }).waitFor();
+        const sales = await login('sales', `${queue}/${fixture.main.id}`);
+        assert.equal(await sales.locator('.reg-workspace').count(), 0);
+        for (const actor of [foreign, sales]) {
+            const response = await actor.request.get(`${base}/admin/api/registrations/${fixture.main.id}/pdf`);
+            assert.ok([403, 404].includes(response.status()));
+        }
+        check('separate foreign-engineer and sales cookies cannot read registration or documents');
+        await foreign.goto(`${base}${queue}`);
+        await foreign.getByRole('heading', { name: 'Новых анкет пока нет' }).waitFor();
+        check('empty assigned queue is truthful and does not fetch a broad directory');
+        await goto(page, fixture.kitRegistration.id);
+        await dialog(page, page.getByRole('button', { name: 'Привязать комплект', exact: true }), modal => modal.getByRole('combobox', { name: 'Свободный комплект' }).selectOption(String(fixture.kit.id)), 'Привязать комплект');
+        assert.equal(await page.getByText('Получено, не проверено', { exact: true }).count(), 3);
+        check('free-kit selector imports current DB values as provided, not verified');
+        const second = await page.context().newPage();
+        await goto(second, fixture.kitRegistration.id);
+        await card(page).getByRole('button', { name: 'Подтвердить проверку' }).click();
+        await page.getByRole('dialog').getByLabel('Внутренний комментарий проверки').fill('Сохранённый ввод оператора');
+        await dialog(second, card(second).getByRole('button', { name: 'Внести значение' }), modal => modal.getByLabel('Значение', { exact: true }).fill('DEMO-KKT-CHANGED'), 'Внести значение');
+        await page.getByRole('dialog').getByRole('button', { name: 'Подтвердить проверку', exact: true }).click();
+        await page.getByRole('dialog').getByRole('alert').waitFor();
+        assert.equal(await page.getByRole('dialog').getByLabel('Внутренний комментарий проверки').inputValue(), 'Сохранённый ввод оператора');
+        assert.equal(await page.getByRole('dialog').getByRole('button', { name: 'Подтвердить проверку', exact: true }).isDisabled(), true);
+        await page.getByRole('dialog').getByRole('button', { name: 'Отмена', exact: true }).click();
+        check('two-window stale verification returns conflict, keeps input, never automatically retries');
+        let attempted = 0;
+        const mutationUrl = `**/admin/api/registrations/${fixture.kitRegistration.id}/provide-value`;
+        await page.route(mutationUrl, async route => { attempted++; await route.abort('failed'); });
+        await card(page).getByRole('button', { name: 'Внести значение', exact: true }).click();
+        await page.getByRole('dialog').getByLabel('Значение', { exact: true }).fill('PRESERVED-AFTER-NETWORK-FAILURE');
+        await page.getByRole('dialog').getByRole('button', { name: 'Внести значение', exact: true }).click();
+        await page.getByRole('dialog').getByRole('alert').waitFor();
+        assert.equal(await page.getByRole('dialog').getByLabel('Значение', { exact: true }).inputValue(), 'PRESERVED-AFTER-NETWORK-FAILURE');
+        assert.equal(attempted, 1);
+        assert.equal(await page.getByRole('dialog').getByRole('button', { name: 'Внести значение', exact: true }).isDisabled(), true);
+        await page.getByRole('dialog').getByRole('button', { name: 'Отмена', exact: true }).click();
+        await page.unroute(mutationUrl);
+        check('unknown network result retains form and disables automatic mutation retry');
+        await goto(page, fixture.failed.id);
+        await dialog(page, await more(page, 'Заводской номер ККТ', 'Запросить у клиента'), modal => modal.getByLabel('Текст запроса клиенту').fill('Демонстрационный запрос номера.'), 'Запросить у клиента');
+        await page.getByRole('tab', { name: 'Запросы и история' }).click();
+        await page.getByText('Ошибка доставки', { exact: true }).waitFor();
+        failDelivery = false;
+        await dialog(page, page.getByRole('button', { name: 'Запросить у клиента', exact: true }), modal => modal.getByLabel('Текст запроса клиенту').fill('Повтор доставки существующего запроса.'), 'Запросить у клиента');
+        await page.getByText('Отправлен в канал', { exact: true }).waitFor();
+        assert.equal(providerCalls, 2);
+        assert.equal(await page.locator('.reg-history > section').first().locator('article').count(), 1);
+        check('fake MAX failure and explicit retry keep one data request, no real provider calls');
+        await goto(page, fixture.long.id);
+        const reasonTrigger = await more(page, 'Номер фискального накопителя', 'Не требуется');
+        await reasonTrigger.click();
+        const reason = page.getByRole('dialog').getByLabel('Причина неприменимости');
+        assert.equal(await reason.inputValue(), '');
+        await page.getByRole('dialog').getByRole('button', { name: 'Не требуется', exact: true }).click();
+        assert.equal(await reason.evaluate(element => element.validity.valueMissing), true);
+        await page.getByRole('dialog').getByRole('button', { name: 'Отмена', exact: true }).click();
+        check('explicit reason dialog never supplies a silent legal exemption');
+        await goto(page, fixture.main.id, 'documents');
+        await dialog(page, page.locator('.reg-evidence').filter({ hasText: 'Заводской номер ККТ' }).getByRole('button', { name: 'Удалить связь' }), null, 'Удалить связь');
+        assert.equal((await db.getRepository(RegistrationEvidenceEntity).findOneByOrFail({ id: uploaded.id })).removedAt !== null, true);
+        assert.equal((await app.get(FilesService).get(uploaded.storedFileId)).status, 'active');
+        check('evidence unlink uses existing command and invalidates verified requirement');
+        await app.get(FilesService).logicalDelete(fixture.evidence.storedFileId);
+        await goto(page, fixture.long.id, 'documents');
+        await page.getByText('Файл недоступен', { exact: true }).waitFor();
+        check('unavailable evidence has no usable download action');
+        await page.goto(`${base}${queue}?status=closed&selected=${fixture.main.id}`);
+        await page.waitForURL(`**${queue}/${fixture.main.id}`);
+        check('legacy selected and closed aliases redirect to canonical detail');
+        await page.goto(`${base}${queue}?page=100000&limit=1`);
+        await page.getByRole('heading', { name: 'Нет анкет по выбранным фильтрам' }).waitFor();
+        const reads = '**/admin/api/registrations?*';
+        await page.route(reads, route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Synthetic offline read' }) }));
+        await page.reload();
+        await page.getByRole('heading', { name: 'Не удалось загрузить данные' }).waitFor();
+        await page.unroute(reads);
+        await page.getByRole('button', { name: 'Повторить', exact: true }).click();
+        await page.getByRole('heading', { name: 'Нет анкет по выбранным фильтрам' }).waitFor();
+        check('filtered empty queue and API failure/retry do not retain a stale list');
+        let releaseRead;
+        const readGate = new Promise(resolve => { releaseRead = resolve; });
+        await page.route(reads, async route => { await readGate; await route.continue(); });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.getByRole('status').filter({ hasText: 'Загружаем данные' }).waitFor();
+        releaseRead();
+        await page.getByRole('heading', { name: 'Нет анкет по выбранным фильтрам' }).waitFor();
+        await page.unroute(reads);
+        check('controlled pending read shows a loading state without a fixed sleep');
+        const shots = process.env.FE_REG1_SCREENSHOTS_DIR;
+        if (shots) fs.mkdirSync(shots, { recursive: true });
+        for (const [width, height] of [[1440, 1000], [1280, 800], [768, 1024], [390, 844]]) {
+            await page.setViewportSize({ width, height });
+            await page.goto(`${base}${queue}?status=all`);
+            await page.getByRole('heading', { name: 'Регистрации ККТ' }).waitFor();
+            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+            await goto(page, fixture.long.id);
+            await page.getByRole('heading', { name: fixture.long.orgName }).waitFor();
+            assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+            const tab = page.getByRole('tab', { name: 'Комплектность', exact: true });
+            await tab.focus(); await page.keyboard.press('ArrowRight');
+            await page.getByRole('tab', { name: 'Анкета', exact: true, selected: true }).waitFor();
+            assert.equal(await page.getByRole('tab', { name: 'Анкета', exact: true }).getAttribute('aria-selected'), 'true');
+            await page.keyboard.press('Home');
+            await page.getByRole('tab', { name: 'Комплектность', exact: true, selected: true }).waitFor();
+            await card(page).getByRole('button', { name: 'Внести значение' }).click();
+            await page.keyboard.press('Escape');
+            await page.getByRole('dialog').waitFor({ state: 'hidden' });
+            assert.equal(await card(page).getByRole('button', { name: 'Внести значение' }).evaluate(element => element === document.activeElement), true);
+            if (shots && width === 390) { await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: path.join(shots, 'registration-detail-mobile.png'), fullPage: true }); }
+            check(`viewport ${width}x${height}: long content, no horizontal overflow, keyboard tabs and dialog focus`);
+        }
+        if (shots) {
+            await page.setViewportSize({ width: 1440, height: 1000 });
+            await page.goto(`${base}${queue}?status=all`); await page.getByRole('heading', { name: 'Регистрации ККТ' }).waitFor();
+            await page.screenshot({ path: path.join(shots, 'registration-queue-desktop.png'), fullPage: true });
+            await goto(page, fixture.main.id); await page.screenshot({ path: path.join(shots, 'registration-readiness-desktop.png'), fullPage: true });
+            await goto(page, fixture.main.id, 'documents'); await page.screenshot({ path: path.join(shots, 'registration-documents-desktop.png'), fullPage: true });
+        }
+        await db.getRepository(AdminUserEntity).update(fixture.actors.operator.id, { isActive: false });
+        await page.getByRole('button', { name: 'Обновить данные', exact: true }).click();
+        await page.getByRole('heading', { name: 'Вход для сотрудников' }).waitFor();
+        assert.equal(await page.locator('.reg-workspace').count(), 0);
+        check('revoked account clears registration data and returns to session boundary');
+        assert.equal(errors.length, 0, 'No browser runtime errors');
+        process.stdout.write(`Registration browser smoke passed: ${checks.length} checks.\n`);
+    } catch (error) {
+        const page = browser?.contexts()[0]?.pages()[0];
+        if (page) await page.screenshot({ path: path.join(require('node:os').tmpdir(), 'vitma-fe-reg1-browser-failure.png'), fullPage: true, mask: [page.locator('.reg-value')] });
+        throw error;
+    } finally {
+        await browser?.close();
+        await app.close();
+    }
+}
+main().catch(error => { console.error(error); process.exitCode = 1; });
