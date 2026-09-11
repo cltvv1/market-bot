@@ -20,6 +20,9 @@ import { SessionProvider, useSession } from './session';
 import { Overview, NotificationSettingsPage } from './utility-pages';
 import { ServiceQueue } from '../features/service-requests/ServiceQueue';
 import { ServiceDetail } from '../features/service-requests/ServiceDetail';
+import { RegistrationQueuePage } from '../features/registrations/RegistrationQueuePage';
+import { RegistrationDetailPage } from '../features/registrations/RegistrationDetailPage';
+import '../features/registrations/registrations.css';
 import './foundation.css';
 import './admin-shell.css';
 import '../features/service-requests/service-workspace.css';
@@ -215,6 +218,26 @@ function Shell() {
                             element={
                                 allowed('/requests/service') ? (
                                     <ServiceDetail />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
+                        <Route
+                            path="requests/registrations"
+                            element={
+                                allowed('/requests/registrations') ? (
+                                    <RegistrationQueuePage />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
+                        <Route
+                            path="requests/registrations/:id"
+                            element={
+                                allowed('/requests/registrations') ? (
+                                    <RegistrationDetailPage />
                                 ) : (
                                     <Forbidden />
                                 )

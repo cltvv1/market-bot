@@ -38,7 +38,7 @@ test('a single production entry and router replace admin reference dispatch', ()
     assert.equal(fs.existsSync('admin-ui/src/reference/ReferenceAdminApp.tsx'), false);
     assert.match(read('admin-ui/src/app/AdminApp.tsx'), /basename="\/admin"/);
     assert.doesNotMatch(read('admin-ui/src/legacy/LegacyAdminSections.tsx'), /function (App|ServiceRequests|ServiceDetail|Login)\(/);
-    assert.equal(Object.keys(legacyRoutes).length, 9);
+    assert.equal(Object.keys(legacyRoutes).length, 8);
 });
 test('permission-filtered navigation, disabled domains, sales and engineer separation', () => {
     const labels = permissions => visibleNavigation(permissions).flatMap(group=>group.items.map(item=>item.label));

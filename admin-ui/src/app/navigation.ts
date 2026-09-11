@@ -18,8 +18,10 @@ import {
 } from 'lucide-react';
 import type { Tab } from '../types';
 
-export const legacyRoutes: Record<Exclude<Tab, 'service'>, string> = {
-    registrations: '/requests/registrations',
+export const legacyRoutes: Record<
+    Exclude<Tab, 'service' | 'registrations'>,
+    string
+> = {
     tickets: '/requests/tickets',
     'organization-access': '/customers/access',
     organizations: '/customers/organizations',
