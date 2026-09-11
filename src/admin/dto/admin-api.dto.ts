@@ -1,4 +1,5 @@
 import { Transform, Type } from 'class-transformer';
+import { RegistrationAdminCommandDto } from 'src/registrations/registration-admin.dto';
 import {
     IsDateString,
     IsIn,
@@ -302,7 +303,7 @@ export class LinkEquipmentKitDto {
     kitId: number;
 }
 
-export class RegistrationOperatorStateDto {
+export class RegistrationOperatorStateDto extends RegistrationAdminCommandDto {
     @IsOptional()
     @IsIn(['new', 'in_work'])
     status?: 'new' | 'in_work';
@@ -312,7 +313,7 @@ export class RegistrationOperatorStateDto {
     priority?: 'low' | 'normal' | 'high' | 'urgent';
 }
 
-export class RegistrationRequirementActionDto {
+export class RegistrationRequirementActionDto extends RegistrationAdminCommandDto {
     @IsIn(['kkt_serial', 'fiscal_drive_serial', 'ofd_code'])
     kind: 'kkt_serial' | 'fiscal_drive_serial' | 'ofd_code';
 
@@ -363,7 +364,7 @@ export class RegistrationNotRequiredDto extends RegistrationRequirementActionDto
     reason: string;
 }
 
-export class RegistrationOfdModeDto {
+export class RegistrationOfdModeDto extends RegistrationAdminCommandDto {
     @IsIn([
         'customer_has_code',
         'purchase_from_vitma',
@@ -382,7 +383,7 @@ export class RegistrationOfdModeDto {
     reason?: string;
 }
 
-export class RegistrationHandoffDto {
+export class RegistrationHandoffDto extends RegistrationAdminCommandDto {
     @IsOptional()
     @Type(() => Number)
     @IsInt()

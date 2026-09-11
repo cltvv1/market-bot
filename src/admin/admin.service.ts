@@ -576,27 +576,6 @@ export class AdminService {
         return this.equipmentKitsRepo.save(kit);
     }
 
-    async linkEquipmentKitToRegistration(
-        registrationId: number,
-        kitId: number,
-    ) {
-        const [registration, kit] = await Promise.all([
-            this.registrationsRepo.findOne({ where: { id: registrationId } }),
-            this.equipmentKitsRepo.findOne({ where: { id: kitId } }),
-        ]);
-        if (!registration || !kit) return null;
-
-        registration.equipmentKitId = kit.id;
-        kit.registrationRequestId = registration.id;
-        kit.status = 'linked';
-        await Promise.all([
-            this.registrationsRepo.save(registration),
-            this.equipmentKitsRepo.save(kit),
-        ]);
-
-        return { registration, kit };
-    }
-
     async getOrganizationAssets(organizationId: number) {
         const [cashRegisters, fiscalDrives, ofdSubscriptions] =
             await Promise.all([
@@ -672,37 +651,6 @@ export class AdminService {
 
     getTicketMessage(id: number) {
         return this.ticketMessagesRepo.findOne({ where: { id } });
-    }
-
-    async updateRegistrationOperatorState(
-        id: number,
-        input: {
-            status?: RegistrationRequestStatus;
-            priority?: RegistrationRequestPriority;
-        },
-    ) {
-        const patch: {
-            status?: RegistrationRequestStatus;
-            priority?: RegistrationRequestPriority;
-        } = {};
-        if (input.status) {
-            if (input.status === 'processed') {
-                throw new BadRequestException(
-                    'Use registration handoff to complete processing',
-                );
-            }
-            patch.status = input.status;
-        }
-        if (input.priority) {
-            patch.priority = input.priority;
-        }
-
-        if (!Object.keys(patch).length) {
-            return this.registrationsRepo.findOne({ where: { id } });
-        }
-
-        await this.registrationsRepo.update(id, patch);
-        return this.registrationsRepo.findOne({ where: { id } });
     }
 
     async sendTicketMessage(
