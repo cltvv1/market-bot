@@ -1,5 +1,11 @@
 import { Transform, Type } from 'class-transformer';
 import {
+    IsRegistrationPathId,
+    REGISTRATION_ID_MAX,
+    RegistrationAdminCommandDto,
+    RegistrationIdParamDto,
+} from 'src/registrations/registration-admin.dto';
+import {
     IsDateString,
     IsIn,
     IsInt,
@@ -302,7 +308,7 @@ export class LinkEquipmentKitDto {
     kitId: number;
 }
 
-export class RegistrationOperatorStateDto {
+export class RegistrationOperatorStateDto extends RegistrationAdminCommandDto {
     @IsOptional()
     @IsIn(['new', 'in_work'])
     status?: 'new' | 'in_work';
@@ -312,7 +318,7 @@ export class RegistrationOperatorStateDto {
     priority?: 'low' | 'normal' | 'high' | 'urgent';
 }
 
-export class RegistrationRequirementActionDto {
+export class RegistrationRequirementActionDto extends RegistrationAdminCommandDto {
     @IsIn(['kkt_serial', 'fiscal_drive_serial', 'ofd_code'])
     kind: 'kkt_serial' | 'fiscal_drive_serial' | 'ofd_code';
 
@@ -334,17 +340,16 @@ export class RegistrationOperatorValueDto extends RegistrationRequirementActionD
     source?: 'operator_input' | 'sold_by_vitma';
 }
 
-export class RegistrationEvidenceParamsDto extends PositiveIdParamDto {
-    @Type(() => Number)
-    @IsInt()
-    @Min(1)
-    evidenceId: number;
+export class RegistrationEvidenceParamsDto extends RegistrationIdParamDto {
+    @IsRegistrationPathId()
+    evidenceId: string;
 }
 
 export class RegistrationEvidenceLinkDto extends RegistrationRequirementActionDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(REGISTRATION_ID_MAX)
     evidenceId: number;
 }
 
@@ -363,7 +368,7 @@ export class RegistrationNotRequiredDto extends RegistrationRequirementActionDto
     reason: string;
 }
 
-export class RegistrationOfdModeDto {
+export class RegistrationOfdModeDto extends RegistrationAdminCommandDto {
     @IsIn([
         'customer_has_code',
         'purchase_from_vitma',
@@ -382,11 +387,12 @@ export class RegistrationOfdModeDto {
     reason?: string;
 }
 
-export class RegistrationHandoffDto {
+export class RegistrationHandoffDto extends RegistrationAdminCommandDto {
     @IsOptional()
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(REGISTRATION_ID_MAX)
     engineerId?: number;
 }
 

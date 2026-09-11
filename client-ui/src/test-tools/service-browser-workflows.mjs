@@ -273,6 +273,7 @@ export async function verifyClientService(browser, operator, baseUrl) {
             checks.push(`client viewport ${width}x${height}`);
         }
         await customer.getByRole('tab', { name: 'Обзор', exact: true }).click();
+        await customer.getByRole('tab', { name: 'Обзор', exact: true, selected: true }).waitFor();
         await customer.getByRole('tab', { name: 'Обзор', exact: true }).focus();
         await customer.keyboard.press('ArrowRight');
         await customer.locator('[role="tab"][aria-selected="true"]').filter({ hasText: 'Переписка' }).waitFor();

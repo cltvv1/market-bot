@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import { AuditService } from 'src/audit/audit.service';
 import { FilesService } from 'src/files/files.service';
+import { StoredFileEntity } from 'src/files/entities/stored-file.entity';
 import {
     MESSENGER_SERVICE,
     type MessengerService,
@@ -27,6 +28,10 @@ import {
     type RegistrationReadiness,
     type RegistrationRequirementKind,
 } from './registration.types';
+import {
+    lockRegistrationCommand,
+    type RegistrationCommandContext,
+} from './registration-admin-policy';
 
 export interface RegistrationClientIdentity {
     platform: UserPlatform;
@@ -89,6 +94,7 @@ export class RegistrationReadinessService {
 
     async initialize(registrationId: number) {
         await this.dataSource.transaction(async (manager) => {
+            await lockRegistrationCommand(manager, registrationId);
             for (const kind of REGISTRATION_REQUIREMENT_KINDS) {
                 await manager.query(
                     `INSERT INTO "registration_requirements" ("registrationId","kind","status","version") VALUES ($1,$2,'missing',1) ON CONFLICT ("registrationId","kind") DO NOTHING`,
@@ -106,6 +112,49 @@ export class RegistrationReadinessService {
             );
         });
         return this.recompute(registrationId);
+    }
+
+    async finalPdfSnapshot(
+        manager: EntityManager,
+        registrationId: number,
+        context?: RegistrationCommandContext,
+    ) {
+        const registration = await lockRegistrationCommand(
+            manager,
+            registrationId,
+            context,
+        );
+        const requirements = await manager.find(RegistrationRequirementEntity, {
+            where: { registrationId },
+            order: { id: 'ASC' },
+        });
+        if (
+            computeRegistrationReadiness(
+                registration.ofdProvisionMode,
+                requirements.map((item) => item.status),
+            ) !== 'ready'
+        )
+            throw new ConflictException(
+                'Registration is not ready for final PDF',
+            );
+        return { registration, requirements };
+    }
+
+    recordFinalPdf(
+        manager: EntityManager,
+        registrationId: number,
+        staffId?: number,
+    ) {
+        return this.audit.record(
+            {
+                actorType: staffId ? 'staff' : 'system',
+                actorStaffId: staffId,
+                action: 'registration.final_pdf.generated',
+                targetType: 'registration',
+                targetId: registrationId,
+            },
+            manager,
+        );
     }
 
     async details(registrationId: number) {
@@ -137,6 +186,7 @@ export class RegistrationReadinessService {
         identity: RegistrationClientIdentity,
         registrationId: number,
     ) {
+        await this.assertEvidenceUploadAccess(identity, registrationId);
         const details = await this.details(registrationId);
         this.assertOwner(details.registration, identity);
         return {
@@ -191,14 +241,23 @@ export class RegistrationReadinessService {
         registrationId: number,
         evidenceId: number,
         staffId: number,
+        context?: RegistrationCommandContext,
     ) {
         return this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOneBy(
-                RegistrationRequestEntity,
-                { id: registrationId },
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
+                context,
             );
-            if (!registration)
-                throw new NotFoundException('Registration was not found');
+            const requirements = await manager
+                .getRepository(RegistrationRequirementEntity)
+                .createQueryBuilder('requirement')
+                .where('requirement.registrationId = :registrationId', {
+                    registrationId,
+                })
+                .orderBy('requirement.id', 'ASC')
+                .setLock('pessimistic_write')
+                .getMany();
             const item = await manager.findOne(RegistrationEvidenceEntity, {
                 where: { id: evidenceId, registrationId },
                 lock: { mode: 'pessimistic_write' },
@@ -208,12 +267,8 @@ export class RegistrationReadinessService {
             item.removedAt = new Date();
             await manager.save(item);
             if (item.requirementId) {
-                const requirement = await manager.findOne(
-                    RegistrationRequirementEntity,
-                    {
-                        where: { id: item.requirementId },
-                        lock: { mode: 'pessimistic_write' },
-                    },
+                const requirement = requirements.find(
+                    (row) => row.id === item.requirementId,
                 );
                 const remaining = await manager.count(
                     RegistrationEvidenceEntity,
@@ -233,10 +288,21 @@ export class RegistrationReadinessService {
                     requirement.status = 'missing';
                     requirement.source = null;
                     requirement.providedAt = null;
+                }
+                if (requirement) {
+                    if (requirement.status === 'verified')
+                        requirement.status = requirement.value
+                            ? 'provided'
+                            : 'missing';
+                    if (requirement.status !== 'not_required') {
+                        requirement.verifiedAt = null;
+                        requirement.verifiedByStaffId = null;
+                    }
+                    requirement.version += 1;
                     await manager.save(requirement);
-                    await this.recomputeWithManager(manager, registration);
                 }
             }
+            await this.recomputeWithManager(manager, registration);
             await this.audit.record(
                 {
                     actorType: 'staff',
@@ -257,24 +323,37 @@ export class RegistrationReadinessService {
         evidenceId: number,
         kind: RegistrationRequirementKind,
         staffId: number,
+        context?: RegistrationCommandContext,
     ) {
         return this.dataSource.transaction(async (manager) => {
-            const source = await manager.findOneBy(RegistrationEvidenceEntity, {
-                id: evidenceId,
+            const registration = await lockRegistrationCommand(
+                manager,
                 registrationId,
-                removedAt: IsNull(),
-            });
-            if (!source) throw new NotFoundException('Evidence was not found');
+                context,
+                kind,
+            );
             const requirement = await this.lockRequirement(
                 manager,
                 registrationId,
                 kind,
             );
+            const source = await manager.findOne(RegistrationEvidenceEntity, {
+                where: { id: evidenceId, registrationId, removedAt: IsNull() },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (!source) throw new NotFoundException('Evidence was not found');
+            const file = await manager.findOneBy(StoredFileEntity, {
+                id: source.storedFileId,
+                status: 'active',
+            });
+            if (!file)
+                throw new NotFoundException('Evidence file is unavailable');
             let link = await manager.findOneBy(RegistrationEvidenceEntity, {
                 requirementId: requirement.id,
                 storedFileId: source.storedFileId,
             });
             if (link) {
+                if (!link.removedAt) return link;
                 link.removedAt = null;
             } else {
                 link = manager.create(RegistrationEvidenceEntity, {
@@ -289,16 +368,15 @@ export class RegistrationReadinessService {
                 });
             }
             await manager.save(link);
-            if (!['verified', 'not_required'].includes(requirement.status)) {
+            if (requirement.status !== 'not_required') {
                 requirement.status = 'provided';
                 requirement.source = requirement.source ?? 'customer_photo';
                 requirement.providedAt = requirement.providedAt ?? new Date();
-                await manager.save(requirement);
+                requirement.verifiedAt = null;
+                requirement.verifiedByStaffId = null;
             }
-            const registration = await manager.findOneByOrFail(
-                RegistrationRequestEntity,
-                { id: registrationId },
-            );
+            requirement.version += 1;
+            await manager.save(requirement);
             await this.recomputeWithManager(manager, registration);
             await this.audit.record(
                 {
@@ -320,21 +398,17 @@ export class RegistrationReadinessService {
         kind: RegistrationRequirementKind,
         staffId: number,
         reason: string,
+        context?: RegistrationCommandContext,
     ) {
         if (!reason.trim()) throw new BadRequestException('Reason is required');
-        await this.changeByStaff(
+        return this.requestData(
             registrationId,
             kind,
             staffId,
-            (requirement) => {
-                requirement.status = 'provided';
-                requirement.verifiedAt = null;
-                requirement.verifiedByStaffId = null;
-                requirement.operatorComment = reason.trim();
-                return 'registration.verification.revoked';
-            },
+            reason,
+            context,
+            true,
         );
-        return this.requestData(registrationId, kind, staffId, reason);
     }
 
     async provideValue(
@@ -398,19 +472,17 @@ export class RegistrationReadinessService {
         staffId: number,
         value: string,
         source: 'operator_input' | 'sold_by_vitma' = 'operator_input',
+        context?: RegistrationCommandContext,
     ) {
         const cleaned = value.trim();
         if (!cleaned) throw new BadRequestException('Value is required');
         return this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOne(
-                RegistrationRequestEntity,
-                {
-                    where: { id: registrationId },
-                    lock: { mode: 'pessimistic_write' },
-                },
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
+                context,
+                kind,
             );
-            if (!registration)
-                throw new NotFoundException('Registration was not found');
             const requirement = await this.lockRequirement(
                 manager,
                 registrationId,
@@ -422,6 +494,7 @@ export class RegistrationReadinessService {
             requirement.providedAt = new Date();
             requirement.verifiedAt = null;
             requirement.verifiedByStaffId = null;
+            requirement.notRequiredReason = null;
             await manager.save(requirement);
             await this.answerOpenRequest(manager, requirement.id);
             await this.audit.record(
@@ -472,6 +545,11 @@ export class RegistrationReadinessService {
         });
         try {
             return await this.dataSource.transaction(async (manager) => {
+                const current = await lockRegistrationCommand(
+                    manager,
+                    registrationId,
+                );
+                this.assertOwner(current, identity);
                 const locked = await this.lockRequirement(
                     manager,
                     registrationId,
@@ -499,6 +577,9 @@ export class RegistrationReadinessService {
                 locked.source = 'customer_photo';
                 locked.status = 'provided';
                 locked.providedAt = new Date();
+                locked.verifiedAt = null;
+                locked.verifiedByStaffId = null;
+                locked.version += 1;
                 await manager.save(locked);
                 await this.answerOpenRequest(manager, locked.id);
                 await this.audit.record(
@@ -511,10 +592,6 @@ export class RegistrationReadinessService {
                         metadata: { kind, storedFileId: stored.id },
                     },
                     manager,
-                );
-                const current = await manager.findOneByOrFail(
-                    RegistrationRequestEntity,
-                    { id: registrationId },
                 );
                 await this.recomputeWithManager(manager, current);
                 return link;
@@ -544,22 +621,41 @@ export class RegistrationReadinessService {
         kind: RegistrationRequirementKind,
         staffId: number,
         text?: string,
+        context?: RegistrationCommandContext,
+        revoke = false,
     ) {
         const result = await this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOne(
-                RegistrationRequestEntity,
-                {
-                    where: { id: registrationId },
-                    lock: { mode: 'pessimistic_write' },
-                },
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
+                context,
+                kind,
             );
-            if (!registration)
-                throw new NotFoundException('Registration was not found');
             const requirement = await this.lockRequirement(
                 manager,
                 registrationId,
                 kind,
             );
+            if (revoke) {
+                requirement.status = 'requested';
+                requirement.verifiedAt = null;
+                requirement.verifiedByStaffId = null;
+                requirement.notRequiredReason = null;
+                requirement.operatorComment = text!.trim();
+                await manager.save(requirement);
+                await this.audit.record(
+                    {
+                        actorType: 'staff',
+                        actorStaffId: staffId,
+                        action: 'registration.verification.revoked',
+                        targetType: 'registration_requirement',
+                        targetId: requirement.id,
+                        metadata: { kind },
+                    },
+                    manager,
+                );
+                await this.recomputeWithManager(manager, registration);
+            }
             const existing = await manager.findOne(
                 RegistrationDataRequestEntity,
                 {
@@ -569,10 +665,13 @@ export class RegistrationReadinessService {
                     },
                 },
             );
-            if (existing) {
+            if (existing && !(revoke && existing.status === 'answered')) {
                 const shouldRetry = existing.status === 'delivery_failed';
                 if (shouldRetry) {
-                    existing.status = 'open';
+                    existing.status =
+                        registration.platform === 'web' ? 'delivered' : 'open';
+                    if (registration.platform === 'web')
+                        existing.deliveredAt = new Date();
                     existing.deliveryError = null;
                     await manager.save(existing);
                 }
@@ -584,10 +683,16 @@ export class RegistrationReadinessService {
                     deliver: shouldRetry,
                 };
             }
+            if (existing) {
+                existing.status = 'closed';
+                existing.closedAt = new Date();
+                await manager.save(existing);
+            }
             requirement.status = 'requested';
             requirement.requestedAt = new Date();
             requirement.verifiedAt = null;
             requirement.verifiedByStaffId = null;
+            requirement.notRequiredReason = null;
             await manager.save(requirement);
             const request = await manager.save(
                 manager.create(RegistrationDataRequestEntity, {
@@ -645,9 +750,10 @@ export class RegistrationReadinessService {
                     },
                 },
             );
-            result.request.status = 'delivered';
-            result.request.deliveredAt = new Date();
-            await this.requests.save(result.request);
+            await this.requests.update(
+                { id: result.request.id, status: 'open', closedAt: IsNull() },
+                { status: 'delivered', deliveredAt: new Date() },
+            );
             await this.audit.record({
                 actorType: 'system',
                 action: 'registration.data_request.delivery_success',
@@ -656,9 +762,13 @@ export class RegistrationReadinessService {
                 metadata: { channel: result.registration.platform },
             });
         } catch {
-            result.request.status = 'delivery_failed';
-            result.request.deliveryError = 'Messenger delivery failed';
-            await this.requests.save(result.request);
+            await this.requests.update(
+                { id: result.request.id, status: 'open', closedAt: IsNull() },
+                {
+                    status: 'delivery_failed',
+                    deliveryError: 'Messenger delivery failed',
+                },
+            );
             await this.audit.record({
                 actorType: 'system',
                 action: 'registration.data_request.delivery_failure',
@@ -668,7 +778,7 @@ export class RegistrationReadinessService {
                 metadata: { channel: result.registration.platform },
             });
         }
-        return result.request;
+        return this.requests.findOneByOrFail({ id: result.request.id });
     }
 
     async activateRequest(identity: RegistrationClientIdentity, token: string) {
@@ -745,6 +855,7 @@ export class RegistrationReadinessService {
         kind: RegistrationRequirementKind,
         staffId: number,
         comment?: string,
+        context?: RegistrationCommandContext,
     ) {
         return this.changeByStaff(
             registrationId,
@@ -767,6 +878,7 @@ export class RegistrationReadinessService {
                 await this.answerOpenRequest(manager, requirement.id, true);
                 return 'registration.value.verified';
             },
+            context,
         );
     }
 
@@ -775,6 +887,7 @@ export class RegistrationReadinessService {
         kind: RegistrationRequirementKind,
         staffId: number,
         reason: string,
+        context?: RegistrationCommandContext,
     ) {
         if (!reason.trim()) throw new BadRequestException('Reason is required');
         return this.changeByStaff(
@@ -789,6 +902,7 @@ export class RegistrationReadinessService {
                 await this.answerOpenRequest(manager, requirement.id, true);
                 return 'registration.requirement.not_required';
             },
+            context,
         );
     }
 
@@ -797,21 +911,18 @@ export class RegistrationReadinessService {
         mode: OfdProvisionMode,
         staffId: number,
         reason?: string,
+        context?: RegistrationCommandContext,
     ) {
         if (mode === 'not_applicable' && !reason?.trim())
             throw new BadRequestException(
                 'Reason is required for not applicable OFD',
             );
         return this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOne(
-                RegistrationRequestEntity,
-                {
-                    where: { id: registrationId },
-                    lock: { mode: 'pessimistic_write' },
-                },
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
+                context,
             );
-            if (!registration)
-                throw new NotFoundException('Registration was not found');
             registration.ofdProvisionMode = mode;
             const ofd = await this.lockRequirement(
                 manager,
@@ -850,41 +961,70 @@ export class RegistrationReadinessService {
         registrationId: number,
         kitId: number,
         staffId: number,
+        context?: RegistrationCommandContext,
     ) {
-        const kit = await this.kits.findOneBy({ id: kitId });
-        if (
-            !kit ||
-            (kit.registrationRequestId &&
-                kit.registrationRequestId !== registrationId)
-        )
-            throw new BadRequestException('Equipment kit is unavailable');
-        const values: Array<
-            [RegistrationRequirementKind, string | null, RegistrationDataSource]
-        > = [
-            ['kkt_serial', kit.cashRegisterSerial, 'internal_registry'],
-            ['fiscal_drive_serial', kit.fiscalDriveSerial, 'internal_registry'],
-            ['ofd_code', kit.ofdActivationCode, 'sold_by_vitma'],
-        ];
         await this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOneByOrFail(
-                RegistrationRequestEntity,
-                { id: registrationId },
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
+                context,
             );
+            const requirements = [] as RegistrationRequirementEntity[];
+            for (const kind of REGISTRATION_REQUIREMENT_KINDS)
+                requirements.push(
+                    await this.lockRequirement(manager, registrationId, kind),
+                );
+            const kit = await manager.findOne(EquipmentKitEntity, {
+                where: { id: kitId },
+                lock: { mode: 'pessimistic_write' },
+            });
+            if (
+                !kit ||
+                !['stock', 'sent', 'linked'].includes(kit.status) ||
+                (kit.registrationRequestId &&
+                    kit.registrationRequestId !== registrationId)
+            )
+                throw new ConflictException('Equipment kit is unavailable');
+            if (
+                registration.equipmentKitId === kitId &&
+                kit.registrationRequestId === registrationId
+            )
+                return;
+            if (registration.equipmentKitId)
+                throw new ConflictException(
+                    'Registration already has an equipment kit',
+                );
+            const values: Array<
+                [
+                    RegistrationRequirementKind,
+                    string | null,
+                    RegistrationDataSource,
+                ]
+            > = [
+                ['kkt_serial', kit.cashRegisterSerial, 'internal_registry'],
+                [
+                    'fiscal_drive_serial',
+                    kit.fiscalDriveSerial,
+                    'internal_registry',
+                ],
+                ['ofd_code', kit.ofdActivationCode, 'sold_by_vitma'],
+            ];
             registration.equipmentKitId = kitId;
             kit.registrationRequestId = registrationId;
             kit.status = 'linked';
             await manager.save([registration, kit]);
             for (const [kind, value, source] of values)
                 if (value?.trim()) {
-                    const requirement = await this.lockRequirement(
-                        manager,
-                        registrationId,
-                        kind,
-                    );
+                    const requirement = requirements.find(
+                        (item) => item.kind === kind,
+                    )!;
                     requirement.value = value.trim();
                     requirement.source = source;
                     requirement.status = 'provided';
                     requirement.providedAt = new Date();
+                    requirement.verifiedAt = null;
+                    requirement.verifiedByStaffId = null;
+                    requirement.notRequiredReason = null;
                     await manager.save(requirement);
                 }
             await this.recomputeWithManager(manager, registration);
@@ -907,12 +1047,14 @@ export class RegistrationReadinessService {
         registrationId: number,
         staffId: number,
         engineerId?: number,
+        context?: RegistrationCommandContext,
     ) {
         return this.handoffWithAction(
             registrationId,
             staffId,
             undefined,
             engineerId,
+            context,
         );
     }
 
@@ -924,6 +1066,7 @@ export class RegistrationReadinessService {
             manager: EntityManager,
         ) => Promise<void>,
         engineerId?: number,
+        context?: RegistrationCommandContext,
     ) {
         const result = await this.dataSource.transaction(async (manager) => {
             const handoff = await this.handoffWithManager(
@@ -931,6 +1074,7 @@ export class RegistrationReadinessService {
                 registrationId,
                 staffId,
                 engineerId,
+                context,
             );
             if (!handoff.denied && onAllowed) {
                 await onAllowed(handoff.registration, manager);
@@ -962,13 +1106,13 @@ export class RegistrationReadinessService {
         registrationId: number,
         staffId: number,
         engineerId?: number,
+        context?: RegistrationCommandContext,
     ): Promise<RegistrationHandoffResult> {
-        const registration = await manager.findOne(RegistrationRequestEntity, {
-            where: { id: registrationId },
-            lock: { mode: 'pessimistic_write' },
-        });
-        if (!registration)
-            throw new NotFoundException('Registration was not found');
+        const registration = await lockRegistrationCommand(
+            manager,
+            registrationId,
+            context,
+        );
         await this.recomputeWithManager(manager, registration);
         if (registration.readiness !== 'ready') {
             const pending = await manager.find(RegistrationRequirementEntity, {
@@ -1019,9 +1163,9 @@ export class RegistrationReadinessService {
 
     async recompute(registrationId: number) {
         return this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOneByOrFail(
-                RegistrationRequestEntity,
-                { id: registrationId },
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
             );
             await this.recomputeWithManager(manager, registration);
             return registration.readiness;
@@ -1036,17 +1180,15 @@ export class RegistrationReadinessService {
             requirement: RegistrationRequirementEntity,
             manager: EntityManager,
         ) => Promise<string> | string,
+        context?: RegistrationCommandContext,
     ) {
         return this.dataSource.transaction(async (manager) => {
-            const registration = await manager.findOne(
-                RegistrationRequestEntity,
-                {
-                    where: { id: registrationId },
-                    lock: { mode: 'pessimistic_write' },
-                },
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
+                context,
+                kind,
             );
-            if (!registration)
-                throw new NotFoundException('Registration was not found');
             const requirement = await this.lockRequirement(
                 manager,
                 registrationId,

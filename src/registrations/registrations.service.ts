@@ -1,5 +1,7 @@
 import * as path from 'path';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+import type { RegistrationCommandContext } from './registration-admin-policy';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Not, Repository } from 'typeorm';
 
@@ -18,6 +20,7 @@ import { AdminNotificationsService } from 'src/admin/admin-notifications.service
 import { RegistrationReadinessService } from './registration-readiness.service';
 @Injectable()
 export class RegistrationsService {
+    private readonly logger = new Logger(RegistrationsService.name);
     constructor(
         @InjectRepository(RegistrationRequestEntity)
         private readonly registrationRepo: Repository<RegistrationRequestEntity>,
@@ -310,16 +313,46 @@ export class RegistrationsService {
         return this.readinessService.details(id);
     }
 
-    async generateFinalPdf(id: number) {
-        const details = await this.readinessService.details(id);
-        if (details.registration.readiness !== 'ready') {
-            throw new Error('Registration is not ready for final PDF');
-        }
+    async generateFinalPdf(id: number, context?: RegistrationCommandContext) {
+        const details = await this.dataSource.transaction((manager) =>
+            this.readinessService.finalPdfSnapshot(manager, id, context),
+        );
+        const snapshot = (data: typeof details) => {
+            const registration = Object.fromEntries(
+                Object.entries(data.registration).filter(
+                    ([key]) =>
+                        ![
+                            'pdfFileId',
+                            'pdfFile',
+                            'updatedAt',
+                            'readinessUpdatedAt',
+                        ].includes(key),
+                ),
+            );
+            return createHash('sha256')
+                .update(
+                    JSON.stringify({
+                        registration,
+                        requirements: data.requirements.map((item) => ({
+                            id: item.id,
+                            kind: item.kind,
+                            version: item.version,
+                        })),
+                    }),
+                )
+                .digest('hex');
+        };
+        const snapshotHash = snapshot(details);
         if (details.registration.pdfFileId) {
             const existing = await this.filesService.get(
                 details.registration.pdfFileId,
             );
-            if (existing?.metadata?.final === true) return existing;
+            if (
+                existing?.status === 'active' &&
+                existing.metadata?.final === true &&
+                existing.metadata?.registrationSnapshot === snapshotHash
+            )
+                return existing;
         }
         const fields = await this.fieldsRepo.find();
         const pdf = await this.pdfService.generateRegistrationPdf(
@@ -333,11 +366,47 @@ export class RegistrationsService {
             originalName: `registration_${id}_final.pdf`,
             mimeType: 'application/pdf',
             serverGenerated: true,
-            metadata: { registrationId: id, final: true },
+            metadata: {
+                registrationId: id,
+                final: true,
+                registrationSnapshot: snapshotHash,
+            },
         });
-        details.registration.pdfFileId = stored.id;
-        await this.registrationRepo.save(details.registration);
-        return stored;
+        try {
+            await this.dataSource.transaction(async (manager) => {
+                const current = await this.readinessService.finalPdfSnapshot(
+                    manager,
+                    id,
+                    context,
+                );
+                if (
+                    snapshot(current) !== snapshotHash ||
+                    current.registration.pdfFileId !==
+                        details.registration.pdfFileId
+                )
+                    throw new ConflictException(
+                        'Registration changed during PDF generation',
+                    );
+                await manager.update(RegistrationRequestEntity, id, {
+                    pdfFileId: stored.id,
+                });
+                await this.readinessService.recordFinalPdf(
+                    manager,
+                    id,
+                    context?.staffId,
+                );
+            });
+            return stored;
+        } catch (error) {
+            await this.filesService
+                .logicalDelete(stored.id)
+                .catch(() =>
+                    this.logger.warn(
+                        'Failed to retire an unattached registration PDF',
+                    ),
+                );
+            throw error;
+        }
     }
 
     async doReg(reg: RegistrationRequestEntity, staffId: number) {

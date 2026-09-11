@@ -10,6 +10,12 @@ Detailed evidence: [2026-09-02 project status and roadmap rebaseline](audits/202
 
 ## What VITMA MARKET is
 
+Implementation addendum, 2026-09-11: FE-REG-1 is implemented on its separate
+draft-review branch, not merged. It connects the existing Registration workflow
+to the production admin shell and fixes the demonstrated owner-before-lazy-read
+ordering issue. The checkpoint tables below retain their historical audit date.
+See [scope, evidence and limits](frontend/2026-09-10-admin-registration-workspace.md).
+
 VITMA MARKET is a pre-production modular monolith for customer service, KKT registration, operator conversations, equipment data, a product catalog, support content, sales orders, and read-only equipment observations. One NestJS application and one PostgreSQL database serve the client React application, the staff React application, Telegram, and MAX.
 
 The backend is substantially ahead of both frontends. The service and registration journeys are usable through current channels, while Catalog, Support, Knowledge, and Orders are mostly backend-only. The visible client catalog/cart/checkout is still demonstration data and must not be treated as business truth.

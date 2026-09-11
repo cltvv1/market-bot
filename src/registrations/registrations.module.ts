@@ -16,6 +16,8 @@ import { EquipmentKitEntity } from 'src/assets/entities/equipment-kit.entity';
 import { AuditModule } from 'src/audit/audit.module';
 import { RegistrationReadinessService } from './registration-readiness.service';
 import { MessengerModule } from 'src/messenger/messenger.module';
+import { RegistrationAdminReadService } from './registration-admin-read.service';
+import { RegistrationAdminCommandsService } from './registration-admin-commands.service';
 
 @Module({
     imports: [
@@ -34,7 +36,17 @@ import { MessengerModule } from 'src/messenger/messenger.module';
         FilesModule,
         AuditModule,
     ],
-    providers: [RegistrationsService, RegistrationReadinessService],
-    exports: [RegistrationsService, RegistrationReadinessService],
+    providers: [
+        RegistrationsService,
+        RegistrationReadinessService,
+        RegistrationAdminReadService,
+        RegistrationAdminCommandsService,
+    ],
+    exports: [
+        RegistrationsService,
+        RegistrationReadinessService,
+        RegistrationAdminReadService,
+        RegistrationAdminCommandsService,
+    ],
 })
 export class RegistrationsModule {}

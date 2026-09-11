@@ -51,7 +51,6 @@ import {
     AssignEngineerDto,
     CustomerContextQueryDto,
     EquipmentKitDto,
-    LinkEquipmentKitDto,
     OptionalMediaTextDto,
     OrganizationAccessListQueryDto,
     OrganizationAccessReviewDto,
@@ -82,7 +81,14 @@ import { ServiceRequestsService } from 'src/service-requests/service-requests.se
 import { ServiceRequestAdminReadService } from 'src/service-requests/service-request-admin-read.service';
 import { ServiceRequestAdminCommandsService } from 'src/service-requests/service-request-admin-commands.service';
 import { RegistrationReadinessService } from 'src/registrations/registration-readiness.service';
-import { RegistrationsService } from 'src/registrations/registrations.service';
+import { RegistrationAdminReadService } from 'src/registrations/registration-admin-read.service';
+import { RegistrationAdminCommandsService } from 'src/registrations/registration-admin-commands.service';
+import {
+    RegistrationAdminCommandDto,
+    RegistrationEquipmentKitDto,
+    RegistrationIdParamDto,
+    RegistrationListQueryDto,
+} from 'src/registrations/registration-admin.dto';
 import {
     AdminCreateServiceRequestDto,
     AdminServiceRequestMessageDto,
@@ -113,7 +119,8 @@ export class AdminController {
         private readonly serviceRead: ServiceRequestAdminReadService,
         private readonly serviceCommands: ServiceRequestAdminCommandsService,
         private readonly registrationReadiness: RegistrationReadinessService,
-        private readonly registrationsService: RegistrationsService,
+        private readonly registrationRead: RegistrationAdminReadService,
+        private readonly registrationCommands: RegistrationAdminCommandsService,
     ) {}
 
     @Get([
@@ -122,6 +129,7 @@ export class AdminController {
         'requests/service',
         'requests/service/:id',
         'requests/registrations',
+        'requests/registrations/:id',
         'requests/tickets',
         'customers/access',
         'customers/organizations',
@@ -381,32 +389,43 @@ export class AdminController {
     }
 
     @Get('api/registrations')
+    @Header('Cache-Control', 'private, no-store')
     @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     getRegistrations(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Query() query: AdminListQueryDto,
+        @Query() query: RegistrationListQueryDto,
     ) {
-        return this.adminService.getRegistrationsForAdmin(
-            admin,
-            query.status || 'new',
-            query.platform,
-            query.priority,
-        );
+        return this.registrationRead.list(admin, query);
     }
 
     @Get('api/registrations/:id')
+    @Header('Cache-Control', 'private, no-store')
     @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async getRegistration(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
     ) {
-        const registration = await this.adminService.getRegistrationForAdmin(
-            admin,
-            Number(params.id),
-        );
-        if (!registration)
-            throw new NotFoundException('Registration was not found');
-        return this.registrationReadiness.details(registration.id);
+        return this.registrationRead.details(admin, Number(params.id));
+    }
+
+    @Get('api/registrations/:id/ofd-value')
+    @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
+    @Header('Cache-Control', 'private, no-store')
+    revealRegistrationOfd(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: RegistrationIdParamDto,
+    ) {
+        return this.registrationRead.revealOfd(admin, Number(params.id));
+    }
+
+    @Get('api/registrations/:id/options')
+    @RequirePermissions('registrations.update')
+    @Header('Cache-Control', 'private, no-store')
+    registrationOptions(
+        @CurrentAdmin() admin: AdminPrincipal,
+        @Param() params: RegistrationIdParamDto,
+    ) {
+        return this.registrationRead.options(admin, Number(params.id));
     }
 
     @Get('api/tickets')
@@ -762,24 +781,15 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     async linkEquipmentKitToRegistration(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
-        @Body() body: LinkEquipmentKitDto,
+        @Param() params: RegistrationIdParamDto,
+        @Body() body: RegistrationEquipmentKitDto,
     ) {
-        const result = await this.registrationReadiness.useEquipmentKit(
-            Number(params.id),
-            body.kitId,
-            admin.id,
-        );
-        await this.recordStaffAction(
+        return this.registrationCommands.execute(
             admin,
-            'registration.equipment_kit.link',
-            'registration',
-            params.id,
-            {
-                equipmentKitId: body.kitId,
-            },
+            Number(params.id),
+            'equipment-kit',
+            body,
         );
-        return result;
     }
 
     @Get('api/organizations/:id/assets')
@@ -798,14 +808,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     requestRegistrationData(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationRequestDataDto,
     ) {
-        return this.registrationReadiness.requestData(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            body.kind,
-            admin.id,
-            body.text,
+            'request-data',
+            body,
         );
     }
 
@@ -813,14 +823,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     verifyRegistrationData(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationRequirementActionDto,
     ) {
-        return this.registrationReadiness.verify(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            body.kind,
-            admin.id,
-            body.comment,
+            'verify',
+            body,
         );
     }
 
@@ -828,15 +838,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     provideRegistrationValue(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationOperatorValueDto,
     ) {
-        return this.registrationReadiness.provideStaffValue(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            body.kind,
-            admin.id,
-            body.value,
-            body.source,
+            'provide-value',
+            body,
         );
     }
 
@@ -844,16 +853,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     repeatRegistrationDataRequest(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationRequestDataDto,
     ) {
-        return this.registrationReadiness.revokeVerification(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            body.kind,
-            admin.id,
-            body.text ||
-                body.comment ||
-                'Требуется повторно предоставить данные',
+            're-request',
+            body,
         );
     }
 
@@ -861,14 +868,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     markRegistrationDataNotRequired(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationNotRequiredDto,
     ) {
-        return this.registrationReadiness.markNotRequired(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            body.kind,
-            admin.id,
-            body.reason,
+            'not-required',
+            body,
         );
     }
 
@@ -876,14 +883,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     setRegistrationOfdMode(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationOfdModeDto,
     ) {
-        return this.registrationReadiness.setOfdMode(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            body.mode,
-            admin.id,
-            body.reason,
+            'ofd-mode',
+            body,
         );
     }
 
@@ -891,13 +898,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     handoffRegistration(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationHandoffDto,
     ) {
-        return this.registrationReadiness.handoff(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            admin.id,
-            body.engineerId,
+            'handoff',
+            body,
         );
     }
 
@@ -905,25 +913,22 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     async generateFinalRegistrationPdf(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
+        @Body() body: RegistrationAdminCommandDto,
     ) {
-        const filePath = await this.registrationsService.generateFinalPdf(
-            Number(params.id),
-        );
-        await this.recordStaffAction(
+        return this.registrationCommands.execute(
             admin,
-            'registration.final_pdf.generated',
-            'registration',
-            params.id,
+            Number(params.id),
+            'final-pdf',
+            body,
         );
-        return { generated: Boolean(filePath) };
     }
 
     @Get('api/registration-evidence/:id/file')
     @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async downloadRegistrationEvidence(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Res() response: Response,
     ) {
         const item = await this.registrationReadiness.getEvidence(
@@ -944,11 +949,13 @@ export class AdminController {
     removeRegistrationEvidence(
         @CurrentAdmin() admin: AdminPrincipal,
         @Param() params: RegistrationEvidenceParamsDto,
+        @Body() body: RegistrationAdminCommandDto,
     ) {
-        return this.registrationReadiness.removeEvidence(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            params.evidenceId,
-            admin.id,
+            'remove-evidence',
+            { ...body, evidenceId: Number(params.evidenceId) },
         );
     }
 
@@ -956,14 +963,14 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     linkRegistrationEvidence(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationEvidenceLinkDto,
     ) {
-        return this.registrationReadiness.linkEvidence(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
-            body.evidenceId,
-            body.kind,
-            admin.id,
+            'link-evidence',
+            body,
         );
     }
 
@@ -971,24 +978,15 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     async updateRegistrationOperatorState(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationOperatorStateDto,
     ) {
-        const result = await this.adminService.updateRegistrationOperatorState(
+        return this.registrationCommands.execute(
+            admin,
             Number(params.id),
+            'operator-state',
             body,
         );
-        await this.recordStaffAction(
-            admin,
-            'registration.operator_state.update',
-            'registration',
-            params.id,
-            {
-                status: body.status,
-                priority: body.priority,
-            },
-        );
-        return result;
     }
 
     @Post('api/tickets/:id/reply')
@@ -1119,7 +1117,7 @@ export class AdminController {
     @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async getRegistrationPdf(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Res() response: Response,
     ) {
         const registration = await this.adminService.getRegistrationForAdmin(
@@ -1127,7 +1125,7 @@ export class AdminController {
             Number(params.id),
         );
         if (!registration?.pdfFileId) {
-            throw new BadRequestException('PDF not found');
+            throw new NotFoundException('PDF not found');
         }
         await this.recordStaffAction(
             admin,
@@ -1155,12 +1153,15 @@ export class AdminController {
     ) {
         const { file, stream } = await this.filesService.open(fileId);
         response.setHeader('Content-Type', file.mimeType);
+        response.setHeader('Content-Length', String(file.sizeBytes));
         response.setHeader(
             'Content-Disposition',
             `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.originalName)}`,
         );
         response.setHeader('Cache-Control', 'private, no-store');
         response.setHeader('X-Content-Type-Options', 'nosniff');
+        stream.on('error', () => response.destroy());
+        response.on('close', () => stream.destroy());
         stream.pipe(response);
     }
 

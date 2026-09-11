@@ -29,6 +29,12 @@ mean every capability has a product UI or that the system is production-ready.
 
 ## Current next track
 
+Frontend implementation checkpoint, 2026-09-11: FE-REG-1's Registration admin
+workspace is implemented in a separate draft PR branch, with scoped reads and
+existing readiness commands. It is not marked merged or publicly deployed.
+Customer registration resume and the unrelated tracks below remain deferred.
+See [FE-REG-1 report](frontend/2026-09-10-admin-registration-workspace.md).
+
 ### EM-0 Equipment Monitoring rebaseline
 
 Audit and design the current ATOL Connect and Platforma OFD data flow before
