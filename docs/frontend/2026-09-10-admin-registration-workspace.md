@@ -127,11 +127,12 @@ Local checks use isolated PostgreSQL 16, application/test DBs, an OS-temp file r
 
 | Check | Result |
 | --- | --- |
-| npm ci / config validation | Passed; unchanged dependency manifests and locks |
-| ci:quality | 306 unit / 39 suites; baseline 290 / 38 |
+| Config validation | Passed; unchanged dependency manifests and locks |
+| ci:quality | 343 unit / 40 suites; baseline 290 / 38 |
 | New policy unit tests | 14 |
-| ci:database | 302 integration / 23 suites; baseline 277 / 22 |
-| New PostgreSQL HTTP/workspace suite | 25, including controlled lock barriers |
+| Identifier DTO unit tests | 37 through the production ValidationPipe |
+| ci:database | 342 integration / 23 suites; baseline 277 / 22 |
+| New PostgreSQL HTTP/workspace suite | 65: 25 original cases including controlled lock barriers + 40 identifier regressions |
 | e2e | 7 / 2 suites, unchanged |
 | Frontend contracts | 9 existing admin + 10 registration + 15 existing client = 34 |
 | Existing offline browser workflows | 28 admin + 29 client = 57, preserved |
@@ -150,6 +151,29 @@ Committed screenshots (synthetic data, masked OFD):
 - [Readiness, desktop](screenshots/2026-09-10-fe-reg1/registration-readiness-desktop.png)
 - [Documents, desktop](screenshots/2026-09-10-fe-reg1/registration-documents-desktop.png)
 - [Detail, mobile](screenshots/2026-09-10-fe-reg1/registration-detail-mobile.png)
+
+## Bounded identifier follow-up (2026-09-11)
+
+Starting HEAD: `166f9f15a14eb7772b12b25c948ad8a640bd2eba`; same draft PR #30 and feature branch. This follow-up changes only Registration HTTP validation and its tests/documentation, not the workspace UI, domain services/rules, permissions, schema, migrations, dependencies or locks.
+
+The authoritative range for integer-backed registration, evidence, kit, staff and stored-file IDs is **1..2147483647**. `RegistrationIdParamDto` checks a bounded ASCII decimal string lexically, before any controller Number conversion. Malformed paths, leading signs/zeroes, fractions, exponent notation, unsafe integers and arbitrarily long digit strings are rejected. The shared `PositiveIdParamDto` and its other consumers are unchanged.
+
+| Boundary | Coverage |
+| --- | --- |
+| Registration path `id` | Detail, options, OFD reveal, PDF; all 12 POST commands |
+| Evidence path IDs | Evidence download `id`; both registration `id` and `evidenceId` on removal |
+| Command body | Equipment-kit `kitId`, link-evidence `evidenceId`, optional handoff `engineerId` |
+| Command preconditions | Nullable/optional `expectedKitId`, `expectedEngineerId`, `expectedPdfFileId` |
+
+Existing body numeric-string conversion, optional engineer choice, nullable snapshot IDs and requirement-version bounds remain intact. No global exception catch, SQLSTATE mapping, bigint migration, truncation or clamping is used.
+
+Actual red-before evidence was collected before implementation: five authorized HTTP regressions on the starting code returned **500 INTERNAL_ERROR**, not the expected 400, for detail ID 2147483648 and operative kit/link-evidence/remove-evidence/engineer IDs 2147483648. The driver logged `QueryFailedError: value "2147483648" is out of range for type integer`. The commands used complete checklists and current permitted preconditions; handoff was ready with no previous handoff. After the DTO change, the same five tests passed with **400 VALIDATION_ERROR**.
+
+Additional coverage: 37 DTO tests through the production ValidationPipe and 40 new HTTP/PostgreSQL cases (65 total workspace cases). The path matrix exercises every affected route and both removal slots. Boundary 1/max values pass DTO validation; valid-but-absent max IDs retain 404 reads/evidence, 409 unavailable-kit and the existing 400 missing-active-engineer domain error, not a validation error. Existing foreign-object/RBAC checks still pass. Preconditions are rejected with 400 before command execution, never incidental stale-snapshot 409.
+
+Rejected requests are checked against complete before/after snapshots of registrations, requirements, evidence, data requests, kits, files, Audit, outbound deliveries and customer activities. Assertions cover no query parameters containing invalid large domain IDs, no command execution, FilesService.open, PDF generation or messenger calls; session/auth queries remain allowed. Real existing files, evidence and a free kit are seeded for negative commands. The unchanged concurrency/rollback tests pass, including preserved PDF pointers and nullable/omitted handoff engineer semantics.
+
+All checks use a separate synthetic test database and temporary storage root, never the running review database/storage. Existing review services and credentials are preserved. Final exact-HEAD checks and commit SHA are recorded in PR #30; it remains draft and is not merged.
 
 ## Bundle comparison
 
@@ -170,7 +194,7 @@ A subsequent hosted run exposed an unchanged client keyboard-test synchronizatio
 
 The initial hosted browser run also exposed an initialization-order issue in the new smoke script: CI starts with built UI disabled, and Nest validates configuration at module import time. The script now enables built UI before importing AppModule and explicitly checks the route's HTTP status before login; it is rerun with the initial CI value disabled. No application serving defaults were changed.
 
-Hosted CI follow-up: the first run exposed a pre-existing random-password fixture failure in the P-PROOF Audit-rollback test. Base64url output does not guarantee three character groups. A test-only generator now validates runtime candidates with the actual password policy, including login exclusion, and retries with a bounded limit. The P-PROOF operator fixture and new Registration fixtures use it; no application password policy or payment-proof behavior changed. GitGuardian incident 37171012 flagged the original Registration fixture's random-password template expression, not a usable committed credential. Its historical occurrence still requires false-positive triage; no published history or check policy was rewritten.
+Hosted CI follow-up: the first run exposed a pre-existing random-password fixture failure in the P-PROOF Audit-rollback test. Base64url output does not guarantee three character groups. A test-only generator now validates runtime candidates with the actual password policy, including login exclusion, and retries with a bounded limit. The P-PROOF operator fixture and new Registration fixtures use it; no application password policy or payment-proof behavior changed. The historical GitGuardian incident was already handled by the user and is not revisited in this follow-up; no published history or check policy was rewritten.
 
 The optional synthetic server `scripts/registration-browser-smoke.cjs --review` requires NODE_ENV=test, a named test DB, disabled polling/workers and an externally supplied `FE_REG1_REVIEW_PASSWORD` (at least 16 characters). Never place a password in a tracked file, command line, PR or screenshot. Locally the persistent admin credential is stored using Windows DPAPI and retrieved through the existing local admin helper; it is not a production bootstrap or shared hardcoded password. The review URL is loopback port 3013, separate from the pre-existing 3011 preview. Provider adapters are fake even in review mode.
 

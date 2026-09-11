@@ -86,6 +86,7 @@ import { RegistrationAdminCommandsService } from 'src/registrations/registration
 import {
     RegistrationAdminCommandDto,
     RegistrationEquipmentKitDto,
+    RegistrationIdParamDto,
     RegistrationListQueryDto,
 } from 'src/registrations/registration-admin.dto';
 import {
@@ -402,7 +403,7 @@ export class AdminController {
     @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async getRegistration(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
     ) {
         return this.registrationRead.details(admin, Number(params.id));
     }
@@ -412,7 +413,7 @@ export class AdminController {
     @Header('Cache-Control', 'private, no-store')
     revealRegistrationOfd(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
     ) {
         return this.registrationRead.revealOfd(admin, Number(params.id));
     }
@@ -422,7 +423,7 @@ export class AdminController {
     @Header('Cache-Control', 'private, no-store')
     registrationOptions(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
     ) {
         return this.registrationRead.options(admin, Number(params.id));
     }
@@ -780,7 +781,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     async linkEquipmentKitToRegistration(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationEquipmentKitDto,
     ) {
         return this.registrationCommands.execute(
@@ -807,7 +808,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     requestRegistrationData(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationRequestDataDto,
     ) {
         return this.registrationCommands.execute(
@@ -822,7 +823,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     verifyRegistrationData(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationRequirementActionDto,
     ) {
         return this.registrationCommands.execute(
@@ -837,7 +838,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     provideRegistrationValue(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationOperatorValueDto,
     ) {
         return this.registrationCommands.execute(
@@ -852,7 +853,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     repeatRegistrationDataRequest(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationRequestDataDto,
     ) {
         return this.registrationCommands.execute(
@@ -867,7 +868,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     markRegistrationDataNotRequired(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationNotRequiredDto,
     ) {
         return this.registrationCommands.execute(
@@ -882,7 +883,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     setRegistrationOfdMode(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationOfdModeDto,
     ) {
         return this.registrationCommands.execute(
@@ -897,7 +898,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     handoffRegistration(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationHandoffDto,
     ) {
         return this.registrationCommands.execute(
@@ -912,7 +913,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     async generateFinalRegistrationPdf(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationAdminCommandDto,
     ) {
         return this.registrationCommands.execute(
@@ -927,7 +928,7 @@ export class AdminController {
     @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async downloadRegistrationEvidence(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Res() response: Response,
     ) {
         const item = await this.registrationReadiness.getEvidence(
@@ -954,7 +955,7 @@ export class AdminController {
             admin,
             Number(params.id),
             'remove-evidence',
-            { ...body, evidenceId: params.evidenceId },
+            { ...body, evidenceId: Number(params.evidenceId) },
         );
     }
 
@@ -962,7 +963,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     linkRegistrationEvidence(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationEvidenceLinkDto,
     ) {
         return this.registrationCommands.execute(
@@ -977,7 +978,7 @@ export class AdminController {
     @RequirePermissions('registrations.update')
     async updateRegistrationOperatorState(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Body() body: RegistrationOperatorStateDto,
     ) {
         return this.registrationCommands.execute(
@@ -1116,7 +1117,7 @@ export class AdminController {
     @RequireAnyPermission('registrations.read', 'registrations.read.assigned')
     async getRegistrationPdf(
         @CurrentAdmin() admin: AdminPrincipal,
-        @Param() params: PositiveIdParamDto,
+        @Param() params: RegistrationIdParamDto,
         @Res() response: Response,
     ) {
         const registration = await this.adminService.getRegistrationForAdmin(

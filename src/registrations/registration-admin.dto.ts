@@ -7,6 +7,7 @@ import {
     IsOptional,
     Max,
     Min,
+    ValidateBy,
     ValidateIf,
     ValidateNested,
 } from 'class-validator';
@@ -19,6 +20,28 @@ import type {
     OfdProvisionMode,
     RegistrationReadiness,
 } from './registration.types';
+
+export const REGISTRATION_ID_MAX = 2_147_483_647;
+const maximumPathId = String(REGISTRATION_ID_MAX);
+
+export function IsRegistrationPathId() {
+    return ValidateBy({
+        name: 'isRegistrationPathId',
+        validator: {
+            validate: (value: unknown) =>
+                typeof value === 'string' &&
+                /^[1-9][0-9]{0,9}$/.test(value) &&
+                (value.length < maximumPathId.length || value <= maximumPathId),
+            defaultMessage: () =>
+                '$property must be a decimal ID between 1 and 2147483647',
+        },
+    });
+}
+
+export class RegistrationIdParamDto {
+    @IsRegistrationPathId()
+    id: string;
+}
 
 class RequirementVersionsDto {
     @IsInt() @Min(1) @Max(2147483647) kkt_serial: number;
@@ -51,9 +74,21 @@ export class RegistrationPreconditionDto implements RegistrationPrecondition {
         'not_applicable',
     ])
     expectedOfdMode?: OfdProvisionMode;
-    @IsOptional() @IsInt() @Min(1) expectedKitId?: number | null;
-    @IsOptional() @IsInt() @Min(1) expectedEngineerId?: number | null;
-    @IsOptional() @IsInt() @Min(1) expectedPdfFileId?: number | null;
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    @Max(REGISTRATION_ID_MAX)
+    expectedKitId?: number | null;
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    @Max(REGISTRATION_ID_MAX)
+    expectedEngineerId?: number | null;
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    @Max(REGISTRATION_ID_MAX)
+    expectedPdfFileId?: number | null;
 }
 export class RegistrationAdminCommandDto {
     @IsDefined()
@@ -62,7 +97,11 @@ export class RegistrationAdminCommandDto {
     precondition: RegistrationPreconditionDto;
 }
 export class RegistrationEquipmentKitDto extends RegistrationAdminCommandDto {
-    @Type(() => Number) @IsInt() @Min(1) kitId: number;
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(REGISTRATION_ID_MAX)
+    kitId: number;
 }
 export class RegistrationListQueryDto {
     @IsOptional() @IsIn(['new', 'in_work', 'processed', 'all']) status?:

@@ -1,5 +1,10 @@
 import { Transform, Type } from 'class-transformer';
-import { RegistrationAdminCommandDto } from 'src/registrations/registration-admin.dto';
+import {
+    IsRegistrationPathId,
+    REGISTRATION_ID_MAX,
+    RegistrationAdminCommandDto,
+    RegistrationIdParamDto,
+} from 'src/registrations/registration-admin.dto';
 import {
     IsDateString,
     IsIn,
@@ -335,17 +340,16 @@ export class RegistrationOperatorValueDto extends RegistrationRequirementActionD
     source?: 'operator_input' | 'sold_by_vitma';
 }
 
-export class RegistrationEvidenceParamsDto extends PositiveIdParamDto {
-    @Type(() => Number)
-    @IsInt()
-    @Min(1)
-    evidenceId: number;
+export class RegistrationEvidenceParamsDto extends RegistrationIdParamDto {
+    @IsRegistrationPathId()
+    evidenceId: string;
 }
 
 export class RegistrationEvidenceLinkDto extends RegistrationRequirementActionDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(REGISTRATION_ID_MAX)
     evidenceId: number;
 }
 
@@ -388,6 +392,7 @@ export class RegistrationHandoffDto extends RegistrationAdminCommandDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(REGISTRATION_ID_MAX)
     engineerId?: number;
 }
 

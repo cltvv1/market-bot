@@ -25,6 +25,7 @@ import { RegistrationEvidenceEntity } from '../src/registrations/entities/regist
 import { RegistrationDataRequestEntity } from '../src/registrations/entities/registration-data-request.entity';
 import { RegistrationReadinessService } from '../src/registrations/registration-readiness.service';
 import { RegistrationAdminReadService } from '../src/registrations/registration-admin-read.service';
+import { RegistrationAdminCommandsService } from '../src/registrations/registration-admin-commands.service';
 import {
     REGISTRATION_REQUIREMENT_KINDS,
     type RegistrationRequirementKind,
@@ -968,5 +969,413 @@ describe('FE-REG-1 registration admin workspace', () => {
         await operator.agent
             .get(`/admin/api/registrations/${registration.id}/pdf`)
             .expect(200);
+    });
+
+    describe('bounded registration identifiers', () => {
+        const outside = 2147483648;
+        const invalidPaths = [
+            '0',
+            '-1',
+            '1.5',
+            '+1',
+            '1e3',
+            '1abc',
+            'Infinity',
+            'NaN',
+            String(outside),
+            '9007199254740992',
+            '9'.repeat(400),
+            '01',
+        ];
+        const readRoutes = [
+            '/admin/api/registrations/:id',
+            '/admin/api/registrations/:id/options',
+            '/admin/api/registrations/:id/ofd-value',
+            '/admin/api/registrations/:id/pdf',
+            '/admin/api/registration-evidence/:id/file',
+        ];
+
+        async function permittedCommand(
+            action: policy.RegistrationAdminActionId,
+        ) {
+            const uploaded = await evidence();
+            await ready();
+            if (action === 'verify') {
+                await readiness.provideStaffValue(
+                    registration.id,
+                    'kkt_serial',
+                    operator.id,
+                    'changed',
+                );
+            }
+            const kit = await db.getRepository(EquipmentKitEntity).save({
+                cashRegisterSerial: 'bounded-kit',
+                status: 'stock',
+            });
+            const file = await app.get(FilesService).saveBuffer({
+                purpose: 'generated-pdf',
+                buffer: syntheticPdf,
+                originalName: 'existing.pdf',
+                mimeType: 'application/pdf',
+                serverGenerated: true,
+                metadata: { registrationId: registration.id, draft: true },
+            });
+            await db
+                .getRepository(RegistrationRequestEntity)
+                .update(registration.id, { pdfFileId: file.id });
+            const kind = policy.registrationRequirementActions.includes(action)
+                ? 'kkt_serial'
+                : undefined;
+            const data = await detail();
+            const actions = kind
+                ? data.requirements.find((row) => row.kind === kind)!.actions
+                : data.workflow.actions;
+            expect(actions.find((item) => item.id === action)?.allowed).toBe(
+                true,
+            );
+            const values: Partial<
+                Record<
+                    policy.RegistrationAdminActionId,
+                    Record<string, unknown>
+                >
+            > = {
+                'equipment-kit': { kitId: kit.id },
+                'link-evidence': { evidenceId: uploaded.id },
+                'provide-value': { value: 'synthetic value' },
+                're-request': { text: 'Synthetic clarification' },
+                'not-required': { reason: 'Synthetic exemption' },
+                'ofd-mode': { mode: 'customer_has_code' },
+                'operator-state': { priority: 'high' },
+            };
+            return {
+                route:
+                    action === 'remove-evidence'
+                        ? `evidence/${uploaded.id}/remove`
+                        : action,
+                body: { ...actionBody(data, action, kind), ...values[action] },
+            };
+        }
+
+        async function unchangedBoundary() {
+            const before = await domainSnapshot();
+            const queries = jest.spyOn(db.logger, 'logQuery');
+            const execute = jest.spyOn(
+                app.get(RegistrationAdminCommandsService),
+                'execute',
+            );
+            const opened = jest.spyOn(app.get(FilesService), 'open');
+            const generated = jest.spyOn(
+                app.get(PdfGeneratorService),
+                'generateRegistrationPdf',
+            );
+            messenger.sendMessage.mockClear();
+            messenger.sendDocument.mockClear();
+            messenger.sendImage.mockClear();
+            return async (invalidIds: Array<string | number>) => {
+                const ids = invalidIds.map(String);
+                expect(
+                    queries.mock.calls.filter(([, parameters]) =>
+                        parameters?.some((value: unknown) =>
+                            ids.includes(String(value)),
+                        ),
+                    ),
+                ).toHaveLength(0);
+                expect(execute).not.toHaveBeenCalled();
+                expect(opened).not.toHaveBeenCalled();
+                expect(generated).not.toHaveBeenCalled();
+                expect(messenger.sendMessage).not.toHaveBeenCalled();
+                expect(messenger.sendDocument).not.toHaveBeenCalled();
+                expect(messenger.sendImage).not.toHaveBeenCalled();
+                expect(await domainSnapshot()).toEqual(before);
+            };
+        }
+
+        async function domainSnapshot() {
+            const snapshot: Record<string, unknown> = {};
+            for (const table of [
+                'registration_requests',
+                'registration_requirements',
+                'registration_evidence',
+                'registration_data_requests',
+                'equipment_kits',
+                'stored_files',
+                'audit_events',
+                'outbound_deliveries',
+                'customer_activities',
+            ]) {
+                snapshot[table] = await db.query(
+                    `SELECT * FROM "${table}" ORDER BY id`,
+                );
+            }
+            return snapshot;
+        }
+
+        function expectValidation(response: request.Response) {
+            const body = response.body as { code: string };
+            expect({ status: response.status, code: body.code }).toEqual({
+                status: 400,
+                code: 'VALIDATION_ERROR',
+            });
+            expect(JSON.stringify(body)).not.toMatch(
+                /SQLSTATE|22003|QueryFailedError|constraint|stack|out of range/i,
+            );
+        }
+
+        it('rejects out-of-range detail IDs before domain queries', async () => {
+            const before = await domainSnapshot();
+            const queries = jest.spyOn(db.logger, 'logQuery');
+            const opened = jest.spyOn(app.get(FilesService), 'open');
+            const response = await operator.agent.get(
+                `/admin/api/registrations/${outside}`,
+            );
+            expectValidation(response);
+            expect(
+                queries.mock.calls.filter(([, parameters]) =>
+                    parameters?.some(
+                        (value: unknown) => String(value) === String(outside),
+                    ),
+                ),
+            ).toHaveLength(0);
+            expect(opened).not.toHaveBeenCalled();
+            expect(await domainSnapshot()).toEqual(before);
+        });
+
+        it.each([
+            ['equipment-kit', 'kitId'],
+            ['link-evidence', 'evidenceId'],
+            ['remove-evidence', 'evidenceId'],
+            ['handoff', 'engineerId'],
+        ] as const)(
+            'rejects out-of-range %s operative ID with permitted current preconditions',
+            async (action, field) => {
+                await evidence();
+                await ready();
+                const data = await detail();
+                expect(data.registration.readiness).toBe('ready');
+                expect(data.registration.handedOffAt).toBeNull();
+                const kind =
+                    action === 'link-evidence' ? 'kkt_serial' : undefined;
+                const actions = kind
+                    ? data.requirements.find((row) => row.kind === kind)!
+                          .actions
+                    : data.workflow.actions;
+                expect(
+                    actions.find((item) => item.id === action)?.allowed,
+                ).toBe(true);
+                const before = await domainSnapshot();
+                const queries = jest.spyOn(db.logger, 'logQuery');
+                messenger.sendMessage.mockClear();
+                const route =
+                    action === 'remove-evidence'
+                        ? `evidence/${outside}/remove`
+                        : action;
+                const response = await operator.agent
+                    .post(
+                        `/admin/api/registrations/${registration.id}/${route}`,
+                    )
+                    .send({
+                        ...actionBody(data, action, kind),
+                        ...(action === 'remove-evidence'
+                            ? {}
+                            : { [field]: outside }),
+                    });
+                expectValidation(response);
+                expect(
+                    queries.mock.calls.filter(([, parameters]) =>
+                        parameters?.some(
+                            (value: unknown) =>
+                                String(value) === String(outside),
+                        ),
+                    ),
+                ).toHaveLength(0);
+                expect(await domainSnapshot()).toEqual(before);
+                expect(messenger.sendMessage).not.toHaveBeenCalled();
+            },
+        );
+
+        it.each(readRoutes)(
+            'bounds all path forms on GET %s without reads or side effects',
+            async (route) => {
+                const unchanged = await unchangedBoundary();
+                for (const id of invalidPaths) {
+                    expectValidation(
+                        await operator.agent.get(
+                            route.replace(':id', encodeURIComponent(id)),
+                        ),
+                    );
+                }
+                // Auth queries may legitimately contain zero or other small numbers.
+                await unchanged([outside, '9007199254740992', '9'.repeat(400)]);
+            },
+        );
+
+        it.each([
+            ...policy.registrationRootActions,
+            ...policy.registrationRequirementActions,
+        ])(
+            'bounds the registration path of POST %s with otherwise valid input',
+            async (action) => {
+                const { route, body } = await permittedCommand(action);
+                const unchanged = await unchangedBoundary();
+                for (const id of invalidPaths) {
+                    expectValidation(
+                        await operator.agent
+                            .post(
+                                `/admin/api/registrations/${encodeURIComponent(id)}/${route}`,
+                            )
+                            .send(body),
+                    );
+                }
+                await unchanged([outside, '9007199254740992', '9'.repeat(400)]);
+            },
+        );
+
+        it('bounds the second remove-evidence path slot without deleting evidence or its file', async () => {
+            const { body } = await permittedCommand('remove-evidence');
+            const unchanged = await unchangedBoundary();
+            for (const id of invalidPaths) {
+                expectValidation(
+                    await operator.agent
+                        .post(
+                            `/admin/api/registrations/${registration.id}/evidence/${encodeURIComponent(id)}/remove`,
+                        )
+                        .send(body),
+                );
+            }
+            await unchanged([outside, '9007199254740992', '9'.repeat(400)]);
+        });
+
+        it.each([
+            ['equipment-kit', 'kitId'],
+            ['link-evidence', 'evidenceId'],
+            ['handoff', 'engineerId'],
+        ] as const)(
+            'bounds body IDs for %s, preserving all linked domain data',
+            async (action, field) => {
+                const { route, body } = await permittedCommand(action);
+                const unchanged = await unchangedBoundary();
+                for (const id of [
+                    0,
+                    -1,
+                    1.5,
+                    outside,
+                    9007199254740992,
+                    '9'.repeat(400),
+                    '1abc',
+                ]) {
+                    expectValidation(
+                        await operator.agent
+                            .post(
+                                `/admin/api/registrations/${registration.id}/${route}`,
+                            )
+                            .send({ ...body, [field]: id }),
+                    );
+                }
+                await unchanged([outside, '9007199254740992', '9'.repeat(400)]);
+            },
+        );
+
+        it.each([
+            ['equipment-kit', 'expectedKitId'],
+            ['handoff', 'expectedEngineerId'],
+            ['final-pdf', 'expectedPdfFileId'],
+        ] as const)(
+            'validates %s precondition %s before snapshot comparison',
+            async (action, field) => {
+                const { route, body } = await permittedCommand(action);
+                const unchanged = await unchangedBoundary();
+                for (const id of [
+                    outside,
+                    9007199254740992,
+                    ...invalidPaths,
+                    '1',
+                ]) {
+                    expectValidation(
+                        await operator.agent
+                            .post(
+                                `/admin/api/registrations/${registration.id}/${route}`,
+                            )
+                            .send({
+                                ...body,
+                                precondition: {
+                                    ...body.precondition,
+                                    [field]: id,
+                                },
+                            }),
+                    );
+                }
+                await unchanged([outside, '9007199254740992', '9'.repeat(400)]);
+            },
+        );
+
+        it.each(readRoutes)(
+            'retains safe not-found for valid max ID on GET %s',
+            async (route) => {
+                const before = await domainSnapshot();
+                const opened = jest.spyOn(app.get(FilesService), 'open');
+                const response = await operator.agent.get(
+                    route.replace(':id', '2147483647'),
+                );
+                expect(response.status).toBe(404);
+                expect((response.body as { code: string }).code).not.toBe(
+                    'VALIDATION_ERROR',
+                );
+                expect(opened).not.toHaveBeenCalled();
+                expect(await domainSnapshot()).toEqual(before);
+            },
+        );
+
+        it.each([
+            ['equipment-kit', 'kitId', 409],
+            ['link-evidence', 'evidenceId', 404],
+            ['remove-evidence', 'evidenceId', 404],
+            ['handoff', 'engineerId', 400],
+        ] as const)(
+            'preserves missing-object domain semantics for %s at the valid upper bound',
+            async (action, field, status) => {
+                const { route, body } = await permittedCommand(action);
+                const before = await domainSnapshot();
+                const execute = jest.spyOn(
+                    app.get(RegistrationAdminCommandsService),
+                    'execute',
+                );
+                const response = await operator.agent
+                    .post(
+                        `/admin/api/registrations/${registration.id}/${
+                            action === 'remove-evidence'
+                                ? 'evidence/2147483647/remove'
+                                : route
+                        }`,
+                    )
+                    .send(
+                        action === 'remove-evidence'
+                            ? body
+                            : { ...body, [field]: 2147483647 },
+                    );
+                expect(response.status).toBe(status);
+                expect((response.body as { code: string }).code).not.toBe(
+                    'VALIDATION_ERROR',
+                );
+                expect(execute).toHaveBeenCalledTimes(1);
+                expect(await domainSnapshot()).toEqual(before);
+            },
+        );
+
+        it.each([undefined, null])(
+            'keeps handoff engineer optional/nullable (%s) with a null expected engineer',
+            async (engineerId) => {
+                const { route, body } = await permittedCommand('handoff');
+                expect(body.precondition.expectedEngineerId).toBeNull();
+                const response = await operator.agent
+                    .post(
+                        `/admin/api/registrations/${registration.id}/${route}`,
+                    )
+                    .send({ ...body, engineerId });
+                expect(response.status).toBe(201);
+                expect(
+                    (response.body as Detail).registration.handedOffAt,
+                ).not.toBeNull();
+            },
+        );
     });
 });
