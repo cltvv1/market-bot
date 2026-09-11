@@ -7,7 +7,6 @@ const { Test } = require('@nestjs/testing');
 const { chromium } = require('playwright-core');
 const { getBotToken } = require('nestjs-telegraf');
 const { DataSource } = require('typeorm');
-const { AppModule } = require('../src/app.module');
 const { configureApplication } = require('../src/app.bootstrap');
 const { MESSENGER_SERVICE } = require('../src/messenger/messenger.types');
 const { RegistrationReadinessService } = require('../src/registrations/registration-readiness.service');
@@ -22,6 +21,7 @@ async function main() {
     assert.equal(process.env.BOT_POLLING_ENABLED, 'false');
     assert.equal(process.env.OUTBOUND_DELIVERY_WORKER_ENABLED, 'false');
     process.env.SERVE_BUILT_UI = 'true';
+    const { AppModule } = require('../src/app.module');
     let failDelivery = true;
     let providerCalls = 0;
     const fake = { sendMessage: async () => { providerCalls++; if (failDelivery) throw new Error('Synthetic delivery failure'); }, sendDocument: async () => undefined, sendImage: async () => undefined };
@@ -55,7 +55,8 @@ async function main() {
             const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
             const page = await context.newPage();
             page.on('pageerror', error => errors.push(error.name));
-            await page.goto(`${base}${route}`);
+            const response = await page.goto(`${base}${route}`);
+            assert.equal(response?.status(), 200, 'Registration route must serve built UI');
             await page.getByRole('heading', { name: 'Вход для сотрудников' }).waitFor();
             await page.locator('input[autocomplete="username"]').fill(fixture.actors[actor].login);
             await page.locator('input[autocomplete="current-password"]').fill(fixture.password);

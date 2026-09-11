@@ -128,7 +128,7 @@ Local checks use isolated PostgreSQL 16, application/test DBs, an OS-temp file r
 | Check | Result |
 | --- | --- |
 | npm ci / config validation | Passed; unchanged dependency manifests and locks |
-| ci:quality | 304 unit / 39 suites; baseline 290 / 38 |
+| ci:quality | 306 unit / 39 suites; baseline 290 / 38 |
 | New policy unit tests | 14 |
 | ci:database | 302 integration / 23 suites; baseline 277 / 22 |
 | New PostgreSQL HTTP/workspace suite | 25, including controlled lock barriers |
@@ -165,6 +165,10 @@ Both revisions were installed from the same unchanged lock and built with Node 2
 No bundle-optimization package was started. The normal CI-equivalent test-environment builds were run as well.
 
 ## Review and remaining limitations
+
+The initial hosted browser run also exposed an initialization-order issue in the new smoke script: CI starts with built UI disabled, and Nest validates configuration at module import time. The script now enables built UI before importing AppModule and explicitly checks the route's HTTP status before login; it is rerun with the initial CI value disabled. No application serving defaults were changed.
+
+Hosted CI follow-up: the first run exposed a pre-existing random-password fixture failure in the P-PROOF Audit-rollback test. Base64url output does not guarantee three character groups. A test-only generator now validates runtime candidates with the actual password policy, including login exclusion, and retries with a bounded limit. The P-PROOF operator fixture and new Registration fixtures use it; no application password policy or payment-proof behavior changed. GitGuardian incident 37171012 flagged the original Registration fixture's random-password template expression, not a usable committed credential. Its historical occurrence still requires false-positive triage; no published history or check policy was rewritten.
 
 The optional synthetic server `scripts/registration-browser-smoke.cjs --review` requires NODE_ENV=test, a named test DB, disabled polling/workers and an externally supplied `FE_REG1_REVIEW_PASSWORD` (at least 16 characters). Never place a password in a tracked file, command line, PR or screenshot. Locally the persistent admin credential is stored using Windows DPAPI and retrieved through the existing local admin helper; it is not a production bootstrap or shared hardcoded password. The review URL is loopback port 3013, separate from the pre-existing 3011 preview. Provider adapters are fake even in review mode.
 

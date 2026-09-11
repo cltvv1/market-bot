@@ -1,3 +1,6 @@
+import { BadRequestException } from '@nestjs/common';
+import { createTestPassword } from '../../test/test-password';
+import * as passwordPolicy from './password';
 import {
     assertStrongPassword,
     createPasswordHash,
@@ -42,5 +45,35 @@ describe('admin password hashing', () => {
 
     it('rejects an obviously weak password', () => {
         expect(() => assertStrongPassword('admin', 'admin')).toThrow();
+    });
+
+    it('regenerates rejected runtime test credentials using the actual policy', () => {
+        const policy = jest.spyOn(passwordPolicy, 'assertStrongPassword');
+        policy.mockImplementationOnce(() => {
+            throw new BadRequestException('Synthetic candidate rejected');
+        });
+        try {
+            const generated = createTestPassword(['synthetic-login']);
+            expect(policy.mock.calls.length).toBeGreaterThanOrEqual(3);
+            expect(() =>
+                assertStrongPassword(generated, 'synthetic-login'),
+            ).not.toThrow();
+        } finally {
+            policy.mockRestore();
+        }
+    });
+
+    it('bounds rejected test-password generation attempts', () => {
+        const policy = jest
+            .spyOn(passwordPolicy, 'assertStrongPassword')
+            .mockImplementation(() => {
+                throw new BadRequestException('Synthetic candidate rejected');
+            });
+        try {
+            expect(() => createTestPassword()).toThrow('Could not generate');
+            expect(policy).toHaveBeenCalledTimes(100);
+        } finally {
+            policy.mockRestore();
+        }
     });
 });

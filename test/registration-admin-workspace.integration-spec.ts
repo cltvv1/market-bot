@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomBytes } from 'node:crypto';
+import { createTestPassword } from './test-password';
 import { getBotToken } from 'nestjs-telegraf';
 import request from 'supertest';
 import type { App } from 'supertest/types';
@@ -82,8 +83,8 @@ describe('FE-REG-1 registration admin workspace', () => {
         await app?.close();
     });
     async function staff(roles: AdminRole[]) {
-        const password = `Aa7!${randomBytes(24).toString('base64url')}`;
         const login = `registration-staff-${++sequence}`;
+        const password = createTestPassword([login]);
         const account = await app.get(AdminAuthService).createStaff({
             login,
             displayName: 'Synthetic employee',

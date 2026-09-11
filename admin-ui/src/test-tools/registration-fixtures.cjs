@@ -7,6 +7,7 @@ const { AdminUserEntity } = require('../../../src/admin/entities/admin-user.enti
 const { RegistrationRequestEntity } = require('../../../src/registrations/entities/registration.entity');
 const { RegistrationReadinessService } = require('../../../src/registrations/registration-readiness.service');
 const { EquipmentKitEntity } = require('../../../src/assets/entities/equipment-kit.entity');
+const { createTestPassword } = require('../../../test/test-password');
 
 async function evidencePdf() {
     const doc = new PDFDocument();
@@ -31,7 +32,7 @@ async function seedRegistrationWorkspace(app, review = false) {
     const auth = app.get(AdminAuthService);
     const readiness = app.get(RegistrationReadinessService);
     const suffix = randomBytes(5).toString('hex');
-    const password = review ? process.env.FE_REG1_REVIEW_PASSWORD : randomBytes(32).toString('base64url');
+    const password = review ? process.env.FE_REG1_REVIEW_PASSWORD : createTestPassword(['operator', 'engineer', 'foreign', 'sales']);
     assert.ok(password && password.length >= 16, 'Provide a runtime review password');
     const actors = {};
     for (const [name, role, displayName] of [

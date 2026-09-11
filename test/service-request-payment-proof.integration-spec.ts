@@ -2,6 +2,7 @@
 import { ConflictException, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomBytes, createHash } from 'node:crypto';
+import { createTestPassword } from './test-password';
 import { getBotToken } from 'nestjs-telegraf';
 import { Telegraf } from 'telegraf';
 import request from 'supertest';
@@ -133,10 +134,11 @@ describe('P-PROOF canonical owner upload', () => {
         };
     }
     async function operator() {
+        const login = `proof${++ip}`;
         const staff = await app.get(AdminAuthService).createStaff({
-            login: `proof${++ip}`,
+            login,
             displayName: 'Synthetic operator',
-            password: randomBytes(24).toString('base64url'),
+            password: createTestPassword([login]),
             roles: ['operator'],
         });
         await db.getRepository(AdminUserEntity).update(staff.id, {
