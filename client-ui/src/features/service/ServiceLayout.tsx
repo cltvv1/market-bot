@@ -6,7 +6,11 @@ import { ServiceError } from './ui';
 import '../../reference/foundation.css';
 import './service.css';
 
-export function ServiceLayout() {
+export function ServiceLayout({
+    registration = false,
+}: {
+    registration?: boolean;
+}) {
     const [menu, setMenu] = useState(false);
     const [lostAt, setLostAt] = useState<string>();
     const location = useLocation();
@@ -14,10 +18,11 @@ export function ServiceLayout() {
     route.current = location.key;
     const trigger = useRef<HTMLButtonElement>(null);
     useEffect(() => {
+        if (registration) return;
         const lose = () => setLostAt(route.current);
         window.addEventListener(SESSION_LOST, lose);
         return () => window.removeEventListener(SESSION_LOST, lose);
-    }, []);
+    }, [registration]);
     const close = () => {
         setMenu(false);
         trigger.current?.focus();
@@ -86,9 +91,11 @@ export function ServiceLayout() {
                 <div className="ref-public-breadcrumb">
                     <Link to="/">Главная</Link>
                     <span>/</span>
-                    <Link to="/service">Сервис</Link>
+                    <Link to={registration ? '/cash-registration' : '/service'}>
+                        {registration ? 'Регистрация ККТ' : 'Сервис'}
+                    </Link>
                 </div>
-                {lostAt === location.key ? (
+                {!registration && lostAt === location.key ? (
                     <div className="svc-section">
                         <h1>Доступ к заявкам</h1>
                         <ServiceError

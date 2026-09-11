@@ -1,6 +1,11 @@
 # FE-REG-1: Admin KKT registration workspace
 
-Implemented on `codex/fe-reg-1-admin-registration-workspace` for draft PR review, **not merged**. Hosted evidence for the final commit is recorded in that PR's checks and verification comment. This is not a public-production rollout approval.
+FE-REG-1 was merged in PR #30 (`714f04c9ced387691d44485f1f40fae423d4d808`). The implementation evidence below describes that package, not a public-production rollout approval.
+
+FE-REG-2 connects the customer side to the same readiness workflow without changing
+this admin UI: browser-owned draft/resume, responses and protected evidence downloads.
+See [client registration/resume](2026-09-11-client-registration-resume.md) for its
+separate draft-PR scope, required web versions and customer/staff concurrency tests.
 
 ## Baseline and initial inventory
 

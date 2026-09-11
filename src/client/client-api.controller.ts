@@ -1,9 +1,19 @@
 import * as path from 'node:path';
+import { RegistrationClientReadService } from 'src/registrations/registration-client-read.service';
+import { RegistrationClientCommandsService } from 'src/registrations/registration-client-commands.service';
+import { RegistrationIdParamDto } from 'src/registrations/registration-admin.dto';
+import {
+    RegistrationClientRequirementParams,
+    RegistrationClientValueDto,
+    RegistrationEvidenceVersionDto,
+} from 'src/registrations/registration-client.dto';
+import { WebMutationOriginGuard } from 'src/web-session/web-mutation-origin.guard';
 import {
     BadRequestException,
     Body,
     Controller,
     Get,
+    Header,
     Param,
     Post,
     Res,
@@ -29,8 +39,6 @@ import {
     ClientIdParamDto,
     RegistrationAnswerDto,
     RegistrationFormDto,
-    RegistrationRequirementParamDto,
-    RegistrationRequirementValueDto,
     TicketMediaDto,
     TicketMessageDto,
 } from './dto/client-api.dto';
@@ -55,6 +63,8 @@ export class ClientApiController {
         private readonly registrationsService: RegistrationsService,
         private readonly filesService: FilesService,
         private readonly registrationReadiness: RegistrationReadinessService,
+        private readonly registrationRead: RegistrationClientReadService,
+        private readonly registrationCommands: RegistrationClientCommandsService,
     ) {}
 
     @Post('users')
@@ -73,84 +83,78 @@ export class ClientApiController {
     }
 
     @Post('registrations/start')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
-    startRegistration(
-        @CurrentWebSession() session: WebSessionPrincipal,
-        @Body() body: ClientContextDto,
-    ) {
-        return this.clientWorkflow.startRegistration(
-            this.identity(session, body),
-        );
+    startRegistration(@CurrentWebSession() session: WebSessionPrincipal) {
+        return this.registrationCommands.legacyStart(session);
     }
 
     @Post('registrations/answer')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     submitRegistrationAnswer(
         @CurrentWebSession() session: WebSessionPrincipal,
         @Body() body: RegistrationAnswerDto,
     ) {
-        return this.clientWorkflow.submitRegistrationAnswer(
-            this.identity(session, body),
-            body.value,
-        );
+        return this.registrationCommands.legacyAnswer(session, body.value);
     }
 
     @Post('registrations/form')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     submitRegistrationForm(
         @CurrentWebSession() session: WebSessionPrincipal,
         @Body() body: RegistrationFormDto,
     ) {
-        return this.clientWorkflow.submitRegistrationForm(
-            this.identity(session, body),
-            body.values,
-        );
+        return this.registrationCommands.legacyForm(session, body.values);
     }
 
     @Get('registrations/:id/checklist')
+    @Header('Cache-Control', 'private, no-store')
     @RateLimit('public-sensitive-read', 60, 60)
     getRegistrationChecklist(
         @CurrentWebSession() session: WebSessionPrincipal,
-        @Param() params: ClientIdParamDto,
+        @Param() params: RegistrationIdParamDto,
     ) {
-        return this.registrationReadiness.clientDetails(
-            this.identity(session),
-            Number(params.id),
-        );
+        return this.registrationRead.details(session, Number(params.id));
     }
 
     @Post('registrations/:id/requirements/:kind/value')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
-    provideRegistrationValue(
+    async provideRegistrationValue(
         @CurrentWebSession() session: WebSessionPrincipal,
-        @Param() params: RegistrationRequirementParamDto,
-        @Body() body: RegistrationRequirementValueDto,
+        @Param() params: RegistrationClientRequirementParams,
+        @Body() body: RegistrationClientValueDto,
     ) {
-        return this.registrationReadiness.provideValue(
-            this.identity(session, body),
+        await this.registrationReadiness.provideValue(
+            session,
             Number(params.id),
             params.kind,
             body.value,
+            body.expectedRequirementVersion,
         );
+        return this.registrationRead.details(session, Number(params.id));
     }
 
     @Post('registrations/:id/requirements/:kind/evidence')
     @RateLimit('public-form', 20, 600)
-    @UseGuards(RegistrationEvidenceUploadGuard)
+    @UseGuards(WebMutationOriginGuard, RegistrationEvidenceUploadGuard)
     @UseInterceptors(
         FileInterceptor(
             'file',
-            multipartOptionsForPurpose('registration-evidence'),
+            multipartOptionsForPurpose('registration-evidence', 1),
         ),
     )
-    provideRegistrationEvidence(
+    async provideRegistrationEvidence(
         @CurrentWebSession() session: WebSessionPrincipal,
-        @Param() params: RegistrationRequirementParamDto,
+        @Param() params: RegistrationClientRequirementParams,
+        @Body() body: RegistrationEvidenceVersionDto,
         @UploadedFile() file?: UploadedMemoryFile,
     ) {
         if (!file) throw new BadRequestException('Evidence file is required');
-        return this.registrationReadiness.uploadEvidence(
-            this.identity(session),
+        await this.registrationReadiness.uploadEvidence(
+            session,
             Number(params.id),
             params.kind,
             {
@@ -158,7 +162,9 @@ export class ClientApiController {
                 fileName: file.originalname,
                 mimeType: file.mimetype,
             },
+            body.expectedRequirementVersion,
         );
+        return this.registrationRead.details(session, Number(params.id));
     }
 
     @Post('tickets/open')
