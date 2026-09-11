@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { RegistrationClientReadService } from './registration-client-read.service';
+import { RegistrationClientCommandsService } from './registration-client-commands.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 
 import { RegistrationRequestEntity } from './entities/registration.entity';
@@ -37,12 +39,16 @@ import { RegistrationAdminCommandsService } from './registration-admin-commands.
         AuditModule,
     ],
     providers: [
+        RegistrationClientReadService,
+        RegistrationClientCommandsService,
         RegistrationsService,
         RegistrationReadinessService,
         RegistrationAdminReadService,
         RegistrationAdminCommandsService,
     ],
     exports: [
+        RegistrationClientReadService,
+        RegistrationClientCommandsService,
         RegistrationsService,
         RegistrationReadinessService,
         RegistrationAdminReadService,
