@@ -111,7 +111,7 @@ unset (Vite production), separately from the CI NODE_ENV=test asset variant.
 
 | Asset | FE-ORD-1 baseline | FE-CAT-1 | Delta | Change |
 | --- | ---: | ---: | ---: | ---: |
-| Admin JS | 399182 | 433323 | +34141 | +8.55% |
+| Admin JS | 399182 | 433348 | +34166 | +8.56% |
 | Admin CSS | 48199 | 53953 | +5754 | +11.94% |
 | Client JS | 439112 | 439112 | 0 | 0% |
 | Client CSS | 83046 | 83046 | 0 | 0% |
@@ -121,6 +121,22 @@ JS `8039594E00035801799D7397CC15D9F11A913B8E984446E0773B5916A9B57DC7`,
 CSS `2C6AF062FB6327EE3AF54965C4F4DF2F057F128B9D595EEBB719178FD2539833`.
 The existing CI/test-mode Vite large-chunk warning remains non-fatal; no dependency
 or unrelated bundle optimization was introduced.
+
+### Hosted browser follow-up
+
+Initial runs 34937347717 and 34937381170 passed quality, builds, database and all
+existing workflows, but exposed timing issues in the new Catalog browser step.
+Rapid search/filter actions could overwrite preceding parameters from an older
+React render. A same-task three-action browser regression reproduced the loss
+before the fix. The Catalog handler now normalizes the current browser URL when
+building the next query; BrowserRouter has already updated history even when its
+next render is pending. All filters, reload and Back/Forward survive together.
+
+The lost-create test also read the old form before the new route had rendered.
+It now waits for both the expected route and the loaded stored SKU. It does not
+relax the assertion or repeat the create request. All 26 checks passed again
+locally with CI/test-mode assets; the correction is a separate follow-up commit,
+not a rewrite of published history. Final hosted evidence must cover that HEAD.
 
 ## Category semantics
 

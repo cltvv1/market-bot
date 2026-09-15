@@ -138,12 +138,17 @@ async function main() {
         await capture(page, 'catalog-product-editor-desktop.png');
         check('server-authoritative publication and real public API visibility');
         await page.goto(base + queue);
-        await page.locator('input[name="search"]').fill(`DEMO-${unique}`);
-        await page.getByRole('button', { name: 'Найти товары', exact: true }).click();
         await page.getByRole('link', { name: productName, exact: true }).waitFor();
-        await page.getByLabel('Активность', { exact: true }).selectOption('active');
-        await page.getByLabel('Публикация', { exact: true }).selectOption('published');
-        await page.waitForURL(url => url.searchParams.get('publication') === 'published');
+        // Dispatch before the router's next render to reproduce rapid filter changes.
+        await page.evaluate(sku => {
+            const input = document.querySelector('input[name="search"]');
+            input.value = sku; input.form.requestSubmit();
+            for (const [label, value] of [['Активность', 'active'], ['Публикация', 'published']]) {
+                const select = document.querySelector(`select[aria-label="${label}"]`);
+                select.value = value; select.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }, `DEMO-${unique}`);
+        await page.waitForURL(url => url.searchParams.get('search') === `DEMO-${unique}` && url.searchParams.get('active') === 'active' && url.searchParams.get('publication') === 'published');
         const queueUrl = page.url(); await page.reload();
         await page.getByRole('link', { name: productName, exact: true }).click();
         await page.getByRole('heading', { name: productName, exact: true }).waitFor();
@@ -261,8 +266,10 @@ async function main() {
         await page.getByRole('button', { name: 'Перечитать запись', exact: true }).click();
         await page.getByRole('button', { name: 'Данные сверены, продолжить', exact: true }).waitFor();
         await page.getByText('Актуальные данные сервера', { exact: true }).click();
-        await page.getByRole('link', { name: 'Открыть найденный товар', exact: true }).click();
-        await page.getByLabel('SKU', { exact: true }).waitFor();
+        const foundLink = page.getByRole('link', { name: 'Открыть найденный товар', exact: true });
+        const foundUrl = new URL(await foundLink.getAttribute('href'), base).href;
+        await foundLink.click(); await page.waitForURL(foundUrl);
+        await page.waitForFunction(sku => document.querySelector('input[name="sku"]')?.value === sku, normalizeCatalogSku(lostSku));
         assert.equal(await page.getByLabel('SKU', { exact: true }).inputValue(), normalizeCatalogSku(lostSku));
         assert.equal(creates, 1);
         check('unknown create uses captured SKU, exact lookup and explicit existing-record navigation');

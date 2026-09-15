@@ -32,7 +32,8 @@ export function CatalogProductQueuePage() {
         revision,
     );
     const change = (key: string, value: string) => {
-        const next = new URLSearchParams(query);
+        // BrowserRouter updates history before React renders the next snapshot.
+        const next = queueQuery(new URLSearchParams(window.location.search));
         if (value) next.set(key, value);
         else next.delete(key);
         next.delete('limit');
