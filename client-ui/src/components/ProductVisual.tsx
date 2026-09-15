@@ -1,50 +1,17 @@
-import {
-    Archive,
-    Boxes,
-    Monitor,
-    PackageCheck,
-    Printer,
-    ReceiptText,
-    Scale,
-    ScanBarcode,
-    Smartphone,
-    Tags,
-} from 'lucide-react';
-import type { Product } from '../types';
-
-const icons = {
-    'online-cash': ReceiptText,
-    fiscal: Printer,
-    pos: Monitor,
-    scanners: ScanBarcode,
-    printers: Tags,
-    drawers: Archive,
-    terminals: Smartphone,
-    scales: Scale,
-    software: Boxes,
-    kits: PackageCheck,
-};
-
-export function ProductVisual({
-    product,
-    compact = false,
-}: {
-    product: Product;
-    compact?: boolean;
-}) {
-    const Icon =
-        icons[product.categoryId as keyof typeof icons] || PackageCheck;
+import { Package } from 'lucide-react';
+export function ProductVisual({ compact = false }: { compact?: boolean }) {
     return (
         <div
-            className={`product-visual product-visual--${product.imageTone} ${compact ? 'product-visual--compact' : ''}`}
+            className={`store-placeholder ${compact ? 'store-placeholder--compact' : ''}`}
             role="img"
-            aria-label={`${product.name}, демонстрационное изображение`}
+            aria-label="Фотография товара не добавлена"
         >
-            <div className="product-device">
-                <Icon aria-hidden="true" strokeWidth={1.25} />
-                <span>{product.brand}</span>
-            </div>
-            <small>{product.sku}</small>
+            <Package
+                size={compact ? 30 : 64}
+                strokeWidth={1.2}
+                aria-hidden="true"
+            />
+            <span>Без фотографии</span>
         </div>
     );
 }

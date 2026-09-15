@@ -24,6 +24,7 @@ import { ServiceLayout } from '../features/service/ServiceLayout';
 
 const nav = [
     { to: '/catalog', label: 'Каталог' },
+    { to: '/orders', label: 'Мои заказы' },
     { to: '/solutions', label: 'Автоматизация' },
     { to: '/service', label: 'Сервис' },
     { to: '/organizations', label: 'Мои организации' },
@@ -59,6 +60,7 @@ export function Layout({ variant }: { variant?: 'service' | 'registration' }) {
             '/solutions': 'Автоматизация бизнеса — VITMA MARKET',
             '/cart': 'Корзина — VITMA MARKET',
             '/checkout': 'Оформление заказа — VITMA MARKET',
+            '/orders': 'Мои заказы — VITMA MARKET',
             '/service': 'Сервисный центр — VITMA MARKET',
             '/service/request': 'Сервисная заявка — VITMA MARKET',
             '/service/status': 'Статус заявки — VITMA MARKET',
@@ -186,6 +188,7 @@ export function Layout({ variant }: { variant?: 'service' | 'registration' }) {
                         <Link to="/delivery">Доставка и оплата</Link>
                         <Link to="/warranty">Гарантия и возврат</Link>
                         <Link to="/cart">Корзина</Link>
+                        <Link to="/orders">Мои заказы</Link>
                     </div>
                     <div>
                         <h2>Сервис</h2>

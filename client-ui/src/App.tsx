@@ -30,6 +30,8 @@ import { LegacyServiceStatusAdapter } from './features/service/LegacyServiceStat
 import { SearchPage } from './pages/SearchPage';
 import { SolutionsPage } from './pages/SolutionsPage';
 import { OrganizationsPage } from './pages/OrganizationsPage';
+import { OrderListPage } from './features/store/orders/OrderListPage';
+import { OrderDetailPage } from './features/store/orders/OrderDetailPage';
 
 export function App() {
     return (
@@ -85,13 +87,7 @@ export function App() {
                                 element={<Navigate to="/service" replace />}
                             />
                         </Route>
-                        <Route
-                            element={
-                                <WebSessionBoundary>
-                                    <Layout />
-                                </WebSessionBoundary>
-                            }
-                        >
+                        <Route element={<Layout />}>
                             <Route index element={<HomePage />} />
                             <Route path="search" element={<SearchPage />} />
                             <Route
@@ -105,9 +101,18 @@ export function App() {
                             />
                             <Route path="cart" element={<CartPage />} />
                             <Route path="checkout" element={<CheckoutPage />} />
+                            <Route path="orders" element={<OrderListPage />} />
+                            <Route
+                                path="orders/:id"
+                                element={<OrderDetailPage />}
+                            />
                             <Route
                                 path="organizations"
-                                element={<OrganizationsPage />}
+                                element={
+                                    <WebSessionBoundary>
+                                        <OrganizationsPage />
+                                    </WebSessionBoundary>
+                                }
                             />
                             <Route path="about" element={<AboutPage />} />
                             <Route path="delivery" element={<DeliveryPage />} />

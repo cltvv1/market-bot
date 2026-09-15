@@ -27,7 +27,7 @@ test('production routes use one router and no auto session bootstrap on service 
 test('legacy service fake, local truth, token writes and collapsed status mapping are removed', () => {
     const client = read('client-ui/src/services/client.ts');
     assert.doesNotMatch(client, /demoRequests|serviceRequestService|vitma_service|toClientServiceStatus/);
-    assert.match(client, /orderService/);
+    assert.doesNotMatch(client, /orderService|vitma_order_/);
     assert.match(client, /callbackService/);
     assert.equal(fs.existsSync('client-ui/src/pages/ServiceRequestPage.tsx'), false);
 });

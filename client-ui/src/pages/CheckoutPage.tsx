@@ -1,254 +1,410 @@
-import { CheckCircle2, LockKeyhole } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { Link, Navigate } from 'react-router-dom';
-import { Breadcrumbs } from '../components/Breadcrumbs';
-import { Button, Input, Select, Textarea, money } from '../components/ui';
-import { useCart } from '../context/CartContext';
-import { orderService } from '../services/client';
-import type { OrderFormData } from '../types';
-
-const initial: OrderFormData = {
-    name: '',
-    phone: '',
-    email: '',
-    organization: '',
-    inn: '',
-    city: 'Красноярск',
-    address: '',
-    delivery: 'pickup',
-    payment: 'invoice',
-    comment: '',
-};
-const phoneMask = (value: string) => {
-    const digits = value.replace(/\D/g, '').replace(/^8/, '7').slice(0, 11);
-    const d = digits.startsWith('7') ? digits : `7${digits}`;
-    return `+7${d.length > 1 ? ` (${d.slice(1, 4)}` : ''}${d.length >= 4 ? `) ${d.slice(4, 7)}` : ''}${d.length >= 7 ? `-${d.slice(7, 9)}` : ''}${d.length >= 9 ? `-${d.slice(9, 11)}` : ''}`;
-};
+import { ArrowRight, RefreshCw } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Button, Input, Select, Textarea } from '../components/ui';
+import {
+    beginNewSession,
+    ClientApiError,
+    storeApi,
+    storeError,
+} from '../features/store/api';
+import { useHydratedCart } from '../features/store/cart/use-hydrated-cart';
+import {
+    createAttempt,
+    currentCheckoutSession,
+    submitAttempt,
+    type CheckoutAttempt,
+} from '../features/store/checkout/attempt';
+import {
+    cartTotals,
+    checkoutPayload,
+    deliveryLabels,
+    hydrateCart,
+    initialCheckout,
+    moneyMinor,
+    type CheckoutFields,
+} from '../features/store/model';
+import { StoreError, StoreLoading } from '../features/store/StoreUI';
+import { useStoreRead } from '../features/store/use-store-read';
 
 export function CheckoutPage() {
-    const { items, total, clear } = useCart();
-    const [form, setForm] = useState(initial);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [submitting, setSubmitting] = useState(false);
-    const [orderNumber, setOrderNumber] = useState('');
-    if (!items.length && !orderNumber) return <Navigate to="/cart" replace />;
-    const set = (name: keyof OrderFormData, value: string) =>
-        setForm((current) => ({ ...current, [name]: value }));
-    const submit = async (event: FormEvent) => {
-        event.preventDefault();
-        const next: Record<string, string> = {};
-        if (form.name.trim().length < 2) next.name = 'Укажите имя';
-        if (form.phone.replace(/\D/g, '').length !== 11)
-            next.phone = 'Введите полный номер телефона';
-        if (!/^\S+@\S+\.\S+$/.test(form.email)) next.email = 'Проверьте email';
-        if (form.organization && !/^\d{10}|\d{12}$/.test(form.inn))
-            next.inn = 'ИНН содержит 10 или 12 цифр';
-        if (!form.city.trim()) next.city = 'Укажите город';
-        if (form.delivery !== 'pickup' && !form.address.trim())
-            next.address = 'Укажите адрес доставки';
-        setErrors(next);
-        if (Object.keys(next).length) return;
-        setSubmitting(true);
+    const navigate = useNavigate();
+    const cart = useHydratedCart();
+    const organizations = useStoreRead(
+        'checkout-organizations',
+        storeApi.organizations,
+    );
+    const [values, setValues] = useState(initialCheckout);
+    const [busy, setBusy] = useState(false);
+    const [uncertain, setUncertain] = useState(false);
+    const [error, setError] = useState('');
+    const [lost, setLost] = useState(false);
+    const attempt = useRef<CheckoutAttempt | null>(null);
+    const submitting = useRef(false);
+    useEffect(() => {
+        if (!uncertain && !busy) return;
+        const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+    }, [uncertain, busy]);
+    function change<K extends keyof CheckoutFields>(
+        key: K,
+        value: CheckoutFields[K],
+    ) {
+        setValues((current) => ({ ...current, [key]: value }));
+    }
+    async function submit(retry = false) {
+        if (submitting.current || (uncertain && !retry)) return;
+        submitting.current = true;
+        setBusy(true);
+        setError('');
+        let dispatched = false;
         try {
-            const result = await orderService.create(form);
-            setOrderNumber(result.number);
-            clear();
+            if (!retry) {
+                const payload = checkoutPayload(values, cart.lines);
+                const latest = await storeApi.resolve(
+                    payload.items.map((line) => line.productId),
+                );
+                if (
+                    cartTotals(hydrateCart(payload.items, latest.items)).blocked
+                ) {
+                    await cart.refresh();
+                    throw new Error(
+                        'В корзине есть недоступные товары. Вернитесь в корзину и удалите их.',
+                    );
+                }
+                await beginNewSession();
+                const session = await currentCheckoutSession();
+                attempt.current = createAttempt(payload, session.expiresAt);
+            }
+            if (!attempt.current) return;
+            dispatched = true;
+            const result = await submitAttempt(attempt.current);
+            attempt.current = null;
+            setUncertain(false);
+            cart.clear();
+            void navigate(`/orders/${result.id}`, { replace: true });
+        } catch (failure) {
+            const unknown =
+                dispatched &&
+                (!(failure instanceof ClientApiError) || failure.uncertain);
+            if (unknown || retry) setUncertain(true);
+            else attempt.current = null;
+            if (
+                retry &&
+                failure instanceof ClientApiError &&
+                failure.status === 401
+            )
+                setLost(true);
+            setError(
+                failure instanceof ClientApiError
+                    ? storeError(failure)
+                    : failure instanceof Error
+                      ? failure.message
+                      : 'Проверьте данные.',
+            );
         } finally {
-            setSubmitting(false);
+            submitting.current = false;
+            setBusy(false);
         }
-    };
-    if (orderNumber)
-        return (
-            <div className="page container success-page">
-                <CheckCircle2 />
-                <span className="eyebrow">Заказ оформлен</span>
-                <h1>Спасибо! Заказ {orderNumber} принят</h1>
-                <p>
-                    Менеджер проверит наличие, рассчитает доставку и свяжется с
-                    вами в рабочее время. Копия заявки сохранена на этом
-                    устройстве.
-                </p>
-                <div>
-                    <Link className="button button--primary" to="/catalog">
-                        Вернуться в каталог
-                    </Link>
-                    <Link className="button button--secondary" to="/contacts">
-                        Контакты компании
-                    </Link>
-                </div>
-            </div>
-        );
+    }
+    const field = (
+        key:
+            | 'organizationName'
+            | 'inn'
+            | 'kpp'
+            | 'name'
+            | 'phone'
+            | 'email'
+            | 'city'
+            | 'address',
+        label: string,
+        maxLength: number,
+        required = false,
+        pattern?: string,
+    ) => (
+        <Input
+            name={key}
+            label={label}
+            maxLength={maxLength}
+            required={required}
+            pattern={pattern}
+            type={key === 'email' ? 'email' : key === 'phone' ? 'tel' : 'text'}
+            value={values[key]}
+            onChange={(event) => change(key, event.target.value)}
+        />
+    );
     return (
-        <div className="page container">
-            <Breadcrumbs
-                items={[
-                    { label: 'Корзина', to: '/cart' },
-                    { label: 'Оформление заказа' },
-                ]}
-            />
-            <header className="page-heading">
+        <div className="container store-page">
+            <div className="store-heading">
                 <div>
-                    <span className="eyebrow">Финальный шаг</span>
+                    <Link to="/cart">Корзина</Link>
                     <h1>Оформление заказа</h1>
-                    <p>
-                        Оплата на сайте не требуется — менеджер подтвердит заказ
-                        и подготовит документы.
-                    </p>
+                    <p>После проверки менеджер подготовит счёт.</p>
                 </div>
-            </header>
-            <form
-                className="checkout-layout"
-                onSubmit={(event) => void submit(event)}
-                noValidate
-            >
-                <div className="checkout-form">
-                    <section>
-                        <h2>Покупатель</h2>
-                        <div className="form-grid">
-                            <Input
-                                label="Имя"
-                                name="name"
-                                required
-                                value={form.name}
-                                onChange={(e) => set('name', e.target.value)}
-                                error={errors.name}
-                            />
-                            <Input
-                                label="Телефон"
-                                name="phone"
-                                required
-                                value={form.phone}
-                                onChange={(e) =>
-                                    set('phone', phoneMask(e.target.value))
-                                }
-                                error={errors.phone}
-                                placeholder="+7 (___) ___-__-__"
-                            />
-                            <Input
-                                label="Email"
-                                name="email"
-                                type="email"
-                                required
-                                value={form.email}
-                                onChange={(e) => set('email', e.target.value)}
-                                error={errors.email}
-                            />
-                            <Input
-                                label="Организация"
-                                name="organization"
-                                value={form.organization}
-                                onChange={(e) =>
-                                    set('organization', e.target.value)
-                                }
-                                placeholder="Необязательно"
-                            />
-                            <Input
-                                label="ИНН"
-                                name="inn"
-                                inputMode="numeric"
-                                value={form.inn}
-                                onChange={(e) =>
-                                    set(
-                                        'inn',
-                                        e.target.value
-                                            .replace(/\D/g, '')
-                                            .slice(0, 12),
+                <Link to="/orders">Мои заказы</Link>
+            </div>
+            {uncertain && (
+                <section className="store-error" role="alert">
+                    <h2>Результат отправки пока не подтверждён</h2>
+                    <p>
+                        Корзина сохранена. Не оформляйте новый заказ: повтор
+                        ниже отправит тот же запрос. Не закрывайте эту вкладку
+                        до проверки.
+                    </p>
+                    <Link to="/orders" target="_blank" rel="noopener">
+                        Посмотреть мои заказы в новой вкладке
+                    </Link>
+                    <Button
+                        disabled={busy || lost}
+                        onClick={() => void submit(true)}
+                    >
+                        <RefreshCw size={17} />
+                        Повторить тот же запрос
+                    </Button>
+                </section>
+            )}
+            {error && (
+                <p className="store-error" role="alert">
+                    {error}
+                </p>
+            )}
+            {!!cart.error && (
+                <StoreError
+                    error={cart.error}
+                    retry={() => void cart.refresh()}
+                />
+            )}
+            {cart.loading && <StoreLoading />}
+            {!cart.lines.length && !uncertain ? (
+                <p className="store-empty">
+                    Корзина пуста. <Link to="/catalog">Выбрать товары</Link>
+                </p>
+            ) : (
+                <div className="store-checkout">
+                    <form
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            void submit();
+                        }}
+                    >
+                        <fieldset disabled={busy || uncertain}>
+                            <legend>Покупатель</legend>
+                            <div className="store-segmented">
+                                {(['organization', 'individual'] as const).map(
+                                    (type) => (
+                                        <label key={type}>
+                                            <input
+                                                type="radio"
+                                                name="customerType"
+                                                value={type}
+                                                checked={
+                                                    values.customerType === type
+                                                }
+                                                onChange={() =>
+                                                    change('customerType', type)
+                                                }
+                                            />
+                                            {type === 'organization'
+                                                ? 'Организация'
+                                                : 'Физлицо'}
+                                        </label>
+                                    ),
+                                )}
+                            </div>
+                            {values.customerType === 'organization' && (
+                                <>
+                                    {!!organizations.data?.length && (
+                                        <Select
+                                            name="organizationId"
+                                            label="Моя организация"
+                                            value={values.organizationId}
+                                            onChange={(event) =>
+                                                change(
+                                                    'organizationId',
+                                                    event.target.value,
+                                                )
+                                            }
+                                        >
+                                            <option value="">
+                                                Другая организация
+                                            </option>
+                                            {organizations.data.map((item) => (
+                                                <option
+                                                    key={item.id}
+                                                    value={item.organization.id}
+                                                >
+                                                    {item.organization.name ||
+                                                        item.organization
+                                                            .inn}{' '}
+                                                    · {item.organization.inn}
+                                                </option>
+                                            ))}
+                                        </Select>
+                                    )}
+                                    {organizations.error &&
+                                        !(
+                                            organizations.error instanceof
+                                                ClientApiError &&
+                                            organizations.error.status === 401
+                                        ) && (
+                                            <StoreError
+                                                error={organizations.error}
+                                                retry={() =>
+                                                    void organizations.refresh()
+                                                }
+                                            />
+                                        )}
+                                    {!values.organizationId && (
+                                        <div className="store-form-grid">
+                                            {field(
+                                                'organizationName',
+                                                'Наименование организации',
+                                                300,
+                                                true,
+                                            )}
+                                            {field(
+                                                'inn',
+                                                'ИНН',
+                                                12,
+                                                true,
+                                                '[0-9]{10}([0-9]{2})?',
+                                            )}
+                                            {field(
+                                                'kpp',
+                                                'КПП',
+                                                9,
+                                                false,
+                                                '[0-9]{9}',
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </fieldset>
+                        <fieldset disabled={busy || uncertain}>
+                            <legend>Контакт</legend>
+                            <div className="store-form-grid">
+                                {field('name', 'Контактное лицо', 160, true)}
+                                {field('phone', 'Телефон', 30, true)}
+                                {field('email', 'Электронная почта', 254)}
+                            </div>
+                        </fieldset>
+                        <fieldset disabled={busy || uncertain}>
+                            <legend>Получение</legend>
+                            <Select
+                                name="deliveryType"
+                                label="Способ получения"
+                                value={values.deliveryType}
+                                onChange={(event) =>
+                                    change(
+                                        'deliveryType',
+                                        event.target
+                                            .value as CheckoutFields['deliveryType'],
                                     )
                                 }
-                                error={errors.inn}
-                                placeholder="Для выставления счёта"
-                            />
-                        </div>
-                    </section>
-                    <section>
-                        <h2>Получение и оплата</h2>
-                        <div className="form-grid">
-                            <Input
-                                label="Город"
-                                name="city"
-                                required
-                                value={form.city}
-                                onChange={(e) => set('city', e.target.value)}
-                                error={errors.city}
-                            />
-                            <Select
-                                label="Способ получения"
-                                value={form.delivery}
-                                onChange={(e) =>
-                                    set('delivery', e.target.value)
-                                }
                             >
-                                <option value="pickup">Самовывоз</option>
-                                <option value="courier">
-                                    Доставка по городу
-                                </option>
-                                <option value="transport">
-                                    Транспортная компания
-                                </option>
+                                {['pickup', 'courier', 'transport_company'].map(
+                                    (type) => (
+                                        <option key={type} value={type}>
+                                            {deliveryLabels[type]}
+                                        </option>
+                                    ),
+                                )}
                             </Select>
-                            <Input
-                                className="field-span"
-                                label="Адрес"
-                                name="address"
-                                required={form.delivery !== 'pickup'}
-                                value={form.address}
-                                onChange={(e) => set('address', e.target.value)}
-                                error={errors.address}
-                                placeholder={
-                                    form.delivery === 'pickup'
-                                        ? 'Для самовывоза не нужен'
-                                        : 'Улица, дом, офис'
-                                }
-                            />
-                            <Select
-                                label="Способ оплаты"
-                                value={form.payment}
-                                onChange={(e) => set('payment', e.target.value)}
-                            >
-                                <option value="invoice">
-                                    Счёт для организации
-                                </option>
-                                <option value="card">
-                                    Банковская карта при получении
-                                </option>
-                                <option value="cash">
-                                    Наличные при получении
-                                </option>
-                            </Select>
+                            <div className="store-form-grid">
+                                {field(
+                                    'city',
+                                    'Город',
+                                    160,
+                                    values.deliveryType !== 'pickup',
+                                )}
+                                {field(
+                                    'address',
+                                    'Адрес',
+                                    500,
+                                    values.deliveryType === 'courier',
+                                )}
+                            </div>
                             <Textarea
-                                className="field-span"
-                                label="Комментарий"
-                                value={form.comment}
-                                onChange={(e) => set('comment', e.target.value)}
-                                placeholder="Пожелания по комплектации или доставке"
+                                name="deliveryComment"
+                                label="Комментарий к получению"
+                                maxLength={1000}
+                                value={values.deliveryComment}
+                                onChange={(event) =>
+                                    change(
+                                        'deliveryComment',
+                                        event.target.value,
+                                    )
+                                }
                             />
-                        </div>
-                    </section>
+                            <Textarea
+                                name="comment"
+                                label="Комментарий к заказу"
+                                maxLength={2000}
+                                value={values.comment}
+                                onChange={(event) =>
+                                    change('comment', event.target.value)
+                                }
+                            />
+                        </fieldset>
+                        {!uncertain && (
+                            <Button
+                                type="submit"
+                                disabled={
+                                    busy ||
+                                    cart.loading ||
+                                    !!cart.error ||
+                                    cart.totals.blocked
+                                }
+                            >
+                                {busy
+                                    ? 'Отправляем заказ'
+                                    : 'Передать заказ менеджеру'}
+                                <ArrowRight size={18} />
+                            </Button>
+                        )}
+                        <p className="store-muted">
+                            Заказ будет доступен в этом браузере. Данные
+                            используются для его обработки согласно{' '}
+                            <Link to="/privacy">
+                                политике конфиденциальности
+                            </Link>
+                            .
+                        </p>
+                    </form>
+                    <aside className="store-order-summary">
+                        <h2>Ваш заказ</h2>
+                        {cart.items.map((item) => (
+                            <div
+                                className="store-summary-line"
+                                key={item.productId}
+                            >
+                                <span>
+                                    {item.product?.name ??
+                                        `Недоступный товар #${item.productId}`}
+                                </span>
+                                <span>{item.quantity} шт.</span>
+                            </div>
+                        ))}
+                        <h3>
+                            {cart.totals.unpriced
+                                ? 'Сумма позиций с ценой'
+                                : 'Сумма по каталогу'}
+                        </h3>
+                        <strong>{moneyMinor(cart.totals.subtotal)}</strong>
+                        {cart.totals.unpriced && (
+                            <p>
+                                Стоимость остальных позиций рассчитает менеджер.
+                            </p>
+                        )}
+                        <p>
+                            Это не онлайн-оплата. Счёт появится после
+                            согласования заказа.
+                        </p>
+                    </aside>
                 </div>
-                <aside className="order-summary">
-                    <h2>Состав заказа</h2>
-                    {items.map(({ product, quantity }) => (
-                        <div key={product.id}>
-                            <span>
-                                {product.name} × {quantity}
-                            </span>
-                            <strong>{money(product.price * quantity)}</strong>
-                        </div>
-                    ))}
-                    <div className="order-summary__total">
-                        <span>Итого</span>
-                        <strong>{money(total)}</strong>
-                    </div>
-                    <Button type="submit" disabled={submitting}>
-                        {submitting ? 'Оформляем…' : 'Подтвердить заказ'}
-                    </Button>
-                    <p>
-                        <LockKeyhole />
-                        Данные используются только для обработки заказа и не
-                        передаются третьим лицам.
-                    </p>
-                </aside>
-            </form>
+            )}
         </div>
     );
 }

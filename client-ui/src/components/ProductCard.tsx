@@ -1,46 +1,29 @@
 import { ArrowRight, ShoppingCart } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
-import type { Product } from '../types';
-import { Badge, Button, money } from './ui';
+import type { Product } from '../features/store/types';
+import {
+    availabilityLabels,
+    moneyMinor,
+    orderable,
+} from '../features/store/model';
+import { Button } from './ui';
 import { ProductVisual } from './ProductVisual';
-
-const stockLabel = {
-    in_stock: 'В наличии',
-    low_stock: 'Осталось мало',
-    on_order: 'Под заказ',
-};
-const stockTone = {
-    in_stock: 'success',
-    low_stock: 'warning',
-    on_order: 'neutral',
-} as const;
-
 export function ProductCard({ product }: { product: Product }) {
     const { add } = useCart();
     return (
-        <article className="product-card">
+        <article className="product-card store-product-card">
             <Link
                 to={`/catalog/${product.slug}`}
-                className="product-card__visual"
                 aria-label={`Подробнее: ${product.name}`}
             >
-                <ProductVisual product={product} />
-                {product.oldPrice && (
-                    <span className="discount">
-                        −
-                        {Math.round(
-                            (1 - product.price / product.oldPrice) * 100,
-                        )}
-                        %
-                    </span>
-                )}
+                <ProductVisual />
             </Link>
             <div className="product-card__body">
                 <div className="product-card__meta">
-                    <Badge tone={stockTone[product.stock]}>
-                        {stockLabel[product.stock]}
-                    </Badge>
+                    <span className="store-badge">
+                        {availabilityLabels[product.availabilityStatus]}
+                    </span>
                     <span>{product.sku}</span>
                 </div>
                 <Link
@@ -51,15 +34,14 @@ export function ProductCard({ product }: { product: Product }) {
                 </Link>
                 <p>{product.shortDescription}</p>
                 <ul>
-                    {product.features.slice(0, 2).map((feature) => (
-                        <li key={feature}>{feature}</li>
+                    {product.features.slice(0, 2).map((feature, index) => (
+                        <li key={index}>{feature}</li>
                     ))}
                 </ul>
             </div>
             <footer>
                 <div className="price">
-                    <strong>{money(product.price)}</strong>
-                    {product.oldPrice && <s>{money(product.oldPrice)}</s>}
+                    <strong>{moneyMinor(product.displayPriceMinor)}</strong>
                 </div>
                 <div className="product-card__actions">
                     <Link
@@ -69,6 +51,7 @@ export function ProductCard({ product }: { product: Product }) {
                         Подробнее <ArrowRight size={16} />
                     </Link>
                     <Button
+                        disabled={!orderable(product)}
                         onClick={() => add(product.id)}
                         aria-label={`Добавить ${product.name} в корзину`}
                     >

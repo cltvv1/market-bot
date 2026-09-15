@@ -9,6 +9,7 @@ import { AuditService } from 'src/audit/audit.service';
 import {
     DataSource,
     EntityManager,
+    In,
     QueryFailedError,
     Repository,
 } from 'typeorm';
@@ -98,6 +99,24 @@ export class CatalogService {
         if (!product)
             throw new NotFoundException('Catalog product was not found');
         return this.presentPublicProduct(product);
+    }
+
+    async resolvePublicProducts(ids: number[]) {
+        const products = await this.products.find({
+            where: {
+                id: In(ids),
+                isActive: true,
+                isPublished: true,
+                category: { isPublished: true },
+            },
+            relations: { category: true },
+            order: { id: 'ASC' },
+        });
+        return {
+            items: products.map((product) =>
+                this.presentPublicProduct(product),
+            ),
+        };
     }
 
     async listAdminCategories(actor?: CatalogAdminActor) {
