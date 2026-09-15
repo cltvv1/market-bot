@@ -32,7 +32,6 @@ export const legacyRoutes: Record<
     audit: '/settings/audit',
 };
 export const unavailableRoutes = new Set([
-    '/admin/catalog/products',
     '/admin/catalog/support',
     '/admin/catalog/knowledge',
 ]);
@@ -122,10 +121,16 @@ export const navigation = [
         title: 'Каталог и материалы',
         items: [
             {
-                label: 'Товары и категории',
+                label: 'Товары',
                 icon: Layers,
                 permissions: ['catalog.read'],
                 target: '/admin/catalog/products',
+            },
+            {
+                label: 'Категории',
+                icon: Layers,
+                permissions: ['catalog.read'],
+                target: '/admin/catalog/categories',
             },
             {
                 label: 'Поддержка',
