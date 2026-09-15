@@ -192,6 +192,13 @@ PR head in hosted CI. Screenshots were regenerated from the final UI build.
 The two-window browser check waits for the actual detail response and rendered
 new total, rather than treating an already-idle page as evidence of a completed
 refresh. It separately verifies the committed database quote total.
+The first hosted push run exposed another synchronous test assertion: keyboard
+navigation was checked before React committed the selected-tab attribute. The
+browser test now waits for the actual selected tab before asserting it, without
+fixed sleeps or retrying a business command. Hosted checks must pass on the
+follow-up commit, not merely on the earlier implementation head.
+The corrected 17-check workflow passed locally against both production-mode
+assets and assets built with CI's `NODE_ENV=test` settings.
 
 ### Production bundle comparison
 

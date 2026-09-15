@@ -123,6 +123,7 @@ async function main() {
         check('two-window stale quote gets 409, preserves values and never blindly retries');
         await page.setViewportSize({ width: 1280, height: 800 }); await capture(page, 'order-detail-quote-desktop.png');
         await page.getByRole('tab', { name: 'Предложение', exact: true }).focus(); await page.keyboard.press('ArrowRight');
+        await page.getByRole('tab', { name: 'Оплата', exact: true, selected: true }).waitFor();
         assert.equal(await page.getByRole('tab', { name: 'Оплата', exact: true }).getAttribute('aria-selected'), 'true');
         await page.getByRole('tab', { name: 'Предложение', exact: true }).click();
         await action(page, 'Согласовать заказ');
