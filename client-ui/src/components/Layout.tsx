@@ -32,7 +32,7 @@ const nav = [
     { to: '/contacts', label: 'Контакты' },
 ];
 
-export function Layout({ variant }: { variant?: 'service' }) {
+export function Layout({ variant }: { variant?: 'service' | 'registration' }) {
     const [menuOpen, setMenuOpen] = useState(false);
     const [query, setQuery] = useState('');
     const { count, notice } = useCart();
@@ -63,6 +63,7 @@ export function Layout({ variant }: { variant?: 'service' }) {
             '/service/request': 'Сервисная заявка — VITMA MARKET',
             '/service/status': 'Статус заявки — VITMA MARKET',
             '/cash-registration': 'Регистрация кассы — VITMA MARKET',
+            '/registrations': 'Мои регистрации — VITMA MARKET',
             '/organizations': 'Мои организации — VITMA MARKET',
             '/about': 'О компании — VITMA MARKET',
             '/delivery': 'Доставка и оплата — VITMA MARKET',
@@ -81,7 +82,8 @@ export function Layout({ variant }: { variant?: 'service' }) {
         void navigate(`/search?q=${encodeURIComponent(query.trim())}`);
     };
 
-    if (variant === 'service') return <ServiceLayout />;
+    if (variant)
+        return <ServiceLayout registration={variant === 'registration'} />;
     return (
         <div className="app-shell">
             <a className="skip-link" href="#main">

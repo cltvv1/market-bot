@@ -11,7 +11,11 @@ import {
     WarrantyPage,
 } from './pages/InfoPages';
 import { CartPage } from './pages/CartPage';
-import { CashRegistrationPage } from './pages/CashRegistrationPage';
+import { RegistrationLandingPage } from './features/registration/RegistrationLandingPage';
+import { RegistrationListPage } from './features/registration/RegistrationListPage';
+import { RegistrationDetailPage } from './features/registration/RegistrationDetailPage';
+import { RegistrationDraftPage } from './features/registration/RegistrationDraftPage';
+import './features/registration/registration.css';
 import { CatalogPage } from './pages/CatalogPage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { HomePage } from './pages/HomePage';
@@ -33,6 +37,24 @@ export function App() {
             <CartProvider>
                 <CallbackProvider>
                     <Routes>
+                        <Route element={<Layout variant="registration" />}>
+                            <Route
+                                path="cash-registration"
+                                element={<RegistrationLandingPage />}
+                            />
+                            <Route
+                                path="registrations"
+                                element={<RegistrationListPage />}
+                            />
+                            <Route
+                                path="registrations/:id"
+                                element={<RegistrationDetailPage />}
+                            />
+                            <Route
+                                path="registrations/:id/edit"
+                                element={<RegistrationDraftPage />}
+                            />
+                        </Route>
                         <Route element={<Layout variant="service" />}>
                             <Route
                                 path="service"
@@ -83,10 +105,6 @@ export function App() {
                             />
                             <Route path="cart" element={<CartPage />} />
                             <Route path="checkout" element={<CheckoutPage />} />
-                            <Route
-                                path="cash-registration"
-                                element={<CashRegistrationPage />}
-                            />
                             <Route
                                 path="organizations"
                                 element={<OrganizationsPage />}

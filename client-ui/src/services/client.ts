@@ -57,22 +57,6 @@ const post = async <T>(url: string, body: unknown): Promise<T> => {
     return response.json() as Promise<T>;
 };
 
-const upload = async <T>(url: string, file: File): Promise<T> => {
-    await ensureWebSession();
-    const data = new FormData();
-    data.append('file', file);
-    const response = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
-        body: data,
-    });
-    if (!response.ok)
-        throw new Error(
-            (await readApiMessage(response)) || 'Не удалось загрузить файл',
-        );
-    return response.json() as Promise<T>;
-};
-
 const get = async <T>(url: string): Promise<T> => {
     await ensureWebSession();
     const response = await fetch(url, { credentials: 'include' });
@@ -141,68 +125,6 @@ export const callbackService = {
             ]),
         );
         return { status: 'created' };
-    },
-};
-
-export interface RegistrationFieldDto {
-    name: string;
-    label: string;
-}
-
-export type RegistrationRequirementKind =
-    | 'kkt_serial'
-    | 'fiscal_drive_serial'
-    | 'ofd_code';
-export interface RegistrationChecklistDto {
-    registration: { id: number; readiness: string; ofdProvisionMode: string };
-    requirements: Array<{
-        id: number;
-        kind: RegistrationRequirementKind;
-        status: string;
-        value?: string;
-        source?: string;
-    }>;
-    dataRequests: Array<{
-        id: number;
-        requirementId: number;
-        requestText: string;
-        status: string;
-    }>;
-}
-
-export const registrationService = {
-    async getFields(): Promise<RegistrationFieldDto[]> {
-        await ensureWebSession();
-        const response = await fetch('/api/client/registration-fields', {
-            credentials: 'include',
-        });
-        if (!response.ok) throw new Error('Не удалось загрузить поля анкеты');
-        return response.json() as Promise<RegistrationFieldDto[]>;
-    },
-    async submit(values: Record<string, string>) {
-        return post<{ data: { id: number } }>(
-            '/api/client/registrations/form',
-            {
-                values,
-            },
-        );
-    },
-    checklist(id: number) {
-        return get<RegistrationChecklistDto>(
-            `/api/client/registrations/${id}/checklist`,
-        );
-    },
-    value(id: number, kind: RegistrationRequirementKind, value: string) {
-        return post(
-            `/api/client/registrations/${id}/requirements/${kind}/value`,
-            { value },
-        );
-    },
-    evidence(id: number, kind: RegistrationRequirementKind, file: File) {
-        return upload(
-            `/api/client/registrations/${id}/requirements/${kind}/evidence`,
-            file,
-        );
     },
 };
 

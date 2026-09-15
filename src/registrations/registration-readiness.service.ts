@@ -1,5 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
+    assertRegistrationOwner,
+    assertWebRegistrationMutable,
+    registrationChecklistAvailable,
+} from './registration-client-policy';
+import {
     BadRequestException,
     ConflictException,
     Inject,
@@ -92,9 +97,12 @@ export class RegistrationReadinessService {
         @Inject(MESSENGER_SERVICE) private readonly messenger: MessengerService,
     ) {}
 
-    async initialize(registrationId: number) {
-        await this.dataSource.transaction(async (manager) => {
-            await lockRegistrationCommand(manager, registrationId);
+    async initialize(registrationId: number, transaction?: EntityManager) {
+        const initialize = async (manager: EntityManager) => {
+            const registration = await lockRegistrationCommand(
+                manager,
+                registrationId,
+            );
             for (const kind of REGISTRATION_REQUIREMENT_KINDS) {
                 await manager.query(
                     `INSERT INTO "registration_requirements" ("registrationId","kind","status","version") VALUES ($1,$2,'missing',1) ON CONFLICT ("registrationId","kind") DO NOTHING`,
@@ -110,8 +118,12 @@ export class RegistrationReadinessService {
                 },
                 manager,
             );
-        });
-        return this.recompute(registrationId);
+            await this.recomputeWithManager(manager, registration);
+            return registration.readiness;
+        };
+        return transaction
+            ? initialize(transaction)
+            : this.dataSource.transaction(initialize);
     }
 
     async finalPdfSnapshot(
@@ -416,6 +428,7 @@ export class RegistrationReadinessService {
         registrationId: number,
         kind: RegistrationRequirementKind,
         value: string,
+        expectedRequirementVersion?: number,
     ) {
         const cleaned = value.trim();
         if (!cleaned) throw new BadRequestException('Value is required');
@@ -430,11 +443,23 @@ export class RegistrationReadinessService {
             if (!registration)
                 throw new NotFoundException('Registration was not found');
             this.assertOwner(registration, identity);
+            await this.assertWebResponse(
+                manager,
+                registration,
+                identity,
+                expectedRequirementVersion,
+            );
             const requirement = await this.lockRequirement(
                 manager,
                 registrationId,
                 kind,
+                expectedRequirementVersion === undefined,
             );
+            if (
+                expectedRequirementVersion !== undefined &&
+                requirement.version !== expectedRequirementVersion
+            )
+                throw new ConflictException('Registration requirement changed');
             if (
                 requirement.status === 'verified' ||
                 requirement.status === 'not_required'
@@ -448,6 +473,8 @@ export class RegistrationReadinessService {
             requirement.providedAt = new Date();
             requirement.verifiedAt = null;
             requirement.verifiedByStaffId = null;
+            if (expectedRequirementVersion !== undefined)
+                requirement.version += 1;
             await manager.save(requirement);
             await this.answerOpenRequest(manager, requirement.id);
             await this.audit.record(
@@ -518,16 +545,30 @@ export class RegistrationReadinessService {
         registrationId: number,
         kind: RegistrationRequirementKind,
         file: { buffer: Buffer; fileName?: string; mimeType?: string },
+        expectedRequirementVersion?: number,
     ) {
         const registration = await this.assertEvidenceUploadAccess(
             identity,
             registrationId,
         );
-        await this.initializeIfMissing(registrationId);
+        if (expectedRequirementVersion === undefined)
+            await this.initializeIfMissing(registrationId);
+        else
+            await this.assertWebResponse(
+                this.dataSource.manager,
+                registration,
+                identity,
+                expectedRequirementVersion,
+            );
         const requirement = await this.requirements.findOneByOrFail({
             registrationId,
             kind,
         });
+        if (
+            expectedRequirementVersion !== undefined &&
+            requirement.version !== expectedRequirementVersion
+        )
+            throw new ConflictException('Registration requirement changed');
         if (
             requirement.status === 'verified' ||
             requirement.status === 'not_required'
@@ -550,11 +591,35 @@ export class RegistrationReadinessService {
                     registrationId,
                 );
                 this.assertOwner(current, identity);
+                await this.assertWebResponse(
+                    manager,
+                    current,
+                    identity,
+                    expectedRequirementVersion,
+                );
                 const locked = await this.lockRequirement(
                     manager,
                     registrationId,
                     kind,
+                    expectedRequirementVersion === undefined,
                 );
+                if (
+                    expectedRequirementVersion !== undefined &&
+                    locked.version !== expectedRequirementVersion
+                )
+                    throw new ConflictException(
+                        'Registration requirement changed',
+                    );
+                const currentFile = await manager.findOneBy(StoredFileEntity, {
+                    id: stored.id,
+                });
+                if (
+                    !currentFile ||
+                    currentFile.status !== 'active' ||
+                    currentFile.metadata?.purpose !== 'registration-evidence' ||
+                    currentFile.metadata?.registrationId !== registrationId
+                )
+                    throw new ConflictException('Evidence file is unavailable');
                 if (
                     locked.status === 'verified' ||
                     locked.status === 'not_required'
@@ -1224,12 +1289,13 @@ export class RegistrationReadinessService {
         manager: EntityManager,
         registrationId: number,
         kind: RegistrationRequirementKind,
+        initialize = true,
     ) {
         let requirement = await manager.findOne(RegistrationRequirementEntity, {
             where: { registrationId, kind },
             lock: { mode: 'pessimistic_write' },
         });
-        if (!requirement) {
+        if (!requirement && initialize) {
             await manager.query(
                 `INSERT INTO "registration_requirements" ("registrationId","kind","status","version") VALUES ($1,$2,'missing',1) ON CONFLICT DO NOTHING`,
                 [registrationId, kind],
@@ -1294,6 +1360,13 @@ export class RegistrationReadinessService {
         registration: RegistrationRequestEntity,
         identity: RegistrationClientIdentity,
     ) {
+        if (identity.platform === 'web' && identity.userId !== undefined) {
+            assertRegistrationOwner(registration, {
+                userId: identity.userId,
+                chatId: identity.chatId,
+            });
+            return;
+        }
         if (
             registration.chatId !== identity.chatId ||
             registration.platform !== identity.platform
@@ -1305,5 +1378,36 @@ export class RegistrationReadinessService {
         return value.length <= 4
             ? '****'
             : `${'*'.repeat(Math.max(value.length - 4, 4))}${value.slice(-4)}`;
+    }
+
+    private async assertWebResponse(
+        manager: EntityManager,
+        registration: RegistrationRequestEntity,
+        identity: RegistrationClientIdentity,
+        expected?: number,
+    ) {
+        if (expected === undefined) return;
+        if (
+            identity.platform !== 'web' ||
+            identity.userId === undefined ||
+            !Number.isInteger(expected) ||
+            expected < 1 ||
+            expected > 2147483647
+        )
+            throw new BadRequestException(
+                'Expected requirement version is required',
+            );
+        assertRegistrationOwner(registration, {
+            userId: identity.userId,
+            chatId: identity.chatId,
+        });
+        assertWebRegistrationMutable(registration);
+        const requirements = await manager.find(RegistrationRequirementEntity, {
+            where: { registrationId: registration.id },
+        });
+        if (!registrationChecklistAvailable(requirements))
+            throw new ConflictException(
+                'Registration checklist is unavailable',
+            );
     }
 }

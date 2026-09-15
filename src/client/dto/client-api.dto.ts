@@ -13,6 +13,7 @@ import {
     ValidatorConstraintInterface,
 } from 'class-validator';
 import type { RegistrationField } from 'src/registrations/registration.types';
+import { CLIENT_REGISTRATION_VALUE_MAX } from 'src/registrations/registration-client-policy';
 
 const trim = ({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim() : value;
@@ -54,7 +55,7 @@ export class RegistrationValuesConstraint
                 ([key, item]) =>
                     REGISTRATION_FIELDS.has(key as RegistrationField) &&
                     typeof item === 'string' &&
-                    item.length <= 10_000,
+                    item.length <= CLIENT_REGISTRATION_VALUE_MAX,
             )
         );
     }
@@ -81,7 +82,7 @@ export class ClientContextDto {
 export class RegistrationAnswerDto extends ClientContextDto {
     @IsString()
     @Transform(trim)
-    @MaxLength(10_000)
+    @MaxLength(CLIENT_REGISTRATION_VALUE_MAX)
     value: string;
 }
 

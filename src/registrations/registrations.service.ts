@@ -63,7 +63,6 @@ export class RegistrationsService {
         userId?: number,
         organizationId?: number,
     ) {
-        let created = false;
         const registration = await this.dataSource.transaction(
             async (manager) => {
                 await manager.query(
@@ -79,8 +78,7 @@ export class RegistrationsService {
                 });
                 if (existing) return existing;
 
-                created = true;
-                return registrations.save(
+                const created = await registrations.save(
                     registrations.create({
                         chatId,
                         platform,
@@ -90,12 +88,10 @@ export class RegistrationsService {
                         status: 'draft',
                     }),
                 );
+                await this.readinessService.initialize(created.id, manager);
+                return created;
             },
         );
-        if (created) {
-            await this.readinessService.initialize(registration.id);
-        }
-
         return registration;
     }
 

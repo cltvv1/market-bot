@@ -104,8 +104,10 @@ try {
             waitUntil: 'networkidle',
         });
         await desktop
-            .getByRole('heading', { name: 'Регистрация онлайн-кассы' })
+            .getByRole('heading', { name: 'Подготовим кассу к работе' })
             .waitFor();
+        await desktop.getByRole('button', { name: 'Начать новую регистрацию', exact: true }).click();
+        await desktop.waitForURL(/\/site\/registrations\/\d+\/edit$/);
         await desktop.getByLabel(/название организации/i).waitFor();
         await desktop.goto(`${baseUrl}/site/organizations`, { waitUntil: 'networkidle' });
         await desktop.getByRole('heading', { name: 'Мои организации', exact: true }).waitFor();

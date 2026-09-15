@@ -185,10 +185,22 @@ On `codex/fe-reg-1-admin-registration-workspace`, the registration queue and
 direct detail routes above now use a production feature module instead of the
 legacy tab. Authorized SQL pagination, masked read projections, requirement
 version guards and existing readiness/evidence/PDF/handoff commands are connected.
-Old selected/closed links have a frontend compatibility adapter. This is draft
-PR work, not a retrospective change to the historical inventory or a claim of
-merge. Customer registration discovery/resume remains deferred.
+Old selected/closed links have a frontend compatibility adapter. FE-REG-1 was
+merged in PR #30 (`714f04c9ced387691d44485f1f40fae423d4d808`). The historical
+inventory above remains the original checkpoint.
 See [FE-REG-1 implementation and acceptance](2026-09-10-admin-registration-workspace.md).
+
+### FE-REG-2 implementation addendum (2026-09-11)
+
+The separate `codex/fe-reg-2-client-registration-resume` branch connects customer
+registration landing, owner list/detail, server draft and readiness replies to
+the existing registration aggregate. Routes are `/site/cash-registration`,
+`/site/registrations`, `/:id` and `/:id/edit`. Coherent owner projections, scoped
+draft/submit commands, required web requirement versions and protected evidence
+downloads close the registration discovery gap for the same browser only.
+No new account, cross-device claim, Organization scope, admin redesign or
+dependency is added. This is draft-PR work, not merged.
+See [FE-REG-2 scope and verification](2026-09-11-client-registration-resume.md).
 
 ### Original migration decision
 

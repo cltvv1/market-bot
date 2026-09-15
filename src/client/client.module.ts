@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { RegistrationClientController } from './registration-client.controller';
 import { RegistrationsModule } from 'src/registrations/registrations.module';
 import { ServiceRequestsModule } from 'src/service-requests/service-requests.module';
 import { TicketsModule } from 'src/tickets/tickets.module';
@@ -20,7 +21,7 @@ import { RegistrationEvidenceUploadGuard } from './registration-evidence-upload.
         CustomerActivityModule,
         FilesModule,
     ],
-    controllers: [ClientApiController],
+    controllers: [ClientApiController, RegistrationClientController],
     providers: [ClientWorkflowService, RegistrationEvidenceUploadGuard],
     exports: [ClientWorkflowService],
 })
