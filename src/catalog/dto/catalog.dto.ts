@@ -5,6 +5,7 @@ import {
     IsBoolean,
     IsIn,
     IsInt,
+    IsDateString,
     IsNotEmpty,
     IsObject,
     IsOptional,
@@ -14,6 +15,8 @@ import {
     MaxLength,
     Min,
     Validate,
+    ValidateBy,
+    ValidateIf,
     ValidatorConstraint,
     type ValidatorConstraintInterface,
 } from 'class-validator';
@@ -25,6 +28,37 @@ import {
     type CatalogAvailabilityStatus,
     type CatalogVatRate,
 } from '../catalog.types';
+import {
+    CATALOG_ID_MAX,
+    CATALOG_TIMESTAMP_PATTERN,
+    isCatalogPathId,
+} from '../catalog-admin-policy';
+
+export class CatalogIdParamDto {
+    @ValidateBy({
+        name: 'catalogPathId',
+        validator: {
+            validate: isCatalogPathId,
+            defaultMessage: () =>
+                '$property must be a decimal ID between 1 and 2147483647',
+        },
+    })
+    id: string;
+}
+
+export class CatalogPreconditionDto {
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsDateString({ strict: true })
+    @Matches(CATALOG_TIMESTAMP_PATTERN)
+    expectedUpdatedAt?: string;
+}
+
+export class CatalogProductPublicationDto extends CatalogPreconditionDto {
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsDateString({ strict: true })
+    @Matches(CATALOG_TIMESTAMP_PATTERN)
+    expectedCategoryUpdatedAt?: string;
+}
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -85,6 +119,7 @@ export class CreateCatalogCategoryDto {
     @IsOptional()
     @IsInt()
     @Min(1)
+    @Max(CATALOG_ID_MAX)
     parentId?: number | null;
 
     @IsString()
@@ -104,6 +139,8 @@ export class CreateCatalogCategoryDto {
 
     @IsOptional()
     @IsInt()
+    @Min(-2147483648)
+    @Max(CATALOG_ID_MAX)
     sortOrder?: number;
 
     @IsOptional()
@@ -112,10 +149,11 @@ export class CreateCatalogCategoryDto {
     oneCRef?: string | null;
 }
 
-export class UpdateCatalogCategoryDto {
+export class UpdateCatalogCategoryDto extends CatalogPreconditionDto {
     @IsOptional()
     @IsInt()
     @Min(1)
+    @Max(CATALOG_ID_MAX)
     parentId?: number | null;
 
     @IsOptional()
@@ -137,6 +175,8 @@ export class UpdateCatalogCategoryDto {
 
     @IsOptional()
     @IsInt()
+    @Min(-2147483648)
+    @Max(CATALOG_ID_MAX)
     sortOrder?: number;
 
     @IsOptional()
@@ -148,6 +188,7 @@ export class UpdateCatalogCategoryDto {
 export class CreateCatalogProductDto extends CatalogContentDto {
     @IsInt()
     @Min(1)
+    @Max(CATALOG_ID_MAX)
     categoryId: number;
 
     @IsString()
@@ -209,9 +250,15 @@ export class CreateCatalogProductDto extends CatalogContentDto {
 }
 
 export class UpdateCatalogProductDto extends CatalogContentDto {
-    @IsOptional()
+    @ValidateIf((_object, value) => value !== undefined)
+    @IsDateString({ strict: true })
+    @Matches(CATALOG_TIMESTAMP_PATTERN)
+    expectedUpdatedAt?: string;
+
+    @ValidateIf((_object, value) => value !== undefined)
     @IsInt()
     @Min(1)
+    @Max(CATALOG_ID_MAX)
     categoryId?: number;
 
     @IsOptional()
@@ -299,6 +346,7 @@ export class CatalogProductListQueryDto {
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(CATALOG_ID_MAX)
     page?: number;
 
     @IsOptional()
@@ -307,4 +355,20 @@ export class CatalogProductListQueryDto {
     @Min(1)
     @Max(CATALOG_PAGE_SIZE_MAX)
     limit?: number;
+}
+
+export class AdminCatalogProductListQueryDto extends CatalogProductListQueryDto {
+    @IsOptional()
+    @IsString()
+    @IsNotEmpty()
+    @MaxLength(100)
+    sku?: string;
+
+    @IsOptional()
+    @IsIn(['all', 'active', 'inactive'])
+    active?: 'all' | 'active' | 'inactive';
+
+    @IsOptional()
+    @IsIn(['all', 'published', 'unpublished'])
+    publication?: 'all' | 'published' | 'unpublished';
 }
