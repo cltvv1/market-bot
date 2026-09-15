@@ -2,9 +2,9 @@
 
 Last scoped frontend checkpoint: 2026-09-15. Full-system audit: 2026-09-02.
 
-Canonical main baseline: `7f03ef1f11fc7c31ebccdb45497cfb7a98886bf7` (FE-REG-2 merged).
+Canonical main baseline: `1780c3bdc4c3f63b0a2d4637e71f12fe4da7780e` (FE-ORD-1 merged).
 
-Baseline CI: [run 34923598824](https://github.com/cltvv1/market-bot/actions/runs/34923598824), successful. Historical full-system evidence below is not a new security or provider audit.
+Baseline CI: [run 34932993321](https://github.com/cltvv1/market-bot/actions/runs/34932993321), successful. Historical full-system evidence below is not a new security or provider audit.
 
 Detailed evidence: [2026-09-02 project status and roadmap rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
 
@@ -14,13 +14,15 @@ Frontend checkpoint: FE-1B, P-PROOF, FE-1C, FE-REG-1 and FE-REG-2 are merged.
 Staff service requests and KKT registration use the production admin shell;
 customers can use their service and registration/resume workflows. FE-REG-1
 also fixed owner authorization before lazy checklist initialization.
-FE-ORD-1 adds the staff Orders workspace on its separate review branch, not
-merged or publicly deployed. See the [Orders scope and verification](frontend/2026-09-15-admin-orders-workspace.md)
+FE-ORD-1 staff Orders workspace is merged as PR #33. FE-CAT-1 adds staff Catalog
+management in a separate draft review, not merged or publicly deployed.
+See the [Catalog scope and verification](frontend/2026-09-15-admin-catalog-workspace.md),
+[Orders scope and verification](frontend/2026-09-15-admin-orders-workspace.md)
 and [Registration admin evidence](frontend/2026-09-10-admin-registration-workspace.md).
 
 VITMA MARKET is a pre-production modular monolith for customer service, KKT registration, operator conversations, equipment data, a product catalog, support content, sales orders, and read-only equipment observations. One NestJS application and one PostgreSQL database serve the client React application, the staff React application, Telegram, and MAX.
 
-Catalog, Support and Knowledge remain mostly backend-only. Service and registration now have production-oriented frontend workflows. Staff Orders is implemented in FE-ORD-1 review; customer commerce is still incomplete. The visible client catalog/cart/checkout remains demonstration data and must not be treated as business truth.
+Support and Knowledge remain mostly backend-only. Service, registration and staff Orders have production-oriented frontend workflows. Staff Catalog is added in FE-CAT-1 draft review; customer commerce is still incomplete. The visible client catalog/cart/checkout remains demonstration data and must not be treated as business truth.
 
 ## Architecture summary
 
@@ -58,9 +60,9 @@ Evidence labels used below: `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI`, `MOCK`, an
 | Durable outbound delivery | `CODE`, `TEST`, `MIGRATION` | READY | At-least-once provider duplicate window; Orders do not enqueue |
 | Audit Log | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Older mutations do not always share the business transaction |
 | File lifecycle and hosted delivery | `CODE`, `TEST`, `MIGRATION` | READY | Production schedule, capacity, antivirus, and remote storage are deferred |
-| Catalog backend | `CODE`, `TEST`, `MIGRATION` | BACKEND_ONLY | Client uses hardcoded data; no admin screen |
+| Catalog metadata and publication | `CODE`, `TEST`, `MIGRATION` | STAFF_UI_REVIEW | FE-CAT-1 staff categories/products in draft review; client still uses hardcoded data |
 | Support and Knowledge backend | `CODE`, `TEST`, `MIGRATION` | BACKEND_ONLY | No client or admin product screens, SSR, sitemap, or SEO rendering |
-| Order intake and full-order sales workflow | `CODE`, `TEST`, `MIGRATION` | STAFF_UI_REVIEW | Staff queue/detail/quote/payment/fulfillment implemented in FE-ORD-1 branch; client checkout remains mock |
+| Order intake and full-order sales workflow | `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI` | MERGED_SCOPE | Staff workspace merged in FE-ORD-1; client checkout remains mock |
 | ATOL/Platforma observations and opportunities | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Private provider contracts, manual scheduling, and stale-data semantics |
 | Renewals and proactive notifications | Existing CH-R2 delivery only | DEFERRED | No deadline scheduler, consent eligibility, escalation, or fallback task |
 | 1C UT 11.5 exchange | `DEFERRED` | DEFERRED | Contract, mapping, reconciliation, and ownership not designed |
@@ -81,11 +83,11 @@ The following flows have real backend persistence and at least one usable channe
 
 ## Backend-only capabilities
 
-- PostgreSQL catalog publication, search, aliases, VAT, prices, and availability.
+- Public Catalog API has publication, search, aliases, VAT, prices, and availability; client Store remains mock. Staff management is added in FE-CAT-1 draft review.
 - Product Support profiles, versioned external/hosted resources, and Knowledge articles.
 - Context-bound hosted Support downloads up to the configured limit.
 - Customer order list/detail, confirmed quote, invoice download, and payment-proof upload APIs.
-- Staff Orders APIs are connected to the FE-ORD-1 review-branch UI; they are no longer described as missing UI in that branch. Main awaits separate PR approval/merge.
+- Staff Orders APIs are connected to the merged FE-ORD-1 production shell workspace.
 
 ## Mock or missing UI
 
@@ -94,7 +96,7 @@ The following flows have real backend persistence and at least one usable channe
 - Checkout creates a local fake order number and never calls `/api/client/orders`.
 - There is no client order list, detail, quote, invoice, payment-proof, or timeline screen.
 - There are no client Support Center or Knowledge routes.
-- Admin Catalog, Support and Knowledge workspaces are still absent. Orders workspace is implemented in the FE-ORD-1 review branch.
+- Admin Support and Knowledge workspaces are still absent. Orders workspace is merged; Catalog management is added in FE-CAT-1 draft review.
 - Service and Registration have contract/browser workflow suites. Orders adds its own real-API browser workflow; future commerce/content screens are not covered as implemented features.
 
 ## Read-only integrations
@@ -111,7 +113,7 @@ Runs, mappings, exclusions, errors, observations, and opportunities are persiste
 1. Four medium security findings remain affected or partially affected: customer mutation origin protection, ServiceRequest bearer entropy/exposure, and permissive legacy file-content fallback.
 2. FE-REG-1 fixed registration owner-before-lazy-read ordering. The historical closed-ticket and last-superadmin findings require their own follow-up; FE-ORD-1 does not claim to resolve them.
 3. MAX media download has no explicit provider-host egress allowlist.
-4. Client commerce remains mock. Staff Catalog/Support/Knowledge UI is absent; Orders is in FE-ORD-1 review, not deployed.
+4. Client commerce remains mock. Staff Support/Knowledge UI is absent; Catalog is in FE-CAT-1 draft review and Orders is merged, with no production deployment implied.
 5. `/health/ready` checks only the original baseline migration rather than proving the full current migration chain.
 6. Deployment, reverse proxy, TLS, centralized rate limiting, capacity monitoring, backup retention/encryption/off-host copy, and production restore rehearsal are not finalized.
 7. `npm audit --omit=dev` reports 22 production advisories. Reachability and upgrades require a separate bounded package.

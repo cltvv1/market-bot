@@ -65,6 +65,7 @@ jobs:
           node admin-ui/src/test-tools/frontend-contracts.test.cjs
           node admin-ui/src/test-tools/registration-contracts.test.cjs
           node admin-ui/src/test-tools/order-contracts.test.cjs
+          node admin-ui/src/test-tools/catalog-contracts.test.cjs
           node client-ui/src/test-tools/service-contracts.test.cjs
           node client-ui/src/test-tools/registration-contracts.test.cjs
 
@@ -104,6 +105,8 @@ jobs:
         run: node -r ts-node/register -r tsconfig-paths/register scripts/client-registration-browser-smoke.cjs
       - name: Verify admin sales order workflow in browser
         run: node -r ts-node/register -r tsconfig-paths/register scripts/order-browser-smoke.cjs
+      - name: Verify admin catalog workflow in browser
+        run: node -r ts-node/register -r tsconfig-paths/register scripts/catalog-browser-smoke.cjs
       - name: Remove ephemeral storage
         if: always()
         run: rm -rf "$FILE_STORAGE_ROOT"
