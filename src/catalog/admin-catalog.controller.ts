@@ -3,7 +3,6 @@ import {
     Controller,
     Get,
     Param,
-    ParseIntPipe,
     Patch,
     Post,
     Query,
@@ -20,7 +19,10 @@ import {
 import type { AdminPrincipal } from 'src/admin/admin-auth.types';
 import { CatalogService } from './catalog.service';
 import {
-    CatalogProductListQueryDto,
+    AdminCatalogProductListQueryDto,
+    CatalogIdParamDto,
+    CatalogPreconditionDto,
+    CatalogProductPublicationDto,
     CreateCatalogCategoryDto,
     CreateCatalogProductDto,
     UpdateCatalogCategoryDto,
@@ -34,8 +36,8 @@ export class AdminCatalogController {
 
     @Get('categories')
     @RequirePermissions('catalog.read')
-    listCategories() {
-        return this.catalog.listAdminCategories();
+    listCategories(@CurrentAdmin() admin: AdminPrincipal) {
+        return this.catalog.listAdminCategories(admin);
     }
 
     @Post('categories')
@@ -50,41 +52,59 @@ export class AdminCatalogController {
     @Patch('categories/:id')
     @RequirePermissions('catalog.manage')
     updateCategory(
-        @Param('id', ParseIntPipe) id: number,
+        @Param() params: CatalogIdParamDto,
         @Body() body: UpdateCatalogCategoryDto,
         @CurrentAdmin() admin: AdminPrincipal,
     ) {
-        return this.catalog.updateCategory(id, body, admin);
+        return this.catalog.updateCategory(Number(params.id), body, admin);
     }
 
     @Post('categories/:id/publish')
     @RequirePermissions('catalog.manage')
     publishCategory(
-        @Param('id', ParseIntPipe) id: number,
+        @Param() params: CatalogIdParamDto,
+        @Body() body: CatalogPreconditionDto,
         @CurrentAdmin() admin: AdminPrincipal,
     ) {
-        return this.catalog.setCategoryPublished(id, true, admin);
+        return this.catalog.setCategoryPublished(
+            Number(params.id),
+            true,
+            admin,
+            body,
+        );
     }
 
     @Post('categories/:id/unpublish')
     @RequirePermissions('catalog.manage')
     unpublishCategory(
-        @Param('id', ParseIntPipe) id: number,
+        @Param() params: CatalogIdParamDto,
+        @Body() body: CatalogPreconditionDto,
         @CurrentAdmin() admin: AdminPrincipal,
     ) {
-        return this.catalog.setCategoryPublished(id, false, admin);
+        return this.catalog.setCategoryPublished(
+            Number(params.id),
+            false,
+            admin,
+            body,
+        );
     }
 
     @Get('products')
     @RequirePermissions('catalog.read')
-    listProducts(@Query() query: CatalogProductListQueryDto) {
-        return this.catalog.listAdminProducts(query);
+    listProducts(
+        @Query() query: AdminCatalogProductListQueryDto,
+        @CurrentAdmin() admin: AdminPrincipal,
+    ) {
+        return this.catalog.listAdminProducts(query, admin);
     }
 
     @Get('products/:id')
     @RequirePermissions('catalog.read')
-    getProduct(@Param('id', ParseIntPipe) id: number) {
-        return this.catalog.getAdminProduct(id);
+    getProduct(
+        @Param() params: CatalogIdParamDto,
+        @CurrentAdmin() admin: AdminPrincipal,
+    ) {
+        return this.catalog.getAdminProduct(Number(params.id), admin);
     }
 
     @Post('products')
@@ -99,28 +119,40 @@ export class AdminCatalogController {
     @Patch('products/:id')
     @RequirePermissions('catalog.manage')
     updateProduct(
-        @Param('id', ParseIntPipe) id: number,
+        @Param() params: CatalogIdParamDto,
         @Body() body: UpdateCatalogProductDto,
         @CurrentAdmin() admin: AdminPrincipal,
     ) {
-        return this.catalog.updateProduct(id, body, admin);
+        return this.catalog.updateProduct(Number(params.id), body, admin);
     }
 
     @Post('products/:id/publish')
     @RequirePermissions('catalog.manage')
     publishProduct(
-        @Param('id', ParseIntPipe) id: number,
+        @Param() params: CatalogIdParamDto,
+        @Body() body: CatalogProductPublicationDto,
         @CurrentAdmin() admin: AdminPrincipal,
     ) {
-        return this.catalog.setProductPublished(id, true, admin);
+        return this.catalog.setProductPublished(
+            Number(params.id),
+            true,
+            admin,
+            body,
+        );
     }
 
     @Post('products/:id/unpublish')
     @RequirePermissions('catalog.manage')
     unpublishProduct(
-        @Param('id', ParseIntPipe) id: number,
+        @Param() params: CatalogIdParamDto,
+        @Body() body: CatalogProductPublicationDto,
         @CurrentAdmin() admin: AdminPrincipal,
     ) {
-        return this.catalog.setProductPublished(id, false, admin);
+        return this.catalog.setProductPublished(
+            Number(params.id),
+            false,
+            admin,
+            body,
+        );
     }
 }

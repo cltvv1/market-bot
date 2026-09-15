@@ -18,12 +18,20 @@ import {
     normalizeCatalogSku,
 } from './catalog.types';
 import type {
+    AdminCatalogProductListQueryDto,
+    CatalogPreconditionDto,
+    CatalogProductPublicationDto,
     CatalogProductListQueryDto,
     CreateCatalogCategoryDto,
     CreateCatalogProductDto,
     UpdateCatalogCategoryDto,
     UpdateCatalogProductDto,
 } from './dto/catalog.dto';
+import {
+    assertCatalogSnapshot,
+    catalogProductActions,
+    nextCatalogTimestamp,
+} from './catalog-admin-policy';
 import { CatalogCategoryEntity } from './entities/catalog-category.entity';
 import { CatalogProductAliasEntity } from './entities/catalog-product-alias.entity';
 import { CatalogProductEntity } from './entities/catalog-product.entity';
@@ -31,6 +39,7 @@ import { CatalogProductEntity } from './entities/catalog-product.entity';
 export interface CatalogAdminActor {
     id: number;
     sessionId: number;
+    permissions?: readonly string[];
 }
 
 @Injectable()
@@ -91,12 +100,12 @@ export class CatalogService {
         return this.presentPublicProduct(product);
     }
 
-    async listAdminCategories() {
+    async listAdminCategories(actor?: CatalogAdminActor) {
         const categories = await this.categories.find({
             order: { sortOrder: 'ASC', name: 'ASC', id: 'ASC' },
         });
         return categories.map((category) =>
-            this.presentAdminCategory(category),
+            this.presentAdminCategory(category, actor),
         );
     }
 
@@ -107,6 +116,7 @@ export class CatalogService {
         return this.withCatalogConflictMapping(() =>
             this.dataSource.transaction(async (manager) => {
                 const categories = manager.getRepository(CatalogCategoryEntity);
+                await this.lockHierarchy(manager);
                 await this.requireCategoryParent(
                     categories,
                     input.parentId ?? null,
@@ -130,7 +140,7 @@ export class CatalogService {
                     category.id,
                     { slug: category.slug, parentId: category.parentId },
                 );
-                return this.presentAdminCategory(category);
+                return this.presentAdminCategory(category, actor);
             }),
         );
     }
@@ -143,8 +153,19 @@ export class CatalogService {
         return this.withCatalogConflictMapping(() =>
             this.dataSource.transaction(async (manager) => {
                 const categories = manager.getRepository(CatalogCategoryEntity);
-                const category = await this.requireCategory(categories, id);
-                if (Object.hasOwn(input, 'parentId')) {
+                if (input.parentId !== undefined)
+                    await this.lockHierarchy(manager);
+                const category = await this.requireCategory(
+                    categories,
+                    id,
+                    true,
+                );
+                assertCatalogSnapshot(
+                    category.updatedAt,
+                    input.expectedUpdatedAt,
+                );
+                const updatedAt = nextCatalogTimestamp(category.updatedAt);
+                if (input.parentId !== undefined) {
                     await this.assertCategoryParentChange(
                         categories,
                         id,
@@ -154,14 +175,15 @@ export class CatalogService {
                 }
                 if (input.name !== undefined) category.name = input.name.trim();
                 if (input.slug !== undefined) category.slug = input.slug.trim();
-                if (Object.hasOwn(input, 'description')) {
+                if (input.description !== undefined) {
                     category.description = this.nullableText(input.description);
                 }
                 if (input.sortOrder !== undefined)
                     category.sortOrder = input.sortOrder;
-                if (Object.hasOwn(input, 'oneCRef')) {
+                if (input.oneCRef !== undefined) {
                     category.oneCRef = this.nullableText(input.oneCRef);
                 }
+                category.updatedAt = updatedAt;
                 const saved = await categories.save(category);
                 await this.recordAudit(
                     manager,
@@ -171,7 +193,7 @@ export class CatalogService {
                     saved.id,
                     { slug: saved.slug, parentId: saved.parentId },
                 );
-                return this.presentAdminCategory(saved);
+                return this.presentAdminCategory(saved, actor);
             }),
         );
     }
@@ -180,13 +202,25 @@ export class CatalogService {
         id: number,
         isPublished: boolean,
         actor: CatalogAdminActor,
+        precondition: CatalogPreconditionDto = {},
     ) {
         return this.withCatalogConflictMapping(() =>
             this.dataSource.transaction(async (manager) => {
                 const categories = manager.getRepository(CatalogCategoryEntity);
-                const category = await this.requireCategory(categories, id);
+                const category = await this.requireCategory(
+                    categories,
+                    id,
+                    true,
+                );
+                assertCatalogSnapshot(
+                    category.updatedAt,
+                    precondition.expectedUpdatedAt,
+                );
                 if (category.isPublished !== isPublished) {
                     category.isPublished = isPublished;
+                    category.updatedAt = nextCatalogTimestamp(
+                        category.updatedAt,
+                    );
                     await categories.save(category);
                     await this.recordAudit(
                         manager,
@@ -199,12 +233,15 @@ export class CatalogService {
                         { slug: category.slug },
                     );
                 }
-                return this.presentAdminCategory(category);
+                return this.presentAdminCategory(category, actor);
             }),
         );
     }
 
-    async listAdminProducts(query: CatalogProductListQueryDto) {
+    async listAdminProducts(
+        query: AdminCatalogProductListQueryDto,
+        actor?: CatalogAdminActor,
+    ) {
         const builder = this.productListBuilder(query, false).leftJoinAndSelect(
             'product.aliases',
             'selectedAliases',
@@ -217,7 +254,9 @@ export class CatalogService {
             .take(limit)
             .getManyAndCount();
         return {
-            items: products.map((product) => this.presentAdminProduct(product)),
+            items: products.map((product) =>
+                this.presentAdminProduct(product, actor),
+            ),
             total,
             page,
             limit,
@@ -225,14 +264,14 @@ export class CatalogService {
         };
     }
 
-    async getAdminProduct(id: number) {
+    async getAdminProduct(id: number, actor?: CatalogAdminActor) {
         const product = await this.products.findOne({
             where: { id },
             relations: { category: true, aliases: true },
         });
         if (!product)
             throw new NotFoundException('Catalog product was not found');
-        return this.presentAdminProduct(product);
+        return this.presentAdminProduct(product, actor);
     }
 
     async createProduct(
@@ -289,7 +328,7 @@ export class CatalogService {
                     product.id,
                     { sku: product.sku, slug: product.slug },
                 );
-                return this.presentAdminProduct(product);
+                return this.presentAdminProduct(product, actor);
             }),
         );
     }
@@ -302,7 +341,12 @@ export class CatalogService {
         return this.withCatalogConflictMapping(() =>
             this.dataSource.transaction(async (manager) => {
                 const products = manager.getRepository(CatalogProductEntity);
-                const product = await this.requireProduct(products, id);
+                const product = await this.requireProduct(products, id, true);
+                assertCatalogSnapshot(
+                    product.updatedAt,
+                    input.expectedUpdatedAt,
+                );
+                const updatedAt = nextCatalogTimestamp(product.updatedAt);
                 if (input.categoryId !== undefined) {
                     await this.requireCategory(
                         manager.getRepository(CatalogCategoryEntity),
@@ -315,18 +359,18 @@ export class CatalogService {
                 }
                 if (input.slug !== undefined) product.slug = input.slug.trim();
                 if (input.name !== undefined) product.name = input.name.trim();
-                if (Object.hasOwn(input, 'brand')) {
+                if (input.brand !== undefined) {
                     product.brand = this.nullableText(input.brand);
                 }
-                if (Object.hasOwn(input, 'shortDescription')) {
+                if (input.shortDescription !== undefined) {
                     product.shortDescription = this.nullableText(
                         input.shortDescription,
                     );
                 }
-                if (Object.hasOwn(input, 'description')) {
+                if (input.description !== undefined) {
                     product.description = this.nullableText(input.description);
                 }
-                if (Object.hasOwn(input, 'displayPriceMinor')) {
+                if (input.displayPriceMinor !== undefined) {
                     product.displayPriceMinor = input.displayPriceMinor ?? null;
                 }
                 if (input.vatRate !== undefined)
@@ -353,9 +397,10 @@ export class CatalogService {
                     product.isPopular = input.isPopular;
                 }
                 if (input.isNew !== undefined) product.isNew = input.isNew;
-                if (Object.hasOwn(input, 'oneCRef')) {
+                if (input.oneCRef !== undefined) {
                     product.oneCRef = this.nullableText(input.oneCRef);
                 }
+                product.updatedAt = updatedAt;
                 const saved = await products.save(product);
                 if (input.aliases !== undefined) {
                     saved.aliases = await this.replaceAliases(
@@ -380,7 +425,7 @@ export class CatalogService {
                     saved.id,
                     { sku: saved.sku, slug: saved.slug },
                 );
-                return this.presentAdminProduct(saved);
+                return this.presentAdminProduct(saved, actor);
             }),
         );
     }
@@ -389,18 +434,29 @@ export class CatalogService {
         id: number,
         isPublished: boolean,
         actor: CatalogAdminActor,
+        precondition: CatalogProductPublicationDto = {},
     ) {
         return this.withCatalogConflictMapping(() =>
             this.dataSource.transaction(async (manager) => {
                 const products = manager.getRepository(CatalogProductEntity);
-                const product = await this.requireProduct(products, id);
+                const product = await this.requireProduct(products, id, true);
+                assertCatalogSnapshot(
+                    product.updatedAt,
+                    precondition.expectedUpdatedAt,
+                );
                 const category = await this.requireCategory(
                     manager.getRepository(CatalogCategoryEntity),
                     product.categoryId,
+                    true,
+                );
+                assertCatalogSnapshot(
+                    category.updatedAt,
+                    precondition.expectedCategoryUpdatedAt,
                 );
                 if (isPublished) this.assertPublishReady(product, category);
                 if (product.isPublished !== isPublished) {
                     product.isPublished = isPublished;
+                    product.updatedAt = nextCatalogTimestamp(product.updatedAt);
                     await products.save(product);
                     await this.recordAudit(
                         manager,
@@ -417,13 +473,13 @@ export class CatalogService {
                 product.aliases = await manager
                     .getRepository(CatalogProductAliasEntity)
                     .find({ where: { productId: product.id } });
-                return this.presentAdminProduct(product);
+                return this.presentAdminProduct(product, actor);
             }),
         );
     }
 
     private productListBuilder(
-        query: CatalogProductListQueryDto,
+        query: AdminCatalogProductListQueryDto,
         publicOnly: boolean,
     ) {
         const builder = this.products
@@ -436,6 +492,22 @@ export class CatalogService {
                 .andWhere('product.isPublished = true')
                 .andWhere('product.isActive = true')
                 .andWhere('category.isPublished = true');
+        } else {
+            if (query.sku !== undefined) {
+                builder.andWhere('product.sku = :exactSku', {
+                    exactSku: normalizeCatalogSku(query.sku),
+                });
+            }
+            if (query.active && query.active !== 'all') {
+                builder.andWhere('product.isActive = :active', {
+                    active: query.active === 'active',
+                });
+            }
+            if (query.publication && query.publication !== 'all') {
+                builder.andWhere('product.isPublished = :published', {
+                    published: query.publication === 'published',
+                });
+            }
         }
         if (query.category) {
             builder.andWhere('category.slug = :category', {
@@ -479,8 +551,12 @@ export class CatalogService {
     private async requireCategory(
         repository: Repository<CatalogCategoryEntity>,
         id: number,
+        lock = false,
     ) {
-        const category = await repository.findOneBy({ id });
+        const category = await repository.findOne({
+            where: { id },
+            ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+        });
         if (!category)
             throw new NotFoundException('Catalog category was not found');
         return category;
@@ -525,8 +601,12 @@ export class CatalogService {
     private async requireProduct(
         repository: Repository<CatalogProductEntity>,
         id: number,
+        lock = false,
     ) {
-        const product = await repository.findOneBy({ id });
+        const product = await repository.findOne({
+            where: { id },
+            ...(lock ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+        });
         if (!product)
             throw new NotFoundException('Catalog product was not found');
         return product;
@@ -593,13 +673,24 @@ export class CatalogService {
         };
     }
 
-    private presentAdminCategory(category: CatalogCategoryEntity) {
+    private presentAdminCategory(
+        category: CatalogCategoryEntity,
+        actor?: CatalogAdminActor,
+    ) {
+        const canManage =
+            actor?.permissions?.includes('catalog.manage') ?? false;
         return {
             ...this.presentPublicCategory(category),
             isPublished: category.isPublished,
             oneCRef: category.oneCRef,
             createdAt: category.createdAt,
             updatedAt: category.updatedAt,
+            expectedUpdatedAt: category.updatedAt.toISOString(),
+            actions: {
+                edit: { allowed: canManage },
+                publish: { allowed: canManage && !category.isPublished },
+                unpublish: { allowed: canManage && category.isPublished },
+            },
         };
     }
 
@@ -628,9 +719,19 @@ export class CatalogService {
         };
     }
 
-    private presentAdminProduct(product: CatalogProductEntity) {
+    private presentAdminProduct(
+        product: CatalogProductEntity,
+        actor?: CatalogAdminActor,
+    ) {
         return {
             ...this.presentPublicProduct(product),
+            category: {
+                id: product.category.id,
+                name: product.category.name,
+                slug: product.category.slug,
+                isPublished: product.category.isPublished,
+                updatedAt: product.category.updatedAt,
+            },
             categoryId: product.categoryId,
             aliases: (product.aliases || [])
                 .sort((left, right) => left.id - right.id)
@@ -641,7 +742,23 @@ export class CatalogService {
             oneCSyncedAt: product.oneCSyncedAt,
             createdAt: product.createdAt,
             updatedAt: product.updatedAt,
+            expectedUpdatedAt: product.updatedAt.toISOString(),
+            expectedCategoryUpdatedAt: product.category.updatedAt.toISOString(),
+            effectivePublicVisibility:
+                product.isActive &&
+                product.isPublished &&
+                product.category.isPublished,
+            actions: catalogProductActions(
+                product,
+                product.category,
+                actor?.permissions?.includes('catalog.manage') ?? false,
+            ),
         };
+    }
+
+    private async lockHierarchy(manager: EntityManager) {
+        // CO-1 parent edits must not validate two mutually cyclic changes concurrently.
+        await manager.query('SELECT pg_advisory_xact_lock(706001, 1)');
     }
 
     private recordAudit(

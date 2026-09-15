@@ -24,6 +24,10 @@ import { RegistrationQueuePage } from '../features/registrations/RegistrationQue
 import { RegistrationDetailPage } from '../features/registrations/RegistrationDetailPage';
 import { OrderQueuePage } from '../features/orders/OrderQueuePage';
 import { OrderDetailPage } from '../features/orders/OrderDetailPage';
+import { CatalogProductQueuePage } from '../features/catalog/CatalogProductQueuePage';
+import { CatalogProductPage } from '../features/catalog/CatalogProductPage';
+import { CatalogCategoryPage } from '../features/catalog/CatalogCategoryPage';
+import '../features/catalog/catalog.css';
 import '../features/orders/orders.css';
 import '../features/registrations/registrations.css';
 import './foundation.css';
@@ -196,6 +200,46 @@ function Shell() {
                 </header>
                 <main id="admin-main" className="admin-main">
                     <Routes>
+                        <Route
+                            path="catalog/products"
+                            element={
+                                allowed('/catalog/products') ? (
+                                    <CatalogProductQueuePage />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
+                        <Route
+                            path="catalog/products/new"
+                            element={
+                                allowed('/catalog/products') ? (
+                                    <CatalogProductPage />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
+                        <Route
+                            path="catalog/products/:id"
+                            element={
+                                allowed('/catalog/products') ? (
+                                    <CatalogProductPage />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
+                        <Route
+                            path="catalog/categories"
+                            element={
+                                allowed('/catalog/categories') ? (
+                                    <CatalogCategoryPage />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
                         <Route
                             path="/"
                             element={<Navigate to={first} replace />}

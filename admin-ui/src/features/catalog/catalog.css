@@ -1,0 +1,302 @@
+.vitma-admin-app .cat-workspace {
+    min-width: 0;
+}
+.vitma-admin-app .cat-heading {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0 24px;
+    flex-wrap: wrap;
+}
+.vitma-admin-app .cat-heading h1 {
+    font-size: 26px;
+}
+.vitma-admin-app .cat-eyebrow,
+.vitma-admin-app .cat-muted {
+    color: var(--ui-text-muted);
+    font-size: 13px;
+}
+.vitma-admin-app .cat-eyebrow {
+    margin-bottom: 6px;
+}
+.vitma-admin-app .cat-filters {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.6fr) repeat(4, minmax(120px, 1fr));
+    gap: 12px;
+    padding: 18px 0;
+    border-block: 1px solid var(--ui-border);
+}
+.vitma-admin-app .cat-workspace label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 500;
+}
+.vitma-admin-app .cat-workspace :is(input, select, textarea) {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid var(--ui-control-border);
+    background: var(--ui-surface);
+    color: var(--ui-text);
+    padding: 10px 12px;
+    border-radius: 4px;
+    font: inherit;
+}
+.vitma-admin-app .cat-workspace textarea {
+    resize: vertical;
+}
+.vitma-admin-app .cat-workspace textarea:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 3px;
+}
+.vitma-admin-app .cat-workspace input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    accent-color: var(--ui-accent-strong);
+}
+.vitma-admin-app .cat-search > div {
+    display: flex;
+    gap: 6px;
+}
+.vitma-admin-app .cat-result-count {
+    padding: 16px 0 12px;
+    color: var(--ui-text-muted);
+    font-size: 13px;
+}
+.vitma-admin-app .cat-table-wrap {
+    max-width: 100%;
+    overflow: auto;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+}
+.vitma-admin-app .cat-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    min-width: 900px;
+    background: var(--ui-surface);
+    font-size: 14px;
+}
+.vitma-admin-app .cat-table th {
+    color: var(--ui-text-muted);
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--ui-surface-subtle);
+    padding: 12px 16px;
+}
+.vitma-admin-app .cat-table td {
+    padding: 16px;
+    border-top: 1px solid var(--ui-border);
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+.vitma-admin-app .cat-table th:first-child {
+    width: 25%;
+}
+.vitma-admin-app .cat-table td > span:not(.cat-tree-mark) {
+    display: block;
+    font-size: 12px;
+    color: var(--ui-text-muted);
+    margin-top: 5px;
+}
+.vitma-admin-app .cat-table tbody tr:hover {
+    background: var(--ui-surface-subtle);
+}
+.vitma-admin-app .cat-product-link {
+    font-weight: 600;
+    text-decoration: underline;
+    text-decoration-color: var(--ui-border-strong);
+    text-underline-offset: 4px;
+}
+.vitma-admin-app .cat-product-link:hover {
+    color: var(--ui-accent-strong);
+}
+.vitma-admin-app .cat-tree-mark {
+    color: var(--ui-text-muted);
+    margin-right: 8px;
+}
+.vitma-admin-app .cat-pagination {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 16px 0;
+}
+.vitma-admin-app .cat-editor {
+    max-width: 1200px;
+}
+.vitma-admin-app .cat-facts {
+    display: flex;
+    gap: 10px 22px;
+    flex-wrap: wrap;
+    padding: 14px 0 22px;
+    border-bottom: 1px solid var(--ui-border);
+    font-size: 13px;
+}
+.vitma-admin-app .cat-facts strong {
+    font-weight: 600;
+}
+.vitma-admin-app .cat-form-body,
+.vitma-admin-app .cat-fields,
+.vitma-admin-app .cat-list-editor {
+    padding: 0;
+    margin: 0;
+    border: 0;
+    min-width: 0;
+}
+.vitma-admin-app .cat-form-section {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+    gap: 24px;
+    padding: 28px 0;
+    border-bottom: 1px solid var(--ui-border);
+}
+.vitma-admin-app .cat-form-section h2 {
+    font-size: 16px;
+    padding-top: 8px;
+}
+.vitma-admin-app .cat-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+.vitma-admin-app .cat-fields--single {
+    grid-template-columns: minmax(0, 1fr);
+}
+.vitma-admin-app .cat-full {
+    grid-column: 1/-1;
+}
+.vitma-admin-app .cat-checks {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.vitma-admin-app .cat-checks label,
+.vitma-admin-app label.cat-checkbox {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+}
+.vitma-admin-app .cat-list-editor legend {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+.vitma-admin-app .cat-list-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    align-items: end;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.vitma-admin-app .cat-list-value > span {
+    color: var(--ui-text-muted);
+    font-size: 12px;
+}
+.vitma-admin-app .cat-spec-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 40px;
+    gap: 10px;
+    align-items: end;
+    margin-bottom: 12px;
+}
+.vitma-admin-app .cat-savebar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    bottom: 0;
+    background: var(--ui-surface);
+    border-top: 1px solid var(--ui-border);
+    padding: 16px 0;
+    z-index: 2;
+}
+.vitma-admin-app .cat-savebar [role='status'] {
+    color: var(--ui-text-muted);
+}
+.vitma-admin-app .cat-recovery {
+    border-left: 3px solid var(--ui-warning-text);
+    background: var(--ui-warning-surface);
+    padding: 16px;
+    margin: 16px 0;
+    display: grid;
+    gap: 12px;
+}
+.vitma-admin-app .cat-recovery summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: 8px 0;
+}
+.vitma-admin-app .cat-recovery .admin-button {
+    justify-self: start;
+}
+.vitma-admin-app .cat-snapshot {
+    display: grid;
+    gap: 10px;
+    max-height: 340px;
+    overflow: auto;
+}
+.vitma-admin-app .cat-snapshot dt {
+    font-size: 12px;
+    color: var(--ui-text-muted);
+}
+.vitma-admin-app .cat-snapshot dd {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.vitma-admin-app .cat-category-editor {
+    padding: 20px;
+}
+.vitma-admin-app .cat-category-actions {
+    padding-top: 20px;
+}
+@media (max-width: 1200px) {
+    .vitma-admin-app .cat-filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .vitma-admin-app .cat-search {
+        grid-column: 1/-1;
+    }
+}
+@media (max-width: 767px) {
+    .vitma-admin-app .cat-heading {
+        gap: 14px;
+    }
+    .vitma-admin-app .cat-heading h1 {
+        font-size: 23px;
+    }
+    .vitma-admin-app .cat-form-section {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 16px;
+    }
+    .vitma-admin-app .cat-fields {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .vitma-admin-app .cat-category-editor {
+        padding: 14px;
+    }
+}
+@media (max-width: 440px) {
+    .vitma-admin-app .cat-filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .vitma-admin-app .cat-spec-row {
+        grid-template-columns: minmax(0, 1fr) 40px;
+    }
+    .vitma-admin-app .cat-spec-row label:first-child {
+        grid-column: 1/-1;
+    }
+    .vitma-admin-app .cat-savebar {
+        flex-wrap: wrap;
+    }
+    .vitma-admin-app .cat-pagination {
+        justify-content: space-between;
+        gap: 8px;
+    }
+}
