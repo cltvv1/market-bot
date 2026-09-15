@@ -1,7 +1,8 @@
 # Roadmap
 
 This roadmap reflects `main` at
-`b9b3ed63d2ee26216b8e5f03ce85dd2d54141cde` after CO-3C. It is ordered by
+`7f03ef1f11fc7c31ebccdb45497cfb7a98886bf7` after FE-REG-2, with a scoped
+2026-09-15 frontend checkpoint. FE-ORD-1 remains a separate review branch. It is ordered by
 dependency and evidence, not by calendar promises. Current capability status is
 kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
 [2026-09-02 rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
@@ -23,17 +24,22 @@ kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
 | CO-3A | Sales assignment, review, mutable quote, and confirmation |
 | CO-3B | Invoice revisions, payment proof, and manual payment confirmation |
 | CO-3C | Whole-order fulfillment, realization facts, final-document handoff facts, and completion |
+| FE-1A / FE-1B | Approved interface foundation, production admin shell and ServiceRequest workspace |
+| P-PROOF / FE-1C | Canonical web payment proof and production customer ServiceRequest workflow |
+| FE-REG-1 | Merged staff KKT Registration workspace and owner-before-lazy-read correction |
+| FE-REG-2 | Merged customer KKT registration, resume and field-compatibility follow-up |
 
 Completion here means the bounded package contract passed its tests. It does not
 mean every capability has a product UI or that the system is production-ready.
 
 ## Current next track
 
-Frontend implementation checkpoint, 2026-09-11: FE-REG-1's Registration admin
-workspace is implemented in a separate draft PR branch, with scoped reads and
-existing readiness commands. It is not marked merged or publicly deployed.
-Customer registration resume and the unrelated tracks below remain deferred.
-See [FE-REG-1 report](frontend/2026-09-10-admin-registration-workspace.md).
+Frontend implementation checkpoint, 2026-09-15: FE-REG-1 and FE-REG-2 are merged;
+customer registration/resume is no longer deferred. FE-ORD-1 connects existing
+Orders commands to the staff shell with a real queue, detail tabs, contextual
+assignees, server action projection and explicit stale-form reconciliation.
+It remains a separate review package, not merged or deployed.
+See [FE-ORD-1 report](frontend/2026-09-15-admin-orders-workspace.md).
 
 ### EM-0 Equipment Monitoring rebaseline
 
@@ -77,8 +83,9 @@ business event and an actually delivered message remain separate facts.
 
 ### FE-1 Frontend activation and real API switch
 
-Connect the existing client Catalog, Support, and Orders APIs and add staff
-workspaces for Catalog, Support/Knowledge, and Orders. Remove hardcoded catalog
+FE-ORD-1 supplies the staff Orders workspace in review. Remaining work is to
+connect the client Catalog, Support, and Orders APIs and add staff workspaces
+for Catalog and Support/Knowledge. Remove hardcoded catalog
 data, fake checkout, and `localStorage` business truth. This can start alongside
 EM-0; it should not wait for the whole monitoring track.
 

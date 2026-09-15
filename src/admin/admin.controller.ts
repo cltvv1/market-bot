@@ -130,6 +130,8 @@ export class AdminController {
         'requests/service/:id',
         'requests/registrations',
         'requests/registrations/:id',
+        'sales/orders',
+        'sales/orders/:id',
         'requests/tickets',
         'customers/access',
         'customers/organizations',

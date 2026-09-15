@@ -1,24 +1,26 @@
 # Project status
 
-Last audited: 2026-09-02
+Last scoped frontend checkpoint: 2026-09-15. Full-system audit: 2026-09-02.
 
-Canonical baseline: `b9b3ed63d2ee26216b8e5f03ce85dd2d54141cde`
+Canonical main baseline: `7f03ef1f11fc7c31ebccdb45497cfb7a98886bf7` (FE-REG-2 merged).
 
-Baseline CI: [run 33605998052](https://github.com/cltvv1/market-bot/actions/runs/33605998052), successful for Quality, Production builds, and PostgreSQL/tests/offline smoke.
+Baseline CI: [run 34923598824](https://github.com/cltvv1/market-bot/actions/runs/34923598824), successful. Historical full-system evidence below is not a new security or provider audit.
 
 Detailed evidence: [2026-09-02 project status and roadmap rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
 
 ## What VITMA MARKET is
 
-Implementation addendum, 2026-09-11: FE-REG-1 is implemented on its separate
-draft-review branch, not merged. It connects the existing Registration workflow
-to the production admin shell and fixes the demonstrated owner-before-lazy-read
-ordering issue. The checkpoint tables below retain their historical audit date.
-See [scope, evidence and limits](frontend/2026-09-10-admin-registration-workspace.md).
+Frontend checkpoint: FE-1B, P-PROOF, FE-1C, FE-REG-1 and FE-REG-2 are merged.
+Staff service requests and KKT registration use the production admin shell;
+customers can use their service and registration/resume workflows. FE-REG-1
+also fixed owner authorization before lazy checklist initialization.
+FE-ORD-1 adds the staff Orders workspace on its separate review branch, not
+merged or publicly deployed. See the [Orders scope and verification](frontend/2026-09-15-admin-orders-workspace.md)
+and [Registration admin evidence](frontend/2026-09-10-admin-registration-workspace.md).
 
 VITMA MARKET is a pre-production modular monolith for customer service, KKT registration, operator conversations, equipment data, a product catalog, support content, sales orders, and read-only equipment observations. One NestJS application and one PostgreSQL database serve the client React application, the staff React application, Telegram, and MAX.
 
-The backend is substantially ahead of both frontends. The service and registration journeys are usable through current channels, while Catalog, Support, Knowledge, and Orders are mostly backend-only. The visible client catalog/cart/checkout is still demonstration data and must not be treated as business truth.
+Catalog, Support and Knowledge remain mostly backend-only. Service and registration now have production-oriented frontend workflows. Staff Orders is implemented in FE-ORD-1 review; customer commerce is still incomplete. The visible client catalog/cart/checkout remains demonstration data and must not be treated as business truth.
 
 ## Architecture summary
 
@@ -49,7 +51,7 @@ Evidence labels used below: `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI`, `MOCK`, an
 | Organizations and representative access | `CODE`, `TEST`, `MIGRATION` | READY | Contact/profile unification is incomplete |
 | KKT/FN/OFD assets and equipment kits | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Not a general equipment-health registry |
 | Service requests | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Backend is broad; customer UX and bearer security need work |
-| KKT registration readiness | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Owner check must precede lazy checklist initialization |
+| KKT registration readiness | `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI` | MERGED_SCOPE | FE-REG-1 staff workspace and FE-REG-2 customer registration/resume; no public deployment implied |
 | Tickets and operator chat | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Closed-ticket reply guard remains |
 | Telegram and MAX customer flows | `CODE`, `TEST` | PARTIAL | Large duplicated handlers and small parity differences |
 | Durable inbound commands | `CODE`, `TEST`, `MIGRATION` | READY | Failed-command operator replay remains manual |
@@ -58,7 +60,7 @@ Evidence labels used below: `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI`, `MOCK`, an
 | File lifecycle and hosted delivery | `CODE`, `TEST`, `MIGRATION` | READY | Production schedule, capacity, antivirus, and remote storage are deferred |
 | Catalog backend | `CODE`, `TEST`, `MIGRATION` | BACKEND_ONLY | Client uses hardcoded data; no admin screen |
 | Support and Knowledge backend | `CODE`, `TEST`, `MIGRATION` | BACKEND_ONLY | No client or admin product screens, SSR, sitemap, or SEO rendering |
-| Order intake and full-order sales workflow | `CODE`, `TEST`, `MIGRATION` | BACKEND_ONLY | Client checkout is mock; all staff order screens are missing |
+| Order intake and full-order sales workflow | `CODE`, `TEST`, `MIGRATION` | STAFF_UI_REVIEW | Staff queue/detail/quote/payment/fulfillment implemented in FE-ORD-1 branch; client checkout remains mock |
 | ATOL/Platforma observations and opportunities | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Private provider contracts, manual scheduling, and stale-data semantics |
 | Renewals and proactive notifications | Existing CH-R2 delivery only | DEFERRED | No deadline scheduler, consent eligibility, escalation, or fallback task |
 | 1C UT 11.5 exchange | `DEFERRED` | DEFERRED | Contract, mapping, reconciliation, and ownership not designed |
@@ -83,7 +85,7 @@ The following flows have real backend persistence and at least one usable channe
 - Product Support profiles, versioned external/hosted resources, and Knowledge articles.
 - Context-bound hosted Support downloads up to the configured limit.
 - Customer order list/detail, confirmed quote, invoice download, and payment-proof upload APIs.
-- Staff order queues, assignment, quote editing, invoice revisions, payment confirmation, fulfillment, completion, and document history APIs.
+- Staff Orders APIs are connected to the FE-ORD-1 review-branch UI; they are no longer described as missing UI in that branch. Main awaits separate PR approval/merge.
 
 ## Mock or missing UI
 
@@ -92,8 +94,8 @@ The following flows have real backend persistence and at least one usable channe
 - Checkout creates a local fake order number and never calls `/api/client/orders`.
 - There is no client order list, detail, quote, invoice, payment-proof, or timeline screen.
 - There are no client Support Center or Knowledge routes.
-- Admin has no Catalog, Support, Knowledge, or Orders workspace.
-- Existing frontend tests are smoke-level; no component or browser workflow suite proves these future screens.
+- Admin Catalog, Support and Knowledge workspaces are still absent. Orders workspace is implemented in the FE-ORD-1 review branch.
+- Service and Registration have contract/browser workflow suites. Orders adds its own real-API browser workflow; future commerce/content screens are not covered as implemented features.
 
 ## Read-only integrations
 
@@ -107,9 +109,9 @@ Runs, mappings, exclusions, errors, observations, and opportunities are persiste
 ## Known production blockers
 
 1. Four medium security findings remain affected or partially affected: customer mutation origin protection, ServiceRequest bearer entropy/exposure, and permissive legacy file-content fallback.
-2. Registration checklist reads can initialize rows before owner authorization; closed tickets can still receive staff messages; the last-superadmin check has a race.
+2. FE-REG-1 fixed registration owner-before-lazy-read ordering. The historical closed-ticket and last-superadmin findings require their own follow-up; FE-ORD-1 does not claim to resolve them.
 3. MAX media download has no explicit provider-host egress allowlist.
-4. Client commerce is mock and staff cannot operate Catalog, Support, Knowledge, or Orders through UI.
+4. Client commerce remains mock. Staff Catalog/Support/Knowledge UI is absent; Orders is in FE-ORD-1 review, not deployed.
 5. `/health/ready` checks only the original baseline migration rather than proving the full current migration chain.
 6. Deployment, reverse proxy, TLS, centralized rate limiting, capacity monitoring, backup retention/encryption/off-host copy, and production restore rehearsal are not finalized.
 7. `npm audit --omit=dev` reports 22 production advisories. Reachability and upgrades require a separate bounded package.

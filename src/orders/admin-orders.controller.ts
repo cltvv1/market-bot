@@ -63,8 +63,17 @@ export class AdminOrdersController {
 
     @Get(':id')
     @RequirePermissions('orders.read.all')
-    get(@Param() params: OrderIdParamDto) {
-        return this.orders.getAdmin(params.id);
+    get(
+        @Param() params: OrderIdParamDto,
+        @CurrentAdmin() admin: AdminPrincipal,
+    ) {
+        return this.orders.getAdmin(params.id, admin);
+    }
+
+    @Get(':id/assignees')
+    @RequirePermissions('orders.assign')
+    assignees(@Param() params: OrderIdParamDto) {
+        return this.orders.listEligibleManagers(params.id);
     }
 
     @Post(':id/assign')

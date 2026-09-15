@@ -32,7 +32,6 @@ export const legacyRoutes: Record<
     audit: '/settings/audit',
 };
 export const unavailableRoutes = new Set([
-    '/admin/sales/orders',
     '/admin/catalog/products',
     '/admin/catalog/support',
     '/admin/catalog/knowledge',

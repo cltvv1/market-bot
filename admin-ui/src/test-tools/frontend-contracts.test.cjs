@@ -46,7 +46,8 @@ test('permission-filtered navigation, disabled domains, sales and engineer separ
     assert.ok(!labels(['orders.read.all']).includes('Сервисные заявки'));
     assert.ok(!labels(['orders.read.all']).includes('Моя работа'));
     assert.ok(!labels(['serviceRequests.read.assigned']).includes('Сотрудники'));
-    assert.equal(unavailableRoutes.size,4);
+    assert.deepEqual([...unavailableRoutes], ['/admin/catalog/products', '/admin/catalog/support', '/admin/catalog/knowledge']);
+    assert.ok(labels(['orders.read.all']).includes('Заказы'));
     assert.match(read('admin-ui/src/app/AdminApp.tsx'), /admin-nav-disabled/);
     assert.match(read('admin-ui/src/app/AdminApp.tsx'), /aria-disabled="true"/);
 });
