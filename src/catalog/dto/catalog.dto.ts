@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
     ArrayMaxSize,
+    ArrayMinSize,
+    ArrayUnique,
     IsArray,
     IsBoolean,
     IsIn,
@@ -44,6 +46,17 @@ export class CatalogIdParamDto {
         },
     })
     id: string;
+}
+
+export class ResolveCatalogProductsDto {
+    @IsArray()
+    @ArrayMinSize(1)
+    @ArrayMaxSize(100)
+    @ArrayUnique()
+    @IsInt({ each: true })
+    @Min(1, { each: true })
+    @Max(CATALOG_ID_MAX, { each: true })
+    ids: number[];
 }
 
 export class CatalogPreconditionDto {

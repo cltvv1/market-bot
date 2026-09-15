@@ -1,8 +1,8 @@
 # Roadmap
 
 This roadmap reflects `main` at
-`1780c3bdc4c3f63b0a2d4637e71f12fe4da7780e` after FE-ORD-1, with a scoped
-2026-09-15 frontend checkpoint. FE-CAT-1 is a separate draft review package. It is ordered by
+`54112d9dfeb48f47300d124593e158c0219f7caa` after FE-CAT-1, with a scoped
+2026-09-15 frontend checkpoint. FE-STORE-1 is a separate draft review package. It is ordered by
 dependency and evidence, not by calendar promises. Current capability status is
 kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
 [2026-09-02 rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
@@ -29,6 +29,7 @@ kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
 | FE-REG-1 | Merged staff KKT Registration workspace and owner-before-lazy-read correction |
 | FE-REG-2 | Merged customer KKT registration, resume and field-compatibility follow-up |
 | FE-ORD-1 | Merged staff Orders queue, quote, payment, fulfillment and completion workspace |
+| FE-CAT-1 | Merged production staff Catalog categories/products and publication workspace; PR #34, main CI 34941653068 |
 
 Completion here means the bounded package contract passed its tests. It does not
 mean every capability has a product UI or that the system is production-ready.
@@ -40,8 +41,10 @@ customer registration/resume is no longer deferred. FE-ORD-1 connects existing
 Orders commands to the staff shell with a real queue, detail tabs, contextual
 assignees, server action projection and explicit stale-form reconciliation.
 FE-ORD-1 is merged as PR #33; main CI 34932993321 passed. No deployment is implied.
-FE-CAT-1 adds production-oriented staff Catalog management on its separate draft
-branch, reusing CO-1 with scoped snapshot preconditions and publication readiness.
+FE-CAT-1 is merged, reusing CO-1 with scoped snapshot preconditions and publication
+readiness. FE-STORE-1 connects public Catalog, ID/quantity-only cart, canonical
+checkout and owner Orders in a separate draft package, not merged or deployed.
+See [FE-STORE-1 report](frontend/2026-09-15-client-store-order-intake.md).
 See [FE-ORD-1 report](frontend/2026-09-15-admin-orders-workspace.md) and
 [FE-CAT-1 report](frontend/2026-09-15-admin-catalog-workspace.md).
 
@@ -87,12 +90,12 @@ business event and an actually delivered message remain separate facts.
 
 ### FE-1 Frontend activation and real API switch
 
-FE-ORD-1 supplies the merged staff Orders workspace. FE-CAT-1 supplies Catalog
-management in draft review, without activating the client store. Remaining work is to
-connect the client Catalog, Support, and Orders APIs and add staff workspaces
-for Support/Knowledge. Remove hardcoded catalog
-data, fake checkout, and `localStorage` business truth. This can start alongside
-EM-0; it should not wait for the whole monitoring track.
+FE-ORD-1 and FE-CAT-1 supply merged staff Orders and Catalog workspaces.
+FE-STORE-1 removes static Catalog facts and fake checkout in its draft review,
+connecting publication -> customer Order -> manager workflow -> customer documents
+and status. Cart storage contains IDs/quantities only. Remaining work includes
+review of this bounded package, client Support/Knowledge and their staff workspaces.
+This is separate from monitoring and does not imply stock, 1C, EDO or deployment.
 
 ### SEC-R3 Production security hardening
 

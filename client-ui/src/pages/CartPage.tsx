@@ -1,108 +1,168 @@
-import { ArrowRight, Minus, Plus, ShoppingBag, Trash2 } from 'lucide-react';
+import { ArrowRight, Minus, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ProductVisual } from '../components/ProductVisual';
-import { EmptyState, money } from '../components/ui';
-import { useCart } from '../context/CartContext';
-
+import { Button } from '../components/ui';
+import { useHydratedCart } from '../features/store/cart/use-hydrated-cart';
+import {
+    availabilityLabels,
+    moneyMinor,
+    QUANTITY_MAX,
+} from '../features/store/model';
+import { StoreError, StoreLoading } from '../features/store/StoreUI';
 export function CartPage() {
-    const { items, total, update, remove } = useCart();
-    if (!items.length)
-        return (
-            <div className="page container">
-                <Breadcrumbs items={[{ label: 'Корзина' }]} />
-                <EmptyState
-                    icon={<ShoppingBag />}
-                    title="Корзина пока пуста"
-                    text="Добавьте оборудование из каталога — выбранные товары сохранятся на этом устройстве."
-                    action={
-                        <Link className="button button--primary" to="/catalog">
-                            Перейти в каталог
-                        </Link>
-                    }
-                />
-            </div>
-        );
+    const cart = useHydratedCart();
     return (
-        <div className="page container">
-            <Breadcrumbs items={[{ label: 'Корзина' }]} />
-            <header className="page-heading">
-                <div>
-                    <span className="eyebrow">Ваш заказ</span>
-                    <h1>Корзина</h1>
-                    <p>
-                        {items.length} позиций — проверьте комплектацию перед
-                        оформлением.
-                    </p>
-                </div>
-            </header>
-            <div className="cart-layout">
-                <section className="cart-list">
-                    {items.map(({ product, quantity }) => (
-                        <article className="cart-item" key={product.id}>
-                            <Link to={`/catalog/${product.slug}`}>
-                                <ProductVisual product={product} compact />
-                            </Link>
-                            <div className="cart-item__info">
-                                <span>{product.sku}</span>
-                                <Link to={`/catalog/${product.slug}`}>
-                                    {product.name}
-                                </Link>
-                                <p>{product.shortDescription}</p>
-                            </div>
-                            <div className="quantity">
-                                <button
-                                    onClick={() =>
-                                        update(product.id, quantity - 1)
-                                    }
-                                    aria-label="Уменьшить количество"
-                                >
-                                    <Minus />
-                                </button>
-                                <span>{quantity}</span>
-                                <button
-                                    onClick={() =>
-                                        update(product.id, quantity + 1)
-                                    }
-                                    aria-label="Увеличить количество"
-                                >
-                                    <Plus />
-                                </button>
-                            </div>
-                            <strong>{money(product.price * quantity)}</strong>
-                            <button
-                                className="icon-button"
-                                onClick={() => remove(product.id)}
-                                aria-label={`Удалить ${product.name}`}
-                            >
-                                <Trash2 />
-                            </button>
-                        </article>
-                    ))}
-                </section>
-                <aside className="order-summary">
-                    <h2>Ваш заказ</h2>
-                    <div>
-                        <span>Товары</span>
-                        <strong>{money(total)}</strong>
-                    </div>
-                    <div>
-                        <span>Доставка</span>
-                        <span>Рассчитаем при оформлении</span>
-                    </div>
-                    <div className="order-summary__total">
-                        <span>Итого</span>
-                        <strong>{money(total)}</strong>
-                    </div>
-                    <Link className="button button--primary" to="/checkout">
-                        Перейти к оформлению <ArrowRight />
-                    </Link>
-                    <p>
-                        Для юридических лиц подготовим счёт с НДС и закрывающие
-                        документы.
-                    </p>
-                </aside>
+        <div className="container store-page">
+            <div className="store-heading">
+                <h1>Корзина</h1>
+                <Button
+                    variant="secondary"
+                    disabled={cart.loading}
+                    onClick={() => void cart.refresh()}
+                >
+                    <RefreshCw size={16} />
+                    Обновить цены
+                </Button>
             </div>
+            {!!cart.error && (
+                <StoreError
+                    error={cart.error}
+                    retry={() => void cart.refresh()}
+                />
+            )}
+            {cart.loading ? (
+                <StoreLoading />
+            ) : !cart.lines.length ? (
+                <div className="store-empty">
+                    <p>В корзине пока нет товаров.</p>
+                    <Link className="button button--primary" to="/catalog">
+                        В каталог <ArrowRight size={18} />
+                    </Link>
+                </div>
+            ) : (
+                <>
+                    <div className="store-cart-lines">
+                        {cart.items.map(({ productId, product, quantity }) => (
+                            <article
+                                className="store-cart-line"
+                                key={productId}
+                            >
+                                <ProductVisual compact />
+                                <div>
+                                    {product ? (
+                                        <>
+                                            <Link
+                                                to={`/catalog/${product.slug}`}
+                                            >
+                                                {product.name}
+                                            </Link>
+                                            <p>
+                                                {product.sku} ·{' '}
+                                                {
+                                                    availabilityLabels[
+                                                        product
+                                                            .availabilityStatus
+                                                    ]
+                                                }
+                                            </p>
+                                            <strong>
+                                                {moneyMinor(
+                                                    product.displayPriceMinor,
+                                                )}
+                                            </strong>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <strong>
+                                                Товар больше недоступен
+                                            </strong>
+                                            <p>
+                                                Позиция #{productId}. Удалите
+                                                её, чтобы оформить заказ.
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                                <div className="store-quantity">
+                                    <Button
+                                        variant="ghost"
+                                        aria-label={`Уменьшить количество позиции ${productId}`}
+                                        disabled={quantity <= 1}
+                                        onClick={() =>
+                                            cart.update(productId, quantity - 1)
+                                        }
+                                    >
+                                        <Minus size={16} />
+                                    </Button>
+                                    <input
+                                        aria-label={`Количество позиции ${productId}`}
+                                        type="number"
+                                        min={1}
+                                        max={QUANTITY_MAX}
+                                        step={1}
+                                        value={quantity}
+                                        onChange={(event) =>
+                                            cart.update(
+                                                productId,
+                                                Number(event.target.value),
+                                            )
+                                        }
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        aria-label={`Увеличить количество позиции ${productId}`}
+                                        disabled={quantity >= QUANTITY_MAX}
+                                        onClick={() =>
+                                            cart.update(productId, quantity + 1)
+                                        }
+                                    >
+                                        <Plus size={16} />
+                                    </Button>
+                                </div>
+                                <Button
+                                    variant="ghost"
+                                    aria-label={`Удалить позицию ${productId}`}
+                                    onClick={() => cart.remove(productId)}
+                                >
+                                    <Trash2 size={19} />
+                                </Button>
+                            </article>
+                        ))}
+                    </div>
+                    <section className="store-cart-total">
+                        <div>
+                            <span>
+                                {cart.totals.unpriced
+                                    ? 'Сумма позиций с указанной ценой'
+                                    : 'Сумма по каталогу'}
+                            </span>
+                            <h2>{moneyMinor(cart.totals.subtotal)}</h2>
+                            {cart.totals.unpriced && (
+                                <p>
+                                    Некоторые позиции требуют расчёта
+                                    менеджером.
+                                </p>
+                            )}
+                            <p className="store-muted">
+                                Стоимость и наличие подтвердит менеджер.
+                            </p>
+                        </div>
+                        {cart.totals.blocked || cart.error ? (
+                            <p role="status">
+                                Оформление недоступно. Обновите корзину или
+                                удалите недоступные позиции.
+                            </p>
+                        ) : (
+                            <Link
+                                className="button button--primary"
+                                to="/checkout"
+                            >
+                                Оформить заказ <ArrowRight size={18} />
+                            </Link>
+                        )}
+                    </section>
+                </>
+            )}
         </div>
     );
 }

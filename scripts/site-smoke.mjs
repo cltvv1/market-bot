@@ -20,6 +20,11 @@ const errors = [];
 
 async function attachDiagnostics(page) {
     page.on('console', (message) => {
+        if (
+            message.location().url === `${baseUrl}/api/client/session` &&
+            message.text().includes('401')
+        )
+            return;
         if (message.type() === 'error')
             errors.push(`console: ${message.text()}`);
     });
@@ -47,12 +52,23 @@ try {
         .getByRole('button', { name: 'Закрыть' })
         .click();
 
-    await desktop.goto(`${baseUrl}/site/search?q=касса`, {
-        waitUntil: 'networkidle',
-    });
-    await desktop.locator('.search-results').waitFor();
-    if ((await desktop.locator('.product-card').count()) === 0)
-        throw new Error('Global search returned no product results');
+    const publicCatalog = await desktop.request.get(
+        `${baseUrl}/api/catalog/products?availability=in_stock&page=1&limit=12`,
+    );
+    if (!publicCatalog.ok()) throw new Error('Public Catalog request failed');
+    const catalogPage = await publicCatalog.json();
+    const sample = catalogPage.items[0];
+    await desktop.goto(
+        `${baseUrl}/site/search?q=${encodeURIComponent(sample?.sku || 'smoke-no-product')}`,
+        {
+            waitUntil: 'networkidle',
+        },
+    );
+    await desktop.getByText(/Найдено товаров:/).waitFor();
+    if (sample)
+        await desktop
+            .getByRole('link', { name: sample.name, exact: true })
+            .waitFor();
 
     await desktop.goto(`${baseUrl}/site/solutions`, {
         waitUntil: 'networkidle',
@@ -61,42 +77,63 @@ try {
     if ((await desktop.locator('.solution-list article').count()) !== 4)
         throw new Error('Business solutions page is incomplete');
 
-    await desktop.goto(`${baseUrl}/site/catalog`, {
+    await desktop.goto(`${baseUrl}/site/catalog?availability=in_stock`, {
         waitUntil: 'networkidle',
     });
-    await desktop.locator('.product-card').first().waitFor();
-    if ((await desktop.locator('.product-card').count()) < 20)
-        throw new Error('Catalog has fewer than 20 products');
-    await desktop
-        .locator('.product-card')
-        .first()
-        .getByRole('button', { name: /Добавить/ })
-        .click();
-    await desktop.locator('.cart-link').click();
-    await desktop.locator('.cart-item').first().waitFor();
-    await desktop.goto(`${baseUrl}/site/checkout`, { waitUntil: 'networkidle' });
-    await desktop.getByRole('heading', { name: 'Оформление заказа', exact: true }).waitFor();
+    await desktop.locator('.store-pagination').waitFor();
+    if (
+        (await desktop.locator('.product-card').count()) !==
+        catalogPage.items.length
+    )
+        throw new Error('Catalog does not match its bounded backend page');
+    if (sample) {
+        await desktop
+            .locator('.product-card')
+            .first()
+            .getByRole('button', { name: `Добавить ${sample.name} в корзину`, exact: true })
+            .click();
+        await desktop.locator('.cart-link').click();
+        await desktop.locator('.store-cart-line').first().waitFor();
+        await desktop.goto(`${baseUrl}/site/checkout`, {
+            waitUntil: 'networkidle',
+        });
+        await desktop
+            .getByRole('heading', { name: 'Оформление заказа', exact: true })
+            .waitFor();
+    } else {
+        await desktop
+            .getByText('По этим условиям товары не найдены.', { exact: true })
+            .waitFor();
+    }
 
     await desktop.goto(`${baseUrl}/site/service/request`, {
         waitUntil: 'networkidle',
     });
     if (!skipBackend) {
-    await desktop.getByLabel('Услуга', { exact: true }).selectOption('kkt_remote_work');
-    await desktop.getByLabel('Контактное лицо').fill('Анна Петрова');
-    await desktop.getByLabel('Телефон').fill('9131234567');
-    await desktop.getByRole('button', { name: 'Создать черновик', exact: true }).click();
-    await desktop.waitForURL(/\/service\/requests\/\d+\/edit$/);
-    await desktop.getByLabel('Тип клиента').selectOption('individual');
-    await desktop.getByLabel('Тип оборудования').selectOption('Касса');
-    await desktop.getByLabel('Модель').fill('АТОЛ 30Ф');
-    await desktop.getByLabel('Срочность').selectOption('normal');
-    await desktop.getByLabel('Формат помощи').selectOption('remote');
-    await desktop
-        .getByLabel('Описание')
-        .fill('Касса перестала печатать чеки после обновления программы.');
-    await desktop.getByLabel('Согласие на обработку данных').check();
-    await desktop.getByRole('button', { name: /Отправить заявку/ }).click();
-    await desktop.locator('.svc-stage').getByText('Заявка отправлена', { exact: true }).waitFor();
+        await desktop.getByRole('button', { name: 'Начать новое обращение', exact: true }).click();
+        await desktop
+            .getByLabel('Услуга', { exact: true })
+            .selectOption('kkt_remote_work');
+        await desktop.getByLabel('Контактное лицо').fill('Анна Петрова');
+        await desktop.getByLabel('Телефон').fill('9131234567');
+        await desktop
+            .getByRole('button', { name: 'Создать черновик', exact: true })
+            .click();
+        await desktop.waitForURL(/\/service\/requests\/\d+\/edit$/);
+        await desktop.getByLabel('Тип клиента').selectOption('individual');
+        await desktop.getByLabel('Тип оборудования').selectOption('Касса');
+        await desktop.getByLabel('Модель').fill('АТОЛ 30Ф');
+        await desktop.getByLabel('Срочность').selectOption('normal');
+        await desktop.getByLabel('Формат помощи').selectOption('remote');
+        await desktop
+            .getByLabel('Описание')
+            .fill('Касса перестала печатать чеки после обновления программы.');
+        await desktop.getByLabel('Согласие на обработку данных').check();
+        await desktop.getByRole('button', { name: /Отправить заявку/ }).click();
+        await desktop
+            .locator('.svc-stage')
+            .getByText('Заявка отправлена', { exact: true })
+            .waitFor();
     }
 
     if (!skipBackend) {
@@ -106,11 +143,20 @@ try {
         await desktop
             .getByRole('heading', { name: 'Подготовим кассу к работе' })
             .waitFor();
-        await desktop.getByRole('button', { name: 'Начать новую регистрацию', exact: true }).click();
+        await desktop
+            .getByRole('button', {
+                name: 'Начать новую регистрацию',
+                exact: true,
+            })
+            .click();
         await desktop.waitForURL(/\/site\/registrations\/\d+\/edit$/);
         await desktop.getByLabel(/название организации/i).waitFor();
-        await desktop.goto(`${baseUrl}/site/organizations`, { waitUntil: 'networkidle' });
-        await desktop.getByRole('heading', { name: 'Мои организации', exact: true }).waitFor();
+        await desktop.goto(`${baseUrl}/site/organizations`, {
+            waitUntil: 'networkidle',
+        });
+        await desktop
+            .getByRole('heading', { name: 'Мои организации', exact: true })
+            .waitFor();
     }
 
     const mobile = await browser.newPage({
@@ -121,7 +167,7 @@ try {
     await mobile.goto(`${baseUrl}/site/catalog`, {
         waitUntil: 'networkidle',
     });
-    await mobile.locator('.product-card').first().waitFor();
+    await mobile.locator('.store-pagination').waitFor();
     const overflow = await mobile.evaluate(
         () =>
             document.documentElement.scrollWidth >

@@ -15,7 +15,9 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { brands } from '../data/company';
-import { categories, products } from '../data/catalog';
+import { storeApi } from '../features/store/api';
+import { useStoreRead } from '../features/store/use-store-read';
+import { StoreError, StoreLoading } from '../features/store/StoreUI';
 import { serviceDirections } from '../data/services';
 import { ProductCard } from '../components/ProductCard';
 import { ServiceCard } from '../components/ServiceCard';
@@ -31,6 +33,10 @@ const solutionIcons = {
 
 export function HomePage() {
     const { openCallback } = useCallbackRequest();
+    const categories = useStoreRead('home-categories', storeApi.categories);
+    const products = useStoreRead('home-products', (signal) =>
+        storeApi.products('limit=4&page=1', signal),
+    );
 
     return (
         <>
@@ -129,10 +135,10 @@ export function HomePage() {
                         </Link>
                     </div>
                     <div className="category-grid">
-                        {categories.slice(0, 8).map((category, index) => (
+                        {categories.data?.slice(0, 8).map((category, index) => (
                             <Link
                                 className={`category-card category-card--${index % 4}`}
-                                to={`/catalog?category=${category.id}`}
+                                to={`/catalog?category=${category.slug}`}
                                 key={category.id}
                             >
                                 <span>0{index + 1}</span>
@@ -142,6 +148,12 @@ export function HomePage() {
                             </Link>
                         ))}
                     </div>
+                    {!!categories.error && (
+                        <StoreError
+                            error={categories.error}
+                            retry={() => void categories.refresh()}
+                        />
+                    )}
                 </div>
             </section>
 
@@ -169,21 +181,25 @@ export function HomePage() {
                 <div className="container">
                     <div className="section-heading">
                         <div>
-                            <span className="eyebrow">Выбор клиентов</span>
-                            <h2>Популярное оборудование</h2>
+                            <span className="eyebrow">Каталог</span>
+                            <h2>Оборудование для бизнеса</h2>
                         </div>
-                        <Link to="/catalog?sort=popular">
+                        <Link to="/catalog">
                             Смотреть всё <ArrowRight size={17} />
                         </Link>
                     </div>
                     <div className="product-grid">
-                        {products
-                            .filter((item) => item.popular)
-                            .slice(0, 4)
-                            .map((item) => (
-                                <ProductCard product={item} key={item.id} />
-                            ))}
+                        {products.data?.items.map((item) => (
+                            <ProductCard product={item} key={item.id} />
+                        ))}
                     </div>
+                    {products.loading && <StoreLoading />}
+                    {!!products.error && (
+                        <StoreError
+                            error={products.error}
+                            retry={() => void products.refresh()}
+                        />
+                    )}
                 </div>
             </section>
 

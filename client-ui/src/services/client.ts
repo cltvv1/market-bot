@@ -1,5 +1,4 @@
 import type {
-    OrderFormData,
     OrganizationAccessFormData,
     OrganizationAccessRequest,
     OrganizationMembership,
@@ -7,16 +6,6 @@ import type {
 
 const useRealServiceApi = import.meta.env.VITE_USE_REAL_SERVICE_API !== 'false';
 let sessionPromise: Promise<void> | null = null;
-
-const makeNumber = (prefix: string) => {
-    const date = new Date();
-    const stamp = [
-        String(date.getFullYear()).slice(-2),
-        String(date.getMonth() + 1).padStart(2, '0'),
-        String(date.getDate()).padStart(2, '0'),
-    ].join('');
-    return `${prefix}-${stamp}-${Math.floor(1000 + Math.random() * 9000)}`;
-};
 
 export const ensureWebSession = () => {
     if (!sessionPromise) {
@@ -81,22 +70,6 @@ const readApiMessage = async (response: Response) => {
         );
     }
     return response.text();
-};
-
-export const orderService = {
-    async create(data: OrderFormData) {
-        await new Promise((resolve) => setTimeout(resolve, 550));
-        const number = makeNumber('VM');
-        localStorage.setItem(
-            `vitma_order_${number}`,
-            JSON.stringify({
-                number,
-                data,
-                createdAt: new Date().toISOString(),
-            }),
-        );
-        return { number };
-    },
 };
 
 export interface CallbackRequestData {

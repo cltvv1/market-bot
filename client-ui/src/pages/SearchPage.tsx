@@ -1,189 +1,100 @@
-import { Search, Wrench } from 'lucide-react';
-import { useMemo } from 'react';
+import { Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Breadcrumbs } from '../components/Breadcrumbs';
 import { ProductCard } from '../components/ProductCard';
 import { ServiceCard } from '../components/ServiceCard';
-import { EmptyState } from '../components/ui';
-import { categories, products } from '../data/catalog';
+import { Button } from '../components/ui';
 import { serviceDirections } from '../data/services';
-
-const normalize = (value: string) => value.trim().toLocaleLowerCase('ru-RU');
-
+import { storeApi } from '../features/store/api';
+import { StoreError, StoreLoading } from '../features/store/StoreUI';
+import { useStoreRead } from '../features/store/use-store-read';
 export function SearchPage() {
     const [params, setParams] = useSearchParams();
-    const query = params.get('q') || '';
-    const normalizedQuery = normalize(query);
-    const productResults = useMemo(
-        () =>
-            normalizedQuery
-                ? products.filter((product) =>
-                      normalize(
-                          [
-                              product.name,
-                              product.brand,
-                              product.shortDescription,
-                              ...product.features,
-                          ].join(' '),
-                      ).includes(normalizedQuery),
-                  )
-                : [],
-        [normalizedQuery],
+    const query = params.get('q') ?? '';
+    const [input, setInput] = useState(query);
+    useEffect(() => setInput(query), [query]);
+    const products = useStoreRead(query || null, (signal) =>
+        storeApi.products(
+            new URLSearchParams({
+                search: query,
+                limit: '8',
+                page: '1',
+            }).toString(),
+            signal,
+        ),
     );
-    const serviceResults = useMemo(
-        () =>
-            normalizedQuery
-                ? serviceDirections.filter((service) =>
-                      normalize(
-                          `${service.title} ${service.description}`,
-                      ).includes(normalizedQuery),
-                  )
-                : [],
-        [normalizedQuery],
-    );
-    const total = productResults.length + serviceResults.length;
-
+    const services = query.trim()
+        ? serviceDirections.filter((service) =>
+              `${service.title} ${service.description}`
+                  .toLocaleLowerCase('ru-RU')
+                  .includes(query.trim().toLocaleLowerCase('ru-RU')),
+          )
+        : [];
     return (
-        <div className="page container search-page">
-            <Breadcrumbs items={[{ label: 'Поиск' }]} />
-            <header className="page-heading">
-                <div>
-                    <span className="eyebrow">Товары и услуги</span>
-                    <h1>Поиск по VITMA MARKET</h1>
-                    <p>
-                        Найдите оборудование, услугу или готовое направление
-                        работ одним запросом.
-                    </p>
-                </div>
-            </header>
+        <div className="container store-page">
+            <h1>Поиск по VITMA MARKET</h1>
             <form
-                className="search-page__form"
+                className="store-search"
                 role="search"
                 onSubmit={(event) => {
                     event.preventDefault();
-                    const data = new FormData(event.currentTarget);
-                    const value = data.get('q');
-                    setParams({ q: typeof value === 'string' ? value : '' });
+                    setParams({ q: input.trim() });
                 }}
             >
-                <Search />
                 <input
-                    name="q"
                     aria-label="Поиск по товарам и услугам"
-                    defaultValue={query}
-                    placeholder="Например, замена ФН или АТОЛ 30Ф"
-                    autoFocus
+                    maxLength={200}
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
                 />
-                <button className="button button--dark" type="submit">
+                <Button type="submit">
+                    <Search size={18} />
                     Найти
-                </button>
+                </Button>
             </form>
-
-            {!normalizedQuery ? (
-                <div className="search-suggestions">
-                    <strong>Популярные запросы</strong>
-                    <div>
-                        {[
-                            'онлайн-касса',
-                            'АТОЛ',
-                            'сканер',
-                            'замена ФН',
-                            'регистрация',
-                        ].map((item) => (
-                            <button
-                                key={item}
-                                type="button"
-                                onClick={() => setParams({ q: item })}
-                            >
-                                {item}
-                            </button>
+            {query && (
+                <section className="store-section">
+                    <div className="store-heading">
+                        <h2>Оборудование</h2>
+                        <Link
+                            to={`/catalog?search=${encodeURIComponent(query)}`}
+                        >
+                            Открыть весь результат в каталоге
+                        </Link>
+                    </div>
+                    {products.loading ? (
+                        <StoreLoading />
+                    ) : products.error ? (
+                        <StoreError
+                            error={products.error}
+                            retry={() => void products.refresh()}
+                        />
+                    ) : (
+                        products.data && (
+                            <>
+                                <p>Найдено товаров: {products.data.total}</p>
+                                <div className="product-grid">
+                                    {products.data.items.map((product) => (
+                                        <ProductCard
+                                            key={product.id}
+                                            product={product}
+                                        />
+                                    ))}
+                                </div>
+                            </>
+                        )
+                    )}
+                </section>
+            )}
+            {!!services.length && (
+                <section className="store-section">
+                    <h2>Услуги</h2>
+                    <div className="service-grid">
+                        {services.map((service) => (
+                            <ServiceCard key={service.id} service={service} />
                         ))}
                     </div>
-                </div>
-            ) : total === 0 ? (
-                <EmptyState
-                    icon={<Search />}
-                    title="Ничего не найдено"
-                    text="Попробуйте сократить запрос или оставьте заявку — специалист поможет подобрать решение."
-                    action={
-                        <Link
-                            className="button button--primary"
-                            to="/service/request?type=consultation"
-                        >
-                            Спросить специалиста
-                        </Link>
-                    }
-                />
-            ) : (
-                <div className="search-results">
-                    <p className="search-results__summary">
-                        По запросу «{query}» найдено: {total}
-                    </p>
-                    {productResults.length > 0 && (
-                        <section>
-                            <div className="section-heading">
-                                <div>
-                                    <span className="eyebrow">Каталог</span>
-                                    <h2>Оборудование</h2>
-                                </div>
-                                <Link
-                                    to={`/catalog?q=${encodeURIComponent(query)}`}
-                                >
-                                    Показать в каталоге
-                                </Link>
-                            </div>
-                            <div className="product-grid">
-                                {productResults.slice(0, 8).map((product) => (
-                                    <ProductCard
-                                        key={product.id}
-                                        product={product}
-                                    />
-                                ))}
-                            </div>
-                        </section>
-                    )}
-                    {serviceResults.length > 0 && (
-                        <section>
-                            <div className="section-heading">
-                                <div>
-                                    <span className="eyebrow">Сервис</span>
-                                    <h2>Услуги</h2>
-                                </div>
-                                <Link to="/service">
-                                    Все направления <Wrench size={17} />
-                                </Link>
-                            </div>
-                            <div className="service-grid">
-                                {serviceResults.map((service) => (
-                                    <ServiceCard
-                                        key={service.id}
-                                        service={service}
-                                    />
-                                ))}
-                            </div>
-                        </section>
-                    )}
-                    {productResults.length > 0 && (
-                        <div className="search-related">
-                            <strong>Подходящие категории:</strong>
-                            {categories
-                                .filter((category) =>
-                                    productResults.some(
-                                        (product) =>
-                                            product.categoryId === category.id,
-                                    ),
-                                )
-                                .map((category) => (
-                                    <Link
-                                        key={category.id}
-                                        to={`/catalog?category=${category.id}`}
-                                    >
-                                        {category.name}
-                                    </Link>
-                                ))}
-                        </div>
-                    )}
-                </div>
+                </section>
             )}
         </div>
     );
