@@ -7,10 +7,7 @@ import {
 } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import { AuditService } from 'src/audit/audit.service';
-import {
-    getPermissions,
-    type AdminPermission,
-} from 'src/admin/admin.permissions';
+import type { AdminPermission } from 'src/admin/admin.permissions';
 import type { AdminPrincipal } from 'src/admin/admin-auth.types';
 import { AdminUserEntity } from 'src/admin/entities/admin-user.entity';
 import { CatalogProductEntity } from 'src/catalog/entities/catalog-product.entity';
@@ -88,6 +85,10 @@ import {
     type OrderDocumentType,
     type OrderStatus,
 } from './order.types';
+import {
+    isEligibleOrderManager,
+    orderWorkspaceEventMetadata,
+} from './order-workspace';
 
 interface OrderOrganizationSnapshot {
     organizationId: number | null;
@@ -411,31 +412,79 @@ export class OrdersService {
         };
     }
 
-    async getAdmin(id: number) {
-        const order = await this.dataSource.getRepository(OrderEntity).findOne({
-            where: { id },
-            relations: {
-                lines: true,
-                events: true,
-                assignedManager: true,
-                paymentConfirmedByStaff: true,
-                fulfilledByStaff: true,
-                completedByStaff: true,
-                documents: {
-                    storedFile: true,
-                    uploadedByStaff: true,
-                    uploadedByCustomer: true,
-                },
-                quote: {
-                    lines: true,
-                    createdByStaff: true,
-                    updatedByStaff: true,
-                    confirmedByStaff: true,
-                },
+    async getAdmin(id: number, actor?: AdminPrincipal) {
+        return this.dataSource.transaction(
+            'REPEATABLE READ',
+            async (manager) => {
+                const order = await this.loadOrder(manager, id, false);
+                const events = await manager
+                    .getRepository(OrderEventEntity)
+                    .find({
+                        where: { orderId: id },
+                        relations: { actorStaff: true },
+                        order: { createdAt: 'DESC', id: 'DESC' },
+                        take: 101,
+                    });
+                order.events = events.slice(0, 100);
+                const detail = this.presentDetail(order, true);
+                // A valid DB reference is not a promise that a physical file still exists.
+                for (const document of [
+                    ...detail.documents.invoices!,
+                    ...detail.documents.paymentProofs,
+                ]) {
+                    const entity = order.documents.find(
+                        (item) => item.id === document.id,
+                    );
+                    if (
+                        document.available &&
+                        entity &&
+                        !(await this.files.exists(entity.storedFile))
+                    ) {
+                        document.available = false;
+                        document.downloadUrl = null;
+                    }
+                }
+                return {
+                    ...detail,
+                    history: { limit: 100, hasMore: events.length > 100 },
+                    actions: actor
+                        ? this.workspaceActions(order, actor)
+                        : undefined,
+                };
             },
-        });
-        if (!order) throw new NotFoundException('Order was not found');
-        return this.presentDetail(order, true);
+        );
+    }
+
+    async listEligibleManagers(id: number) {
+        return this.dataSource.transaction(
+            'REPEATABLE READ',
+            async (manager) => {
+                const order = await manager
+                    .getRepository(OrderEntity)
+                    .findOneBy({ id });
+                if (!order) throw new NotFoundException('Order was not found');
+                if (!canAssignOrder(order.status))
+                    return { items: [], version: order.version };
+                const targets = await manager
+                    .getRepository(AdminUserEntity)
+                    .find({
+                        where: { isActive: true },
+                        relations: { roleAssignments: true },
+                        order: { displayName: 'ASC', id: 'ASC' },
+                    });
+                return {
+                    version: order.version,
+                    items: targets
+                        .filter((target) =>
+                            isEligibleOrderManager(target, order.status),
+                        )
+                        .map((target) => ({
+                            id: target.id,
+                            displayName: target.displayName,
+                        })),
+                };
+            },
+        );
     }
 
     async assign(
@@ -1542,32 +1591,10 @@ export class OrdersService {
             relations: { roleAssignments: true },
         });
         if (!target) throw new NotFoundException('Manager was not found');
-        const permissions = getPermissions(
-            target.roleAssignments.map((assignment) => assignment.role),
-        );
-        const required = this.assignmentPermissions(status);
-        if (
-            !target.isActive ||
-            !permissions.includes('orders.read.all') ||
-            !required.every((permission) => permissions.includes(permission))
-        ) {
+        if (!isEligibleOrderManager(target, status)) {
             throw new ConflictException('Manager is not eligible');
         }
         return target;
-    }
-
-    private assignmentPermissions(status: OrderStatus): AdminPermission[] {
-        if (status === 'submitted' || status === 'in_review') {
-            return ['orders.review'];
-        }
-        if (status === 'confirmed' || status === 'waiting_payment') {
-            return ['orders.invoice', 'orders.payment'];
-        }
-        if (status === 'paid') return ['orders.fulfill'];
-        if (status === 'fulfilled') return ['orders.complete'];
-        throw new ConflictException(
-            'Order cannot be assigned in its current state',
-        );
     }
 
     private assertPaymentConfirmationBundle(order: OrderEntity) {
@@ -1889,12 +1916,16 @@ export class OrdersService {
         return products;
     }
 
-    private async loadOrder(manager: EntityManager, id: number) {
+    private async loadOrder(
+        manager: EntityManager,
+        id: number,
+        includeEvents = true,
+    ) {
         const order = await manager.getRepository(OrderEntity).findOne({
             where: { id },
             relations: {
                 lines: true,
-                events: true,
+                events: includeEvents,
                 assignedManager: true,
                 paymentConfirmedByStaff: true,
                 fulfilledByStaff: true,
@@ -2054,6 +2085,131 @@ export class OrdersService {
         };
     }
 
+    private workspaceActions(order: OrderEntity, actor: AdminPrincipal) {
+        const quote = order.quote;
+        const own = order.assignedManagerId === actor.id;
+        let completeQuote = false;
+        if (
+            quote?.lines.length &&
+            !quote.hasUnpricedItems &&
+            quote.lines.every((line) => line.quotedUnitPriceMinor !== null)
+        ) {
+            try {
+                const totals = calculateQuoteTotals(quote.lines);
+                completeQuote =
+                    !totals.hasUnpricedItems &&
+                    totals.quotedTotalMinor !== null &&
+                    totals.quotedPricedSubtotalMinor ===
+                        quote.quotedPricedSubtotalMinor &&
+                    totals.catalogPricedSubtotalMinor ===
+                        quote.catalogPricedSubtotalMinor;
+            } catch (error) {
+                if (
+                    !(
+                        error instanceof BadRequestException ||
+                        error instanceof ConflictException
+                    )
+                )
+                    throw error;
+            }
+        }
+        const confirmedQuote = quote?.status === 'confirmed' && completeQuote;
+        const invoiceCount = order.documents.filter(
+            (doc) => doc.type === 'invoice' && doc.status === 'active',
+        ).length;
+        const consistent = (check: () => void) => {
+            try {
+                check();
+                return true;
+            } catch (error) {
+                if (error instanceof ConflictException) return false;
+                throw error;
+            }
+        };
+        const payment = consistent(() =>
+            this.assertPaymentConfirmationBundle(order),
+        );
+        const completionEmpty = consistent(() =>
+            this.assertCompletionFieldsEmpty(order),
+        );
+        const decision = (
+            permission: AdminPermission,
+            state: boolean,
+            assignment = true,
+            facts = true,
+        ) => {
+            const reason =
+                !actor.isActive || !actor.permissions.includes(permission)
+                    ? 'permission'
+                    : !state
+                      ? 'state'
+                      : !assignment
+                        ? 'assignment'
+                        : !facts
+                          ? 'inconsistent'
+                          : null;
+            return { allowed: reason === null, reason };
+        };
+        return {
+            assign: decision('orders.assign', canAssignOrder(order.status)),
+            review: decision(
+                'orders.review',
+                canStartOrderReview(order.status),
+                own ||
+                    (order.status === 'submitted' &&
+                        order.assignedManagerId === null),
+                order.status === 'submitted'
+                    ? order.lines.length > 0
+                    : quote !== null,
+            ),
+            quote: decision(
+                'orders.quote',
+                order.status === 'in_review',
+                own,
+                quote?.status === 'draft',
+            ),
+            confirm: decision(
+                'orders.confirm',
+                order.status === 'in_review',
+                own,
+                quote?.status === 'draft' && completeQuote,
+            ),
+            invoice: decision(
+                'orders.invoice',
+                canUploadInvoice(order.status),
+                own,
+                confirmedQuote &&
+                    invoiceCount === (order.status === 'confirmed' ? 0 : 1),
+            ),
+            payment: decision(
+                'orders.payment',
+                canConfirmOrderPayment(order.status),
+                own,
+                confirmedQuote && invoiceCount === 1,
+            ),
+            fulfill: decision(
+                'orders.fulfill',
+                order.status === 'paid',
+                own,
+                confirmedQuote &&
+                    invoiceCount === 1 &&
+                    payment &&
+                    completionEmpty &&
+                    consistent(() => this.assertFulfillmentFieldsEmpty(order)),
+            ),
+            complete: decision(
+                'orders.complete',
+                order.status === 'fulfilled',
+                own,
+                confirmedQuote &&
+                    invoiceCount === 1 &&
+                    payment &&
+                    completionEmpty &&
+                    consistent(() => this.assertFulfillmentBundle(order)),
+            ),
+        };
+    }
+
     private presentDetail(order: OrderEntity, admin: boolean) {
         const lines = [...(order.lines || [])].sort(
             (left, right) =>
@@ -2137,8 +2293,15 @@ export class OrdersService {
                 toStatus: event.toStatus,
                 visibility: event.visibility,
                 message: event.message,
-                metadata: event.metadata,
-                ...(admin ? { actorStaffId: event.actorStaffId } : {}),
+                metadata: admin
+                    ? orderWorkspaceEventMetadata(event.metadata)
+                    : event.metadata,
+                ...(admin
+                    ? {
+                          actorStaffId: event.actorStaffId,
+                          actor: this.presentManager(event.actorStaff),
+                      }
+                    : {}),
                 createdAt: event.createdAt,
             })),
             ...(admin
@@ -2279,7 +2442,7 @@ export class OrdersService {
             originalName: file.originalName,
             mimeType: file.mimeType,
             sizeBytes: file.sizeBytes,
-            sha256: file.sha256,
+            ...(audience === 'client' ? { sha256: file.sha256 } : {}),
             createdAt: document.createdAt,
             downloadUrl: available
                 ? orderDocumentDownloadUrl(

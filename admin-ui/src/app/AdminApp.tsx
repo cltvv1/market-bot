@@ -22,6 +22,9 @@ import { ServiceQueue } from '../features/service-requests/ServiceQueue';
 import { ServiceDetail } from '../features/service-requests/ServiceDetail';
 import { RegistrationQueuePage } from '../features/registrations/RegistrationQueuePage';
 import { RegistrationDetailPage } from '../features/registrations/RegistrationDetailPage';
+import { OrderQueuePage } from '../features/orders/OrderQueuePage';
+import { OrderDetailPage } from '../features/orders/OrderDetailPage';
+import '../features/orders/orders.css';
 import '../features/registrations/registrations.css';
 import './foundation.css';
 import './admin-shell.css';
@@ -238,6 +241,26 @@ function Shell() {
                             element={
                                 allowed('/requests/registrations') ? (
                                     <RegistrationDetailPage />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
+                        <Route
+                            path="sales/orders"
+                            element={
+                                allowed('/sales/orders') ? (
+                                    <OrderQueuePage />
+                                ) : (
+                                    <Forbidden />
+                                )
+                            }
+                        />
+                        <Route
+                            path="sales/orders/:id"
+                            element={
+                                allowed('/sales/orders') ? (
+                                    <OrderDetailPage />
                                 ) : (
                                     <Forbidden />
                                 )
