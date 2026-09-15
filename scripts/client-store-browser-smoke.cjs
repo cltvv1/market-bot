@@ -305,6 +305,8 @@ async function main() {
         assert.equal(await lost.getByLabel('Контактное лицо', { exact: false }).isDisabled(), true);
         await lost.getByRole('button', { name: 'Повторить тот же запрос', exact: true }).click();
         await lost.waitForURL(base + `/site/orders/${committed.id}`);
+        // Navigation can precede CartProvider's passive persistence effect.
+        await lost.waitForFunction(() => localStorage.getItem('vitma_cart') === '[]');
         assert.equal(attempts.length, 2); assert.deepEqual(attempts[0], attempts[1]); assert.deepEqual(await cartStorage(lost), []);
         assert.equal(await f.db.getRepository(OrderEntity).countBy({ idempotencyKey: attempts[0].key }), 1);
         check('lost committed checkout response preserves cart and explicit exact-key replay recovers one Order');

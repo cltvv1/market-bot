@@ -209,6 +209,12 @@ the actual bounded Catalog response instead of expecting 20 static demo products
 `FE_STORE1_EXTRA_SMOKE=true` runs that additional script against the isolated
 browser fixture server; it is not counted again in the 178 required checks.
 
+The first hosted run exposed a browser assertion race after successful replay:
+the route changed before React's passive cart-persistence effect finished. The
+browser gate now waits (with Playwright's bounded timeout) for the actual empty
+stored cart before asserting it. The same-key/payload and one-Order assertions
+remain unchanged; no application behavior was changed for this test correction.
+
 Production bundle byte sizes, same `ci:build` command:
 
 | Asset | Baseline | FE-STORE-1 | Delta |
