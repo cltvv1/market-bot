@@ -13,6 +13,7 @@ import {
 } from './ui';
 import { ServiceConversation } from './ServiceConversation';
 import { ServicePaymentProof } from './ServicePaymentProof';
+import { ServicePublicAccess } from './ServicePublicAccess';
 const tabs = [
     { id: 'overview', title: 'Обзор' },
     { id: 'messages', title: 'Переписка' },
@@ -228,6 +229,14 @@ export function ServiceRequestDetailPage() {
                         </div>
                     )}
                 </dl>
+                {!row.isDraft && (
+                    <ServicePublicAccess
+                        key={row.id}
+                        id={row.id}
+                        version={row.version}
+                        refresh={refresh}
+                    />
+                )}
             </div>
             <div
                 id="panel-messages"

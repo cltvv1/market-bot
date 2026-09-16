@@ -1,10 +1,10 @@
 # Project status
 
-Last scoped checkpoint: 2026-09-16 (customer mutation origin boundary). Full-system audit: 2026-09-02.
+Last scoped checkpoint: 2026-09-16 (ServiceRequest public access lifecycle). Full-system audit: 2026-09-02.
 
-Canonical merged main baseline: `2e1981bff6efd06f11d229707e828c5ef68e801a` (FE-STORE-1, PR #35 merged).
+Canonical merged main baseline before SEC-R3B: `5b69f5fdeae2a67feaa26ef5925bcc7b3e5097b5` (SEC-R3A, PR #36 merged).
 
-Baseline CI: [run 34952087372](https://github.com/cltvv1/market-bot/actions/runs/34952087372), successful. SEC-R3A implementation checkpoint: `edf9ac8a601fda449dd9dea7bce837f2dff6000d`, followed by documentation-only rebaseline on `codex/sec-r3a-customer-origin-boundary`. Its application HTTP boundary resolution applies to this draft and to main only after a separately approved merge. See the [current route audit and evidence](security/2026-09-16-customer-origin-boundary.md); exact final-head hosted checks are recorded with the PR. This is not a full-system security or provider reassessment.
+Baseline CI: [run 35052336657](https://github.com/cltvv1/market-bot/actions/runs/35052336657), successful. SEC-R3A is merged: SEC-004 is resolved for current application customer-cookie HTTP mutations. See the [route audit and evidence](security/2026-09-16-customer-origin-boundary.md). SEC-R3B is the current draft package on `codex/sec-r3b-service-request-public-access`: SEC-005/006 resolution applies to main only after a separately approved merge. See [public-access scope and verification](security/2026-09-16-service-request-public-access.md). This is not a full-system security or provider reassessment.
 
 Detailed evidence: [2026-09-02 project status and roadmap rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
 
@@ -38,7 +38,7 @@ ATOL/Platforma - read-only bridge ------+
 ```
 
 - TypeORM uses `synchronize: false` and `migrationsRun: false`.
-- The schema has 11 append-only migrations, 57 application entities/tables, and 12 foreign-key ownership surfaces for `stored_files`.
+- Main has 11 append-only migrations, 57 application entities/tables, and 12 foreign-key ownership surfaces for `stored_files`. SEC-R3B adds a twelfth, data-only migration revoking legacy public links without changing the schema.
 - CH-R1 persists inbound command identity and dialog state. Interrupted commands fail closed.
 - CH-R2 persists business-significant outbound delivery intent with bounded retry and current staff reauthorization.
 - FileStorage is local behind a port, with lifecycle reconciliation and context-bound downloads.
@@ -108,7 +108,7 @@ Runs, mappings, exclusions, errors, observations, and opportunities are persiste
 
 ## Known production blockers
 
-1. The current SEC-R3A inventory finds 30 customer-cookie mutations: 18 protected at baseline and 12 missing the guard. SEC-004 is resolved for application HTTP routes in the SEC-R3A draft, not yet merged. ServiceRequest bearer lifecycle (SEC-005/006, SEC-R3B) and permissive legacy file-content fallback (SEC-007) remain separate blockers.
+1. SEC-R3A (PR #36) resolved SEC-004 for all 30 current-main customer-cookie mutations. The SEC-R3B draft adds two guarded owner access mutations (32 cookie, 35 customer/public, 110 total mutations), random explicit capability issuance, rotation/revocation, header transport and browser/log/cache controls. SEC-005/006 remain main blockers until separate SEC-R3B merge approval. Permissive legacy file-content fallback (SEC-007) remains deferred.
 2. FE-REG-1 fixed registration owner-before-lazy-read ordering. The historical closed-ticket and last-superadmin findings require their own follow-up; FE-ORD-1 does not claim to resolve them.
 3. MAX media download has no explicit provider-host egress allowlist.
 4. Client and staff Support/Knowledge UI is absent. Customer commerce, staff Catalog and Orders are merged, with no production deployment implied.
@@ -119,8 +119,8 @@ Runs, mappings, exclusions, errors, observations, and opportunities are persiste
 
 ## Current roadmap
 
-1. Finish review of `SEC-R3A` only. Further security work (`SEC-R3B`, `SEC-007`) and `OPS-1` need separate authorization; no deployment follows this draft automatically.
-2. `EM-0`: later rebaseline Equipment Monitoring contracts and stale-data lifecycle, audit/design-first. Not started by SEC-R3A.
+1. Finish review of the `SEC-R3B` draft only. `SEC-007` and `OPS-1` need separate authorization; no merge or deployment follows this draft automatically.
+2. `EM-0`: later rebaseline Equipment Monitoring contracts and stale-data lifecycle, audit/design-first. Not started by SEC-R3B.
 3. `EM-1`: normalize equipment health, issue severity, recommendation, and resolution.
 4. `EM-2`: unify contact sources, freshness, confidence, verification, deduplication, consent, and do-not-contact state.
 5. `NR-1`: schedule FN/OFD/ITS renewals with eligibility, CH-R2 delivery, dedupe, and operator fallback.

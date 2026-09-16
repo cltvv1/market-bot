@@ -1,11 +1,11 @@
 # Roadmap
 
 This roadmap reflects `main` at
-`2e1981bff6efd06f11d229707e828c5ef68e801a` after FE-STORE-1 (PR #35,
-main CI 34952087372). The scoped 2026-09-16 SEC-R3A checkpoint is a separate
-draft (implementation `edf9ac8a601fda449dd9dea7bce837f2dff6000d` plus
-documentation-only rebaseline), not yet merged; its security result applies to
-main only after approval.
+`5b69f5fdeae2a67feaa26ef5925bcc7b3e5097b5` after SEC-R3A (PR #36,
+main CI 35052336657, green). SEC-004 is resolved for current application
+customer-cookie HTTP mutations. The scoped 2026-09-16 SEC-R3B checkpoint is a
+separate draft; its SEC-005/006 resolution applies to main only after separate
+merge approval.
 It is ordered by
 dependency and evidence, not by calendar promises. Current capability status is
 kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
@@ -35,6 +35,7 @@ kept in [PROJECT_STATUS.md](PROJECT_STATUS.md); detailed evidence is in the
 | FE-ORD-1 | Merged staff Orders queue, quote, payment, fulfillment and completion workspace |
 | FE-CAT-1 | Merged production staff Catalog categories/products and publication workspace; PR #34, main CI 34941653068 |
 | FE-STORE-1 | Merged real public Catalog, hydrated cart, canonical checkout and owner Orders; PR #35, main CI 34952087372; not deployed |
+| SEC-R3A | Merged customer-cookie mutation same-origin boundary; PR #36, main CI 35052336657; SEC-004 resolved for application HTTP routes |
 
 Completion here means the bounded package contract passed its tests. It does not
 mean every capability has a product UI or that the system is production-ready.
@@ -49,9 +50,11 @@ FE-ORD-1 is merged as PR #33; main CI 34932993321 passed. No deployment is impli
 FE-CAT-1 is merged, reusing CO-1 with scoped snapshot preconditions and publication
 readiness. FE-STORE-1 connects public Catalog, ID/quantity-only cart, canonical
 checkout and owner Orders in main through PR #35. The commercial vertical slice
-is merged, not deployed. SEC-R3A now closes the remaining customer-cookie
-mutation origin boundary in a separate draft; stop at review, not automatic merge
-or the next package. See the [current route audit](security/2026-09-16-customer-origin-boundary.md).
+is merged, not deployed. SEC-R3A closed the remaining customer-cookie mutation
+origin boundary in main. SEC-R3B hardens the ServiceRequest public bearer lifecycle
+in a separate draft; stop at review, not automatic merge or the next package.
+See the [public-access report](security/2026-09-16-service-request-public-access.md)
+and [origin route audit](security/2026-09-16-customer-origin-boundary.md).
 See [FE-STORE-1 report](frontend/2026-09-15-client-store-order-intake.md).
 See [FE-ORD-1 report](frontend/2026-09-15-admin-orders-workspace.md) and
 [FE-CAT-1 report](frontend/2026-09-15-admin-catalog-workspace.md).
@@ -107,17 +110,19 @@ This is separate from monitoring and does not imply stock, 1C, EDO or deployment
 
 ### SEC-R3 Production security hardening
 
-SEC-R3A inventories 33 customer/public mutations, of which 30 depend on the
-customer cookie. Eighteen were already protected; twelve required the canonical
-origin guard. SEC-004 is resolved for application HTTP routes in the SEC-R3A
-draft, with metadata coverage, negative database/storage assertions and pre-Multer
-checks; review/merge remains separate. FE-REG-1 already fixed registration owner
-authorization before lazy initialization. Historical audits retain their dates.
+SEC-R3A (PR #36) resolved SEC-004 for application HTTP routes: 30 cookie-dependent
+mutations, including twelve formerly missing the origin guard. SEC-R3B adds two
+owner access-management mutations with the same guards (32 cookie-dependent,
+35 customer/public, 110 total mutations). Its draft addresses SEC-005/006 only:
+random explicit capability issuance, hash-at-rest, rotation/revocation, header
+transport, fragment/session bootstrap and log/cache controls. A data-only twelfth
+migration intentionally invalidates legacy links. Main is unchanged until separate
+merge approval. FE-REG-1 already fixed registration owner authorization before
+lazy initialization. Historical audits retain their dates.
 
-Still separate: SEC-R3B ServiceRequest bearer entropy/exposure/revocation,
-SEC-007 legacy file-content policy, closed-ticket replies, last-superadmin
+Still separate: SEC-007 legacy file-content policy, closed-ticket replies, last-superadmin
 concurrency, Audit atomicity, request-ID validation, MAX media egress policy,
-CSP and reachable dependency advisories. None is implemented by SEC-R3A.
+CSP and reachable dependency advisories. None is implemented by SEC-R3B.
 
 ### OPS-1 Production operations
 
@@ -186,7 +191,7 @@ EM-0 -> EM-1 -> EM-2 -> NR-1
 proven manual Orders + real UI -> INT-1 -> EDO
 ```
 
-The current bounded package stops after SEC-R3A draft review evidence. No
-SEC-R3B, OPS-1 or EM-0 implementation is authorized implicitly. A later EM-0 should finish with a reviewed
+The current bounded package stops after SEC-R3B draft review evidence. No
+SEC-007, OPS-1 or EM-0 implementation is authorized implicitly. A later EM-0 should finish with a reviewed
 state-transition/data-flow contract, stale-resolution matrix, operational
 schedule/recovery contract, and a justified minimum schema decision for EM-1.

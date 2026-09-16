@@ -18,36 +18,44 @@ import { RateLimit } from 'src/security/rate-limit';
 import { ServiceRequestsService } from './service-requests.service';
 import {
     PublicServiceRequestAttachmentParamDto,
-    PublicServiceRequestTokenParamDto,
     ServiceRequestMessageDto,
 } from './dto/canonical-service-request.dto';
 import { PublicServiceRequestUploadGuard } from './service-request-upload.guard';
+import {
+    CurrentPublicServiceRequestAccess,
+    PublicServiceRequestAccessGuard,
+} from './public-service-request-access.guard';
+import type { PublicServiceRequestAccess } from './service-request-public-access.service';
+import { paymentProofContentDisposition } from './service-request-payment-proof';
 
 @Controller('api/public/service-requests')
 @ApiTags('service-requests-public')
+@UseGuards(PublicServiceRequestAccessGuard)
 export class PublicServiceRequestsController {
     constructor(private readonly requests: ServiceRequestsService) {}
 
-    @Get(':token')
+    @Get('status')
     @ApiOperation({
         summary: 'Read customer-safe request status using an access token',
     })
     @RateLimit('public-sensitive-read', 60, 60)
-    getStatus(@Param() params: PublicServiceRequestTokenParamDto) {
-        return this.requests.getByPublicToken(params.token);
+    getStatus(
+        @CurrentPublicServiceRequestAccess() access: PublicServiceRequestAccess,
+    ) {
+        return this.requests.getPublicStatus(access);
     }
 
-    @Post(':token/messages')
+    @Post('messages')
     @ApiOperation({ summary: 'Reply to a request using an access token' })
     @RateLimit('public-form', 20, 600)
     addMessage(
-        @Param() params: PublicServiceRequestTokenParamDto,
+        @CurrentPublicServiceRequestAccess() access: PublicServiceRequestAccess,
         @Body() body: ServiceRequestMessageDto,
     ) {
-        return this.requests.addPublicMessage(params.token, body.text);
+        return this.requests.addPublicMessage(access, body.text);
     }
 
-    @Post(':token/messages/attachments')
+    @Post('messages/attachments')
     @ApiOperation({ summary: 'Attach a file using an access token' })
     @UseGuards(PublicServiceRequestUploadGuard)
     @UseInterceptors(
@@ -58,36 +66,40 @@ export class PublicServiceRequestsController {
     )
     @RateLimit('public-form', 20, 600)
     addMessageAttachment(
-        @Param() params: PublicServiceRequestTokenParamDto,
+        @CurrentPublicServiceRequestAccess() access: PublicServiceRequestAccess,
         @UploadedFile()
         file?: { buffer: Buffer; originalname?: string; mimetype?: string },
     ) {
         if (!file) throw new BadRequestException('Attachment file is required');
-        return this.requests.addPublicMessageAttachment(params.token, {
+        return this.requests.addPublicMessageAttachment(access, {
             buffer: file.buffer,
             originalName: file.originalname,
             mimeType: file.mimetype,
         });
     }
 
-    @Get(':token/attachments/:attachmentId')
+    @Get('attachments/:attachmentId')
     @ApiOperation({
         summary: 'Download a customer-visible attachment using an access token',
     })
     @RateLimit('public-sensitive-read', 60, 60)
     async downloadAttachment(
+        @CurrentPublicServiceRequestAccess() access: PublicServiceRequestAccess,
         @Param() params: PublicServiceRequestAttachmentParamDto,
         @Res() response: Response,
     ) {
         const { file, stream } = await this.requests.openPublicAttachment(
-            params.token,
+            access,
             params.attachmentId,
         );
         response.setHeader('Content-Type', file.mimeType);
         response.setHeader(
             'Content-Disposition',
-            `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName || 'file')}`,
+            paymentProofContentDisposition(file.originalName || 'file'),
         );
+        response.setHeader('Content-Length', file.sizeBytes);
+        response.setHeader('X-Content-Type-Options', 'nosniff');
+        stream.on('error', () => response.destroy());
         stream.pipe(response);
     }
 }

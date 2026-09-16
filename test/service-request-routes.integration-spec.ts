@@ -134,6 +134,10 @@ describe('service-request HTTP route ownership', () => {
             for (const removedRoute of [
                 'POST /api/public/service-requests/:token/payment-proof',
                 'GET /api/public/service-requests/:token/payment-proof',
+                'GET /api/public/service-requests/:token',
+                'POST /api/public/service-requests/:token/messages',
+                'POST /api/public/service-requests/:token/messages/attachments',
+                'GET /api/public/service-requests/:token/attachments/:attachmentId',
                 'GET /api/client/files/:id',
                 'GET /api/public/files/:id',
                 'POST /api/client/service-requests/start',
@@ -149,7 +153,7 @@ describe('service-request HTTP route ownership', () => {
                 expect(allByMethodAndPath.has(removedRoute)).toBe(false);
             }
             expect(
-                byMethodAndPath.get('GET /api/public/service-requests/:token'),
+                byMethodAndPath.get('GET /api/public/service-requests/status'),
             ).toEqual([
                 expect.objectContaining({
                     controller: 'PublicServiceRequestsController',

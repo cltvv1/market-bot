@@ -199,21 +199,20 @@ export class AdminTransitionServiceRequestDto {
     expectedVersion: number;
 }
 
-export class PublicServiceRequestTokenParamDto {
-    @ApiProperty({
-        minLength: 32,
-        maxLength: 100,
-        description:
-            'Unpredictable bearer token; request number is not accepted',
-    })
-    @Matches(/^[A-Za-z0-9_-]{32,100}$/)
-    token: string;
+export class ServiceRequestPublicAccessDto {
+    @ApiProperty({ minimum: 1, maximum: 2_147_483_647 })
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(2_147_483_647)
+    expectedVersion: number;
 }
 
-export class PublicServiceRequestAttachmentParamDto extends PublicServiceRequestTokenParamDto {
+export class PublicServiceRequestAttachmentParamDto {
     @ApiProperty({ minimum: 1 })
     @Type(() => Number)
     @IsInt()
     @Min(1)
+    @Max(2_147_483_647)
     attachmentId: number;
 }

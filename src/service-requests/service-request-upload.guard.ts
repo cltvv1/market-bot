@@ -7,9 +7,11 @@ import {
 import type { Request } from 'express';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import { ServiceRequestsService } from './service-requests.service';
+import { type PublicAccessRequest } from './public-service-request-access.guard';
+import { publicAccessDenied } from './service-request-public-access.service';
 
 type UploadRequest = Request & {
-    params: { id?: string; token?: string };
+    params: { id?: string };
     webSession?: WebSessionPrincipal;
 };
 
@@ -18,16 +20,17 @@ export class PublicServiceRequestUploadGuard implements CanActivate {
     constructor(private readonly requests: ServiceRequestsService) {}
 
     async canActivate(context: ExecutionContext) {
-        const request = context.switchToHttp().getRequest<UploadRequest>();
-        const token = request.params.token;
-        if (!token || !/^[A-Za-z0-9_-]{32,100}$/.test(token)) {
-            // Discard an unparsed body so the client can receive the early 404.
+        const request = context
+            .switchToHttp()
+            .getRequest<PublicAccessRequest>();
+        const access = request.publicServiceRequestAccess;
+        if (!access) {
             request.resume();
-            throw new NotFoundException('Service request was not found');
+            throw publicAccessDenied();
         }
         try {
             await this.requests.assertPublicMessageAttachmentUploadAccess(
-                token,
+                access,
             );
         } catch (error) {
             // Multer has not run; discard the stream without retaining file bytes.

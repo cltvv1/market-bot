@@ -4,11 +4,18 @@ import {
     publicStatus,
     publicReply,
     publicFile,
+    downloadPublic,
     serviceApi,
     ServiceApiError,
 } from './api';
 import { useServiceRead } from './useServiceRead';
 import { dateText, Loading, ServiceError } from './ui';
+import {
+    bootstrapPublicAccess,
+    readPublicAccess,
+    invalidPublicAccess,
+} from './public-access-session';
+import { Download, RefreshCw } from 'lucide-react';
 const publicStages: Record<string, string> = {
     received: 'Обращение получено',
     clarification_required: 'Нужно уточнение',
@@ -53,6 +60,18 @@ function PublicStatus({ token, number }: { token: string; number: string }) {
             setBusy(false);
         }
     };
+    if (
+        [view.error, error].some(
+            (failure) =>
+                failure instanceof ServiceApiError && failure.status === 401,
+        )
+    )
+        return (
+            <p className="svc-notice" role="alert">
+                Ссылка больше не действует. Попросите владельца заявки создать
+                новую.
+            </p>
+        );
     if (view.error != null)
         return (
             <ServiceError
@@ -75,6 +94,14 @@ function PublicStatus({ token, number }: { token: string; number: string }) {
                 Ограниченный просмотр по ссылке. Банковские документы доступны
                 только владельцу в исходной сессии браузера.
             </p>
+            <button
+                className="ref-button"
+                disabled={view.loading || busy}
+                onClick={() => void view.refresh()}
+            >
+                <RefreshCw size={17} />
+                Обновить статус
+            </button>
             <ol className="svc-messages">
                 {view.data.messages.map((message) => (
                     <li className="svc-message" key={message.id}>
@@ -88,6 +115,31 @@ function PublicStatus({ token, number }: { token: string; number: string }) {
                     </li>
                 ))}
             </ol>
+            <ul className="svc-files">
+                {view.data.attachments.map((attachment) => (
+                    <li key={attachment.id}>
+                        <span>{attachment.file.originalName || 'Файл'}</span>
+                        <button
+                            className="ref-button"
+                            disabled={busy}
+                            onClick={() => {
+                                setBusy(true);
+                                setError(undefined);
+                                void downloadPublic(
+                                    token,
+                                    attachment.id,
+                                    attachment.file.originalName || 'file',
+                                )
+                                    .catch(setError)
+                                    .finally(() => setBusy(false));
+                            }}
+                        >
+                            <Download size={17} />
+                            Скачать файл
+                        </button>
+                    </li>
+                ))}
+            </ul>
             {error != null && <ServiceError error={error} />}
             {uncertain && (
                 <div className="svc-notice">
@@ -193,11 +245,14 @@ function OwnerLookup({ number }: { number: string }) {
     );
 }
 export function LegacyServiceStatusAdapter() {
+    const [token] = useState(() => {
+        bootstrapPublicAccess();
+        return readPublicAccess();
+    });
     const [query, setQuery] = useSearchParams();
     const [number, setNumber] = useState(
         query.get('number')?.slice(0, 80) ?? '',
     );
-    const token = query.get('token');
     if (token)
         return (
             <PublicStatus
@@ -205,6 +260,13 @@ export function LegacyServiceStatusAdapter() {
                 token={token}
                 number={query.get('number') ?? ''}
             />
+        );
+    if (invalidPublicAccess())
+        return (
+            <p className="svc-notice" role="alert">
+                Ссылка больше не действует. Попросите владельца заявки создать
+                новую.
+            </p>
         );
     if (query.get('number'))
         return (

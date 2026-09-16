@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
     BadRequestException,
@@ -38,6 +38,10 @@ import { ServiceRequestChannelWorkflowService } from './service-request-channel-
 import { ServiceRequestPaymentProofService } from './service-request-payment-proof.service';
 import { ServiceRequestOwnerReadService } from './service-request-owner-read.service';
 import {
+    ServiceRequestPublicAccessService,
+    type PublicServiceRequestAccess,
+} from './service-request-public-access.service';
+import {
     canCustomerMessage,
     ownerAnswers,
     ownerForm,
@@ -68,6 +72,7 @@ export class ServiceRequestsService {
         private readonly channelWorkflow: ServiceRequestChannelWorkflowService,
         private readonly paymentProofs: ServiceRequestPaymentProofService,
         private readonly ownerRead: ServiceRequestOwnerReadService,
+        private readonly publicAccess: ServiceRequestPublicAccessService,
     ) {}
 
     getRequest(
@@ -416,11 +421,6 @@ export class ServiceRequestsService {
         expectedVersion: number,
         idempotencyKey: string,
     ) {
-        const rawToken = this.derivePublicToken(
-            session.userId,
-            id,
-            idempotencyKey,
-        );
         const saved = await this.dataSource.transaction(async (manager) => {
             const repository = manager.getRepository(ServiceRequestEntity);
             const request = await repository.findOne({
@@ -433,8 +433,7 @@ export class ServiceRequestsService {
                 request.submitIdempotencyKey === idempotencyKey &&
                 request.status !== 'draft'
             ) {
-                request.publicTokenHash = this.hashToken(rawToken);
-                return repository.save(request);
+                return request;
             }
             if (request.status !== 'draft')
                 throw new BadRequestException(
@@ -452,7 +451,6 @@ export class ServiceRequestsService {
             );
             this.assertContactReady(request.contactSnapshot);
             request.submitIdempotencyKey = idempotencyKey;
-            request.publicTokenHash = this.hashToken(rawToken);
             transitionServiceRequest(request, 'submitted');
             const submitted = await repository.save(request);
             await this.addEvent(
@@ -491,7 +489,7 @@ export class ServiceRequestsService {
             targetType: 'service_request',
             targetId: saved.id,
         });
-        return { ...(await this.details(saved)), publicToken: rawToken };
+        return this.details(saved);
     }
 
     async listForWeb(session: WebSessionPrincipal) {
@@ -502,13 +500,10 @@ export class ServiceRequestsService {
         return this.ownerRead.detail(session, id);
     }
 
-    async getByPublicToken(token: string) {
-        const request = await this.requests.findOne({
-            where: { publicTokenHash: this.hashToken(token) },
-        });
-        if (!request)
-            throw new NotFoundException('Service request was not found');
-        return this.details(request);
+    getPublicStatus(access: PublicServiceRequestAccess) {
+        return this.publicAccess.read(access, (request) =>
+            this.details(request),
+        );
     }
 
     async addWebAttachment(
@@ -731,19 +726,15 @@ export class ServiceRequestsService {
         );
     }
 
-    async addPublicMessage(token: string, text: string) {
+    async addPublicMessage(access: PublicServiceRequestAccess, text: string) {
         const { message, request } = await this.dataSource.transaction(
             async (manager) => {
                 const requests = manager.getRepository(ServiceRequestEntity);
                 const request = await requests.findOne({
-                    where: { publicTokenHash: this.hashToken(token) },
+                    where: { id: access.serviceRequestId },
                     lock: { mode: 'pessimistic_write' },
                 });
-                if (!request) {
-                    throw new NotFoundException(
-                        'Service request was not found',
-                    );
-                }
+                this.publicAccess.assert(request, access);
                 if (['draft', 'closed', 'cancelled'].includes(request.status)) {
                     throw new BadRequestException(
                         'Messages are not accepted in the current status',
@@ -791,15 +782,16 @@ export class ServiceRequestsService {
     }
 
     async addPublicMessageAttachment(
-        token: string,
+        access: PublicServiceRequestAccess,
         file: { buffer: Buffer; originalName?: string; mimeType?: string },
     ) {
         const request =
-            await this.assertPublicMessageAttachmentUploadAccess(token);
+            await this.assertPublicMessageAttachmentUploadAccess(access);
         return this.storeCustomerMessageAttachment(
             request,
             file,
             request.userId,
+            access,
         );
     }
 
@@ -825,13 +817,10 @@ export class ServiceRequestsService {
         return request;
     }
 
-    async assertPublicMessageAttachmentUploadAccess(token: string) {
-        const request = await this.requests.findOne({
-            where: { publicTokenHash: this.hashToken(token) },
-        });
-        if (!request) {
-            throw new NotFoundException('Service request was not found');
-        }
+    async assertPublicMessageAttachmentUploadAccess(
+        access: PublicServiceRequestAccess,
+    ) {
+        const request = await this.publicAccess.current(access);
         this.assertMessageAttachmentStatus(request);
         return request;
     }
@@ -1042,13 +1031,13 @@ export class ServiceRequestsService {
         return this.openAttachment(requestId, attachmentId);
     }
 
-    async openPublicAttachment(token: string, attachmentId: number) {
-        const request = await this.requests.findOne({
-            where: { publicTokenHash: this.hashToken(token) },
-        });
-        if (!request)
-            throw new NotFoundException('Service request was not found');
-        return this.openAttachment(request.id, attachmentId);
+    openPublicAttachment(
+        access: PublicServiceRequestAccess,
+        attachmentId: number,
+    ) {
+        return this.publicAccess.read(access, (request) =>
+            this.openAttachment(request.id, attachmentId),
+        );
     }
 
     async openAdminAttachment(requestId: number, attachmentId: number) {
@@ -1077,16 +1066,19 @@ export class ServiceRequestsService {
         request: ServiceRequestEntity,
         file: { buffer: Buffer; originalName?: string; mimeType?: string },
         customerId?: number,
+        access?: PublicServiceRequestAccess,
     ) {
         this.assertMessageAttachmentStatus(request);
-        const stored = await this.files.saveBuffer({
-            purpose: 'service-attachment',
-            buffer: file.buffer,
-            originalName: file.originalName,
-            mimeType: file.mimeType,
-            createdByCustomerId: customerId,
-            metadata: { serviceRequestId: request.id, context: 'message' },
-        });
+        const save = () =>
+            this.files.saveBuffer({
+                purpose: 'service-attachment',
+                buffer: file.buffer,
+                originalName: file.originalName,
+                mimeType: file.mimeType,
+                createdByCustomerId: customerId,
+                metadata: { serviceRequestId: request.id, context: 'message' },
+            });
+        let stored = access ? undefined : await save();
         try {
             const result = await this.dataSource.transaction(
                 async (manager) => {
@@ -1096,6 +1088,7 @@ export class ServiceRequestsService {
                             where: { id: request.id },
                             lock: { mode: 'pessimistic_write' },
                         });
+                    if (access) this.publicAccess.assert(locked, access);
                     if (
                         !locked ||
                         (customerId !== undefined &&
@@ -1106,6 +1099,8 @@ export class ServiceRequestsService {
                             'Attachments are not accepted in the current status',
                         );
                     }
+                    // A revoked in-flight upload must not write even a temporary file.
+                    stored ??= await save();
                     const attachment = await manager
                         .getRepository(ServiceRequestAttachmentEntity)
                         .save({
@@ -1154,9 +1149,9 @@ export class ServiceRequestsService {
                 targetId: request.id,
                 metadata: { attachmentId: result.attachment.id },
             });
-            return this.attachmentView(result.attachment, stored);
+            return this.attachmentView(result.attachment, stored!);
         } catch (error) {
-            await this.files.logicalDelete(stored.id);
+            if (stored) await this.files.logicalDelete(stored.id);
             throw error;
         }
     }
@@ -1552,20 +1547,6 @@ export class ServiceRequestsService {
     private createRequestNumber() {
         const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
         return `SR-${date}-${randomBytes(4).toString('hex').toUpperCase()}`;
-    }
-
-    private hashToken(token: string) {
-        return createHash('sha256').update(token).digest('hex');
-    }
-
-    private derivePublicToken(
-        userId: number,
-        requestId: number,
-        idempotencyKey: string,
-    ) {
-        return createHash('sha256')
-            .update(`${userId}:${requestId}:${idempotencyKey}`)
-            .digest('base64url');
     }
 
     private deliveryStatusMessage(delivery: {

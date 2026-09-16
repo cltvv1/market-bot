@@ -22,6 +22,10 @@ const child = spawn(process.execPath, ['dist/src/main.js'], {
         OUTBOUND_DELIVERY_WORKER_ENABLED: 'false',
         MAX_BOT_TOKEN: '',
         SERVE_BUILT_UI: 'true',
+        // Many synthetic browser contexts share one loopback IP in this runner.
+        // Rate-limit behavior is covered separately by SEC-R1 integration tests.
+        RATE_LIMIT_PUBLIC_SENSITIVE_READ_LIMIT: '1000',
+        RATE_LIMIT_PUBLIC_FORM_LIMIT: '1000',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,

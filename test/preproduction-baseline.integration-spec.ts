@@ -32,6 +32,7 @@ describe('pre-production database baseline', () => {
             {
                 name: 'AddOrderFulfillmentCompletionWorkflow1788355200000',
             },
+            { name: 'RevokeLegacyServiceRequestPublicAccess1789516800000' },
         ]);
     });
 

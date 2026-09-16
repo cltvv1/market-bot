@@ -323,7 +323,7 @@ describe('SEC-R3A customer mutation origin boundary', () => {
                 expect(row.guards).not.toContain(WebSessionGuard);
             }
         }
-        expect(routes).toHaveLength(108);
+        expect(routes).toHaveLength(110);
         for (const row of publicRoutes.filter((row) =>
             exemptRows.some((exempt) => exempt.route === row.route),
         )) {

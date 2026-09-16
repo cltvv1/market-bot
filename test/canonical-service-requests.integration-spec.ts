@@ -83,6 +83,22 @@ describe('canonical service requests', () => {
         return agent;
     }
 
+    async function publicBrowserFor(
+        owner: Awaited<ReturnType<typeof browser>>,
+        id: number,
+    ) {
+        const state = await owner
+            .get(`/api/client/service-requests/${id}/public-access`)
+            .expect(200);
+        const issued = await owner
+            .post(`/api/client/service-requests/${id}/public-access`)
+            .send({ expectedVersion: state.body.version })
+            .expect(201);
+        return request
+            .agent(app.getHttpServer())
+            .set('Authorization', `Bearer ${issued.body.token}`);
+    }
+
     async function staff(
         login: string,
         roles: Array<'operator' | 'engineer' | 'sales_manager' | 'superadmin'>,
@@ -499,6 +515,10 @@ describe('canonical service requests', () => {
                 .post(`/api/client/service-requests/drafts/${row.id}/submit`)
                 .send(command)
                 .expect(201);
+            const publicBrowser =
+                surface === 'public detail'
+                    ? await publicBrowserFor(owner, row.id)
+                    : null;
             const response =
                 surface === 'submit replay'
                     ? await owner
@@ -508,10 +528,8 @@ describe('canonical service requests', () => {
                           .send(command)
                           .expect(201)
                     : surface === 'public detail'
-                      ? await request(app.getHttpServer())
-                            .get(
-                                `/api/public/service-requests/${submitted.body.publicToken}`,
-                            )
+                      ? await publicBrowser!
+                            .get('/api/public/service-requests/status')
                             .expect(200)
                       : submitted;
             expectPrivateValuesAbsent(response.body);
@@ -537,10 +555,10 @@ describe('canonical service requests', () => {
                     false,
                 );
             }
-            if (surface === 'submit replay')
-                expect(
-                    response.body.publicToken === submitted.body.publicToken,
-                ).toBe(true);
+            if (surface === 'submit replay') {
+                expect(response.body).not.toHaveProperty('publicToken');
+                expect(submitted.body).not.toHaveProperty('publicToken');
+            }
             const stored = await dataSource
                 .getRepository(ServiceRequestEntity)
                 .findOneByOrFail({ id: row.id });
@@ -574,7 +592,7 @@ describe('canonical service requests', () => {
 
     it('excludes unknown persisted answers from owner and public reads without deleting them', async () => {
         const { owner, row } = await privateDraftFixture();
-        const submitted = await owner
+        await owner
             .post(`/api/client/service-requests/drafts/${row.id}/submit`)
             .send({
                 expectedVersion: row.version,
@@ -588,8 +606,9 @@ describe('canonical service requests', () => {
         const ownerView = await owner
             .get(`/api/client/service-requests/${row.id}`)
             .expect(200);
-        const publicView = await request(app.getHttpServer())
-            .get(`/api/public/service-requests/${submitted.body.publicToken}`)
+        const publicBrowser = await publicBrowserFor(owner, row.id);
+        const publicView = await publicBrowser
+            .get('/api/public/service-requests/status')
             .expect(200);
         for (const response of [ownerView, publicView]) {
             expectPrivateValuesAbsent(response.body);
@@ -600,10 +619,8 @@ describe('canonical service requests', () => {
         const unchanged = await repository.findOneByOrFail({ id: row.id });
         expect(unchanged.answers).toEqual(stored.answers);
         expect(unchanged.answers).toMatchObject(privateAnswers);
-        await request(app.getHttpServer())
-            .post(
-                `/api/public/service-requests/${submitted.body.publicToken}/messages`,
-            )
+        await publicBrowser
+            .post('/api/public/service-requests/messages')
             .send({
                 text: 'Synthetic public reply after privacy projection',
             })
@@ -638,7 +655,14 @@ describe('canonical service requests', () => {
         expect(submitted.body.request.requestNumber).toMatch(
             /^SR-\d{8}-[A-F0-9]{8}$/,
         );
-        expect(submitted.body.publicToken).toMatch(/^[A-Za-z0-9_-]{32,100}$/);
+        expect(submitted.body).not.toHaveProperty('publicToken');
+        expect(
+            (
+                await dataSource
+                    .getRepository(ServiceRequestEntity)
+                    .findOneByOrFail({ id: draft.body.id })
+            ).publicTokenHash,
+        ).toBeNull();
 
         await owner
             .get(`/api/client/service-requests/${draft.body.id}`)
@@ -654,9 +678,13 @@ describe('canonical service requests', () => {
             .get(
                 `/api/public/service-requests/${submitted.body.request.requestNumber}`,
             )
-            .expect(400);
-        const publicView = await request(app.getHttpServer())
-            .get(`/api/public/service-requests/${submitted.body.publicToken}`)
+            .expect(404);
+        const publicBrowser = await publicBrowserFor(
+            owner,
+            Number(draft.body.id),
+        );
+        const publicView = await publicBrowser
+            .get('/api/public/service-requests/status')
             .expect(200);
         expect(publicView.body.request.requestNumber).toBe(
             submitted.body.request.requestNumber,
@@ -673,7 +701,7 @@ describe('canonical service requests', () => {
         const row = await dataSource
             .getRepository(ServiceRequestEntity)
             .findOneByOrFail({ id: draft.body.id });
-        expect(row.publicTokenHash).not.toBe(submitted.body.publicToken);
+        expect(submitted.body).not.toHaveProperty('publicToken');
         expect(row.publicTokenHash).toHaveLength(64);
         expect(row.organizationId).toBeNull();
         expect(row.organizationSnapshot).toMatchObject({
@@ -751,7 +779,8 @@ describe('canonical service requests', () => {
         ]);
         expect(first.status).toBe(201);
         expect(repeated.status).toBe(201);
-        expect(repeated.body.publicToken).toBe(first.body.publicToken);
+        expect(repeated.body).not.toHaveProperty('publicToken');
+        expect(first.body).not.toHaveProperty('publicToken');
         expect(
             await dataSource.getRepository(ServiceRequestEntity).count(),
         ).toBe(1);
@@ -862,17 +891,19 @@ describe('canonical service requests', () => {
             .post('/api/client/service-requests/drafts')
             .send(completeDraft())
             .expect(201);
-        const submitted = await owner
+        await owner
             .post(`/api/client/service-requests/drafts/${draft.body.id}/submit`)
             .send({
                 expectedVersion: draft.body.version,
                 idempotencyKey: 'integration-submit-file-0001',
             })
             .expect(201);
-        const uploaded = await request(app.getHttpServer())
-            .post(
-                `/api/public/service-requests/${submitted.body.publicToken}/messages/attachments`,
-            )
+        const publicBrowser = await publicBrowserFor(
+            owner,
+            Number(draft.body.id),
+        );
+        const uploaded = await publicBrowser
+            .post('/api/public/service-requests/messages/attachments')
             .attach('file', Buffer.from('%PDF-1.7\npayment'), {
                 filename: 'payment.pdf',
                 contentType: 'application/pdf',
@@ -888,14 +919,12 @@ describe('canonical service requests', () => {
                 `/api/client/service-requests/${draft.body.id}/attachments/${uploaded.body.id}`,
             )
             .expect(404);
-        await request(app.getHttpServer())
-            .get(
-                `/api/public/service-requests/${submitted.body.publicToken}/attachments/${uploaded.body.id}`,
-            )
+        await publicBrowser
+            .get(`/api/public/service-requests/attachments/${uploaded.body.id}`)
             .expect(200)
             .expect('Content-Type', 'application/pdf');
-        const publicView = await request(app.getHttpServer())
-            .get(`/api/public/service-requests/${submitted.body.publicToken}`)
+        const publicView = await publicBrowser
+            .get('/api/public/service-requests/status')
             .expect(200);
         expect(publicView.body.attachments).toEqual(
             expect.arrayContaining([
@@ -922,7 +951,7 @@ describe('canonical service requests', () => {
             .post('/api/client/service-requests/drafts')
             .send(completeDraft())
             .expect(201);
-        const submitted = await owner
+        await owner
             .post(`/api/client/service-requests/drafts/${draft.body.id}/submit`)
             .send({
                 expectedVersion: draft.body.version,
@@ -960,8 +989,12 @@ describe('canonical service requests', () => {
             .set('Origin', ADMIN_ORIGIN)
             .send({ text: 'Внутренняя заметка', visibility: 'internal' })
             .expect(201);
-        const publicView = await request(app.getHttpServer())
-            .get(`/api/public/service-requests/${submitted.body.publicToken}`)
+        const publicBrowser = await publicBrowserFor(
+            owner,
+            Number(draft.body.id),
+        );
+        const publicView = await publicBrowser
+            .get('/api/public/service-requests/status')
             .expect(200);
         const publicMessages = publicView.body.messages as Array<{
             text: string;

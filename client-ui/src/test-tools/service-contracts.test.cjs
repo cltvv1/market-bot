@@ -131,3 +131,102 @@ test('service styling is scoped, neutral and retains approved reference foundati
     assert.match(read('client-ui/src/features/service/ServiceLayout.tsx'), /reference\/foundation.css/);
     assert.match(css, /\.ref-client/);
 });
+
+const access = require('../features/service/public-access-session');
+const { publicReply, publicFile, downloadPublic } = require('../features/service/api');
+const syntheticBearer = 'A'.repeat(43);
+function accessBrowser(t, href) {
+    const saved = new Map();
+    const steps = [];
+    global.sessionStorage = {
+        getItem: key => saved.get(key) || null,
+        setItem: (key, value) => { steps.push('store'); saved.set(key, value); },
+        removeItem: key => saved.delete(key),
+    };
+    global.window = {
+        location: new URL(href),
+        history: { state: { idx: 2 }, replaceState(state, _unused, url) {
+            assert.deepEqual(state, { idx: 2 });
+            steps.push('replace'); window.location = new URL(url, window.location.origin);
+        } },
+    };
+    access.clearPublicAccess();
+    t.after(() => { access.clearPublicAccess(); delete global.window; delete global.sessionStorage; });
+    return { saved, steps };
+}
+test('share bootstrap replaces history before storing the only session-scoped bearer', t => {
+    const { saved, steps } = accessBrowser(t, `https://example.test/site/service/status?number=SR-1#access=${syntheticBearer}`);
+    access.bootstrapPublicAccess();
+    assert.equal(window.location.href, 'https://example.test/site/service/status?number=SR-1');
+    assert.deepEqual(steps, ['replace', 'store']);
+    assert.deepEqual([...saved], [[access.PUBLIC_ACCESS_KEY, syntheticBearer]]);
+    assert.equal(access.readPublicAccess(), syntheticBearer);
+    assert.equal(access.invalidPublicAccess(), false);
+    assert.equal(access.publicShareLink(syntheticBearer), `https://example.test/site/service/status#access=${syntheticBearer}`);
+});
+test('legacy query and malformed fragments are scrubbed but never become access', t => {
+    const { saved } = accessBrowser(t, 'https://example.test/site/service/status');
+    for (const suffix of [`?token=${syntheticBearer}`, `?accessToken=${syntheticBearer}`, `#access=${syntheticBearer}x`, `#access=${'B'.repeat(43)}`]) {
+        window.location = new URL(`https://example.test/site/service/status${suffix}`);
+        access.bootstrapPublicAccess();
+        assert.equal(window.location.href, 'https://example.test/site/service/status');
+        assert.equal(access.readPublicAccess(), null);
+        assert.equal(access.invalidPublicAccess(), true);
+        assert.equal(saved.size, 0);
+    }
+});
+test('blocked browser storage falls back only to memory', t => {
+    accessBrowser(t, `https://example.test/site/service/status#access=${syntheticBearer}`);
+    global.sessionStorage = new Proxy({}, { get() { throw new Error('Storage denied'); } });
+    access.bootstrapPublicAccess();
+    assert.equal(window.location.hash, '');
+    assert.equal(access.readPublicAccess(), syntheticBearer);
+    access.clearPublicAccess();
+    assert.equal(access.readPublicAccess(), null);
+});
+test('all public API calls use fixed URLs, Authorization and no cookies or caching', async () => {
+    const calls = [];
+    global.fetch = async (url, init) => { calls.push([url, init]); return Response.json({}, { status: url.endsWith('/8') ? 404 : 200 }); };
+    await publicStatus(syntheticBearer);
+    await publicReply(syntheticBearer, 'Synthetic message');
+    await publicFile(syntheticBearer, new File(['Synthetic'], 'test.txt', { type: 'text/plain' }));
+    await assert.rejects(downloadPublic(syntheticBearer, 8, 'test.txt'));
+    assert.deepEqual(calls.map(([url]) => url), ['/status', '/messages', '/messages/attachments', '/attachments/8'].map(path => `/api/public/service-requests${path}`));
+    for (const [, init] of calls) {
+        assert.equal(init.headers.Authorization, `Bearer ${syntheticBearer}`);
+        assert.equal(init.credentials, 'omit');
+        assert.equal(init.cache, 'no-store');
+    }
+    assert.deepEqual(JSON.parse(calls[1][1].body), { text: 'Synthetic message' });
+    assert.deepEqual([...calls[2][1].body.keys()], ['file']);
+});
+test('public 401 clears session access; owner mutation is never retried automatically', async t => {
+    const { saved } = accessBrowser(t, `https://example.test/site/service/status#access=${syntheticBearer}`);
+    access.bootstrapPublicAccess();
+    let calls = 0;
+    global.fetch = async () => { calls++; return Response.json({}, { status: 401 }); };
+    await assert.rejects(publicStatus(syntheticBearer), error => error.status === 401);
+    assert.equal(saved.size, 0);
+    assert.equal(access.readPublicAccess(), null);
+    assert.equal(access.invalidPublicAccess(), true);
+    calls = 0;
+    global.fetch = async () => { calls++; throw new TypeError('Lost response'); };
+    await assert.rejects(serviceApi.issuePublicAccess(1, 3), error => error.uncertain);
+    assert.equal(calls, 1);
+});
+test('owner lifecycle mutations pin root version and never transmit a bearer', async () => {
+    const calls = [];
+    global.fetch = async (url, init) => { calls.push([url, init]); return Response.json({ enabled: false, version: 4 }); };
+    await serviceApi.publicAccess(1);
+    await serviceApi.issuePublicAccess(1, 4);
+    await serviceApi.revokePublicAccess(1, 5);
+    assert.equal(calls[1][0], '/api/client/service-requests/1/public-access');
+    assert.equal(calls[1][1].method, undefined);
+    for (const [index, method, version] of [[2, 'POST', 4], [3, 'DELETE', 5]]) {
+        assert.equal(calls[index][1].method, method);
+        assert.equal(calls[index][1].credentials, 'include');
+        assert.equal(calls[index][1].cache, 'no-store');
+        assert.deepEqual(JSON.parse(calls[index][1].body), { expectedVersion: version });
+        assert.equal(calls[index][1].headers.Authorization, undefined);
+    }
+});

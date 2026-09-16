@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import PDFDocument from 'pdfkit';
+import { verifyPublicAccess } from './public-access-browser-workflow.mjs';
 
 async function syntheticPdf(name) {
     const document = new PDFDocument();
@@ -122,8 +123,7 @@ export async function verifyClientService(browser, operator, baseUrl) {
         await second.close();
         checks.push('two-editor 409 preserves local input without silently adopting fresh version');
         negative = true;
-        let publicToken;
-        await customer.route('**/drafts/*/submit', async route => { const response = await route.fetch(); publicToken = (await response.json()).publicToken; await route.abort('connectionreset'); }, { times: 1 });
+        await customer.route('**/drafts/*/submit', async route => { const response = await route.fetch(); assert.equal(Object.hasOwn(await response.json(), 'publicToken'), false); await route.abort('connectionreset'); }, { times: 1 });
         await customer.getByRole('button', { name: 'Отправить заявку', exact: true }).dblclick();
         await customer.waitForURL(detailUrl);
         await customer.waitForLoadState('networkidle');
@@ -221,23 +221,9 @@ export async function verifyClientService(browser, operator, baseUrl) {
         assert.equal(posts.filter(value => value.endsWith('/payment-proof')).length, proofPosts + 1);
         negative = false;
         checks.push('lost proof response reads current binding without automatic replacement or false success');
-        assert.ok(publicToken);
-        const publicContext = await browser.newContext();
-        try {
-            const publicPage = await publicContext.newPage();
-            const number = (await read()).request.requestNumber;
-            await publicPage.goto(`${baseUrl}/site/service/status?number=${encodeURIComponent(number)}&token=${encodeURIComponent(publicToken)}`, { waitUntil: 'networkidle' });
-            await publicPage.getByText(/Ограниченный просмотр по ссылке/).waitFor();
-            assert.equal(await publicPage.locator('#payment-proof-file').count(), 0);
-            assert.ok(!(await publicPage.content()).includes('demo-proof-unknown.pdf'));
-            assert.equal((await publicContext.cookies()).length, 0);
-            await publicPage.getByLabel('Сообщение сотруднику', { exact: true }).fill('Демо: ответ по прежней ссылке.');
-            await publicPage.getByRole('button', { name: 'Отправить ответ', exact: true }).click();
-            await publicPage.getByText('Демо: ответ по прежней ссылке.', { exact: true }).waitFor();
-            assert.equal((await read()).messages.filter(item => item.text === 'Демо: ответ по прежней ссылке.').length, 1);
-            assert.equal((await publicContext.request.get(`${baseUrl}/api/public/service-requests/${encodeURIComponent(publicToken)}/payment-proof`)).status(), 404);
-            checks.push('legacy public link still reads/replies without owner identity or payment-proof access');
-        } finally { await publicContext.close(); }
+        negative = true;
+        await verifyPublicAccess(browser, customer, context, baseUrl, id, read, checks);
+        negative = false;
         await operator.reload({ waitUntil: 'networkidle' });
         await confirm('Подтвердить оплату');
         await refresh();

@@ -421,9 +421,10 @@ describe('P-PROOF canonical owner upload', () => {
             .openAdminAttachment(f.row.id, attachment.id);
         expect(staffFile.file.id).toBe(file.id);
         staffFile.stream.destroy();
-        const path = `/api/public/service-requests/${f.token}`;
+        const path = '/api/public/service-requests';
         const publicView = await request(app.getHttpServer())
-            .get(path)
+            .get(`${path}/status`)
+            .set('Authorization', `Bearer ${f.token}`)
             .expect(200);
         for (const key of [
             'documents',
@@ -438,6 +439,7 @@ describe('P-PROOF canonical owner upload', () => {
         expect(publicView.body.attachments).toEqual([]);
         await request(app.getHttpServer())
             .get(`${path}/attachments/${attachment.id}`)
+            .set('Authorization', `Bearer ${f.token}`)
             .expect(404);
         await f.agent
             .get(
@@ -834,13 +836,13 @@ describe('P-PROOF canonical owner upload', () => {
             .getRepository(ServiceRequestEntity)
             .update(f.row.id, { paymentProofFileId: file.id });
         const response = await request(app.getHttpServer())
-            .get(`/api/public/service-requests/${f.token}`)
+            .get('/api/public/service-requests/status')
+            .set('Authorization', `Bearer ${f.token}`)
             .expect(200);
         expect(response.body.attachments).toEqual([]);
         await request(app.getHttpServer())
-            .get(
-                `/api/public/service-requests/${f.token}/attachments/${attachment.id}`,
-            )
+            .get(`/api/public/service-requests/attachments/${attachment.id}`)
+            .set('Authorization', `Bearer ${f.token}`)
             .expect(404);
         await f.agent.get(f.path).expect(404);
         expect(

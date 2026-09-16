@@ -114,7 +114,19 @@ describe('SEC-R1 HTTP resource protection', () => {
                 idempotencyKey: `sec-r1-submit-${draft.body.id}-0001`,
             })
             .expect(201);
-        return { agent, draft, submitted };
+        const state = await agent
+            .get(`/api/client/service-requests/${draft.body.id}/public-access`)
+            .expect(200);
+        const issued = await agent
+            .post(`/api/client/service-requests/${draft.body.id}/public-access`)
+            .send({ expectedVersion: state.body.version })
+            .expect(201);
+        return {
+            agent,
+            draft,
+            submitted,
+            publicToken: issued.body.token as string,
+        };
     }
 
     function pdf(size: number) {
@@ -177,17 +189,18 @@ describe('SEC-R1 HTTP resource protection', () => {
             })(),
         );
         const response = await fetch(
-            `${await app.getUrl()}/api/public/service-requests/${'x'.repeat(48)}/messages/attachments`,
+            `${await app.getUrl()}/api/public/service-requests/messages/attachments`,
             {
                 method: 'POST',
                 headers: {
+                    Authorization: `Bearer ${'x'.repeat(48)}`,
                     'Content-Type': `multipart/form-data; boundary=${boundary}`,
                 },
                 body: body as unknown as BodyInit,
                 duplex: 'half',
             } as RequestInit & { duplex: 'half' },
         );
-        expect(response.status).toBe(404);
+        expect(response.status).toBe(401);
         const payload = (await response.json()) as Record<string, unknown>;
         expect(payload).not.toHaveProperty('stack');
         expect(emitted).toBeLessThan(limit);
@@ -195,13 +208,12 @@ describe('SEC-R1 HTTP resource protection', () => {
     });
 
     it('rejects a valid bearer upload above policy max with 413 and no mutation', async () => {
-        const { submitted } = await submittedRequest();
+        const { publicToken } = await submittedRequest();
         const before = await counts();
         const limit = FILE_POLICIES['service-attachment'].maxBytes;
         const response = await request(app.getHttpServer())
-            .post(
-                `/api/public/service-requests/${submitted.body.publicToken}/messages/attachments`,
-            )
+            .post('/api/public/service-requests/messages/attachments')
+            .set('Authorization', `Bearer ${publicToken}`)
             .attach('file', pdf(limit + 1), {
                 filename: 'oversized.pdf',
                 contentType: 'application/pdf',
@@ -216,12 +228,11 @@ describe('SEC-R1 HTTP resource protection', () => {
     });
 
     it('accepts a valid file close to the configured boundary', async () => {
-        const { submitted } = await submittedRequest();
+        const { publicToken } = await submittedRequest();
         const limit = FILE_POLICIES['service-attachment'].maxBytes;
         const uploaded = await request(app.getHttpServer())
-            .post(
-                `/api/public/service-requests/${submitted.body.publicToken}/messages/attachments`,
-            )
+            .post('/api/public/service-requests/messages/attachments')
+            .set('Authorization', `Bearer ${publicToken}`)
             .attach('file', pdf(limit - 1024), {
                 filename: 'boundary.pdf',
                 contentType: 'application/pdf',
@@ -234,12 +245,13 @@ describe('SEC-R1 HTTP resource protection', () => {
     });
 
     it('rejects extra files, fields, parts, and nested names without mutation', async () => {
-        const { agent, submitted } = await submittedRequest();
-        const url = `/api/public/service-requests/${submitted.body.publicToken}/messages/attachments`;
+        const { agent, publicToken } = await submittedRequest();
+        const url = '/api/public/service-requests/messages/attachments';
         const before = await counts();
 
         await request(app.getHttpServer())
             .post(url)
+            .set('Authorization', `Bearer ${publicToken}`)
             .attach('file', pdf(64), {
                 filename: 'one.pdf',
                 contentType: 'application/pdf',
@@ -251,6 +263,7 @@ describe('SEC-R1 HTTP resource protection', () => {
             .expect(400);
         await request(app.getHttpServer())
             .post(url)
+            .set('Authorization', `Bearer ${publicToken}`)
             .field('extra', 'not allowed')
             .attach('file', pdf(64), {
                 filename: 'field.pdf',
@@ -271,7 +284,7 @@ describe('SEC-R1 HTTP resource protection', () => {
     });
 
     it('handles malformed multipart and remains healthy', async () => {
-        const { submitted } = await submittedRequest();
+        const { publicToken } = await submittedRequest();
         const before = await counts();
         const boundary = 'sec-r1-malformed-boundary';
         const malformed = [
@@ -282,9 +295,8 @@ describe('SEC-R1 HTTP resource protection', () => {
             '%PDF-1.7 incomplete',
         ].join('\r\n');
         await request(app.getHttpServer())
-            .post(
-                `/api/public/service-requests/${submitted.body.publicToken}/messages/attachments`,
-            )
+            .post('/api/public/service-requests/messages/attachments')
+            .set('Authorization', `Bearer ${publicToken}`)
             .set('Content-Type', `multipart/form-data; boundary=${boundary}`)
             .send(malformed)
             .expect(400);
