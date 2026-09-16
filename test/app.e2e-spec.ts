@@ -107,7 +107,7 @@ describe('AppController (e2e)', () => {
             '/api/client/service-requests/drafts',
         );
         expect(document.paths).toHaveProperty(
-            '/api/public/service-requests/{token}',
+            '/api/public/service-requests/status',
         );
         expect(
             document.components.schemas.CreateServiceRequestDraftDto.properties,

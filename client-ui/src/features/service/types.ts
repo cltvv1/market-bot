@@ -142,6 +142,15 @@ export interface DraftResult {
     created?: boolean;
 }
 export interface PublicDetail {
+    attachments: {
+        id: number;
+        kind: string;
+        file: {
+            originalName: string | null;
+            mimeType: string;
+            sizeBytes: number;
+        };
+    }[];
     request: {
         requestNumber: string;
         serviceTypeTitle: string;

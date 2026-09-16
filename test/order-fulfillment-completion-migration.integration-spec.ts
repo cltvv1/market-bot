@@ -92,8 +92,10 @@ describe('CO-3C existing-data migration drill', () => {
 
         let reverted = false;
         try {
+            // The SEC-R3B data-only migration follows CO-3C in the current chain.
             await testDataSource.undoLastMigration();
             reverted = true;
+            await testDataSource.undoLastMigration();
             const migrations: Array<{ name: string }> =
                 await testDataSource.query(
                     `SELECT "name" FROM "typeorm_migrations" ORDER BY "id"`,

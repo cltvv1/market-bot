@@ -25,6 +25,7 @@ import { ServiceTypeEntity } from '../src/service-requests/entities/service-type
 import { ServiceFormService } from '../src/service-requests/service-form.service';
 import { ServiceRequestChannelWorkflowService } from '../src/service-requests/service-request-channel-workflow.service';
 import { ServiceRequestsService } from '../src/service-requests/service-requests.service';
+import { ServiceRequestPublicAccessService } from '../src/service-requests/service-request-public-access.service';
 import { ServiceRequestOwnerReadService } from '../src/service-requests/service-request-owner-read.service';
 import { ServiceRequestPaymentProofService } from '../src/service-requests/service-request-payment-proof.service';
 import { TicketMessageEntity } from '../src/tickets/entities/ticket-message.entity';
@@ -269,6 +270,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
                     notifications as unknown as AdminNotificationsService,
                 ),
             ),
+            new ServiceRequestPublicAccessService(dataSource, auditService),
         );
     });
 

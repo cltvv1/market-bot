@@ -31,6 +31,7 @@ import {
     CreateServiceRequestDraftDto,
     ServiceRequestMessageDto,
     ServiceRequestPaymentProofDto,
+    ServiceRequestPublicAccessDto,
     SubmitServiceRequestDto,
     UpdateServiceRequestDraftDto,
 } from './dto/canonical-service-request.dto';
@@ -38,6 +39,7 @@ import {
     DraftServiceRequestUploadGuard,
     MessageServiceRequestUploadGuard,
 } from './service-request-upload.guard';
+import { ServiceRequestPublicAccessService } from './service-request-public-access.service';
 
 @Controller('api/client/service-requests')
 @ApiTags('service-requests')
@@ -47,7 +49,55 @@ export class ServiceRequestsController {
     constructor(
         private readonly serviceRequestsService: ServiceRequestsService,
         private readonly paymentProofs: ServiceRequestPaymentProofService,
+        private readonly publicAccess: ServiceRequestPublicAccessService,
     ) {}
+
+    @Get(':id/public-access')
+    @Header('Cache-Control', 'private, no-store')
+    @Header('Pragma', 'no-cache')
+    @RateLimit('public-sensitive-read', 60, 60)
+    getPublicAccess(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+    ) {
+        return this.publicAccess.state(session, Number(params.id));
+    }
+
+    @Post(':id/public-access')
+    @UseGuards(WebMutationOriginGuard)
+    @Header('Cache-Control', 'no-store')
+    @Header('Pragma', 'no-cache')
+    @RateLimit('public-form', 20, 600)
+    issuePublicAccess(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: ServiceRequestPublicAccessDto,
+    ) {
+        return this.publicAccess.mutate(
+            session,
+            Number(params.id),
+            body.expectedVersion,
+            false,
+        );
+    }
+
+    @Delete(':id/public-access')
+    @UseGuards(WebMutationOriginGuard)
+    @Header('Cache-Control', 'no-store')
+    @Header('Pragma', 'no-cache')
+    @RateLimit('public-form', 20, 600)
+    revokePublicAccess(
+        @CurrentWebSession() session: WebSessionPrincipal,
+        @Param() params: ClientIdParamDto,
+        @Body() body: ServiceRequestPublicAccessDto,
+    ) {
+        return this.publicAccess.mutate(
+            session,
+            Number(params.id),
+            body.expectedVersion,
+            true,
+        );
+    }
 
     @Get('types')
     @Header('Cache-Control', 'private, no-store')

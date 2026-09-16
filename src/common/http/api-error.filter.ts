@@ -35,12 +35,21 @@ export class ApiErrorFilter implements ExceptionFilter {
               : null;
 
         if (status >= 500) {
-            this.logger.error(
-                `${request.method} ${request.originalUrl}`,
-                exception instanceof Error
-                    ? exception.stack
-                    : String(exception),
-            );
+            // Neither runtime URLs nor exception strings are safe log identities.
+            const route = (request.route as { path?: unknown } | undefined)
+                ?.path;
+            const template =
+                typeof route === 'string' &&
+                route.length <= 256 &&
+                /^\/[A-Za-z0-9/_:.*{}-]*$/.test(route)
+                    ? route
+                    : '[unmatched route]';
+            const method = /^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/.test(
+                request.method,
+            )
+                ? request.method
+                : 'HTTP';
+            this.logger.error(`${method} ${template}: HTTP ${status}`);
         }
 
         const normalized = this.normalize(status, payload);

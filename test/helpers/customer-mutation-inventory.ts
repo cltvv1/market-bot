@@ -79,6 +79,18 @@ export const customerMutationInventory: Record<
         ['submit', 'POST', '/api/client/registrations/:id/submit', true],
     ],
     ServiceRequestsController: [
+        [
+            'issuePublicAccess',
+            'POST',
+            '/api/client/service-requests/:id/public-access',
+            true,
+        ],
+        [
+            'revokePublicAccess',
+            'DELETE',
+            '/api/client/service-requests/:id/public-access',
+            true,
+        ],
         ['createDraft', 'POST', '/api/client/service-requests/drafts', true],
         [
             'updateDraft',
@@ -142,11 +154,11 @@ export const exemptMutationInventory: Record<
         ['resolve', 'POST', '/api/catalog/products/resolve'],
     ],
     PublicServiceRequestsController: [
-        ['addMessage', 'POST', '/api/public/service-requests/:token/messages'],
+        ['addMessage', 'POST', '/api/public/service-requests/messages'],
         [
             'addMessageAttachment',
             'POST',
-            '/api/public/service-requests/:token/messages/attachments',
+            '/api/public/service-requests/messages/attachments',
         ],
     ],
 } as const;
