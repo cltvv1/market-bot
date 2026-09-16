@@ -68,9 +68,13 @@ mechanism is used. `File` includes generated documents as well as uploads.
 Category D is explicitly excluded by authentication mechanism, not path alone:
 AdminController (35), AdminCatalogController (8), AdminOrdersController (8),
 AdminKnowledgeController (4), AdminSupportController (14),
-AdminIntegrationsController (5): all use staff AdminSessionGuard/permissions, not
-customer identity. IntegrationsController (1: POST /internal/integrations/import)
-uses IntegrationBridgeGuard. Total 75. App, Site, Health, PublicSupport and
+AdminIntegrationsController (5): staff AdminSessionGuard/permissions are declared,
+not customer identity. Within those 74 staff routes, POST /admin/api/login is
+explicitly PublicAdmin: it checks login/password and creates the separate staff
+cookie, bypassing the staff session guard. It remains D, not a customer-cookie
+exemption or an assertion that admin login CSRF has been audited here.
+IntegrationsController (1: POST /internal/integrations/import) uses
+IntegrationBridgeGuard. Total 75. App, Site, Health, PublicSupport and
 PublicKnowledge controllers have no mutations. No additional customer equipment,
 chat, provider callback or legacy ClientController mutation was found.
 
@@ -153,12 +157,39 @@ No snapshots contain real user data or raw session tokens.
 
 ## Verification and outcome
 
-Local unit: **429 / 44 suites**, including the 26 new cases. Frontend contracts:
-**100**, unchanged. Production server/admin/client builds pass. Lint ratchet:
-unchanged **684 errors / 6 warnings / 63 files**, no new violations.
+Full local verification passes on implementation commit
+`edf9ac8a601fda449dd9dea7bce837f2dff6000d`; the following commit only updates docs.
 
-Full PostgreSQL/browser and hosted exact-head verification are still pending.
-No completion claim until those gates have finished.
+| Gate | Result |
+| --- | --- |
+| Unit | 429 tests / 44 suites, including 26 new cases |
+| PostgreSQL integration | 549 tests / 28 suites, including 65 new cases |
+| E2E | 7 tests / 2 suites |
+| Frontend contracts | 100, unchanged |
+| Service admin/client browser | 28 / 29 checks |
+| Admin Registration browser | 27 checks |
+| Client Registration/operator browser | 23 checks |
+| Admin Orders browser | 17 checks |
+| Admin Catalog browser | 26 checks |
+| Client Store/canonical Order browser | 28 checks |
+| Browser total | 178, no count reduction |
+| Production server/admin/client builds | pass |
+| Frontend type/lint checks and offline bootstrap/health/UI smoke | pass |
+| Database | 11 applied migrations, 0 pending, 0 schema drift |
+| Lint ratchet | unchanged: 684 errors / 6 warnings / 63 files, no new violations |
+
+SEC-004 at the audited baseline was **partially_resolved** (18/30 protected),
+not the unchanged September 2 situation. After SEC-R3A it is **resolved for
+application HTTP routes**: all 30 A routes have the canonical guard; B/C
+exemptions are explicit; metadata and behavior regressions are green. This
+resolution describes the draft, not an already-approved merge or deployment.
+Exact final-head hosted CI and GitGuardian results belong to the PR/handoff;
+they must be checked independently of these local results.
+
+No dependency, schema, frontend or CI configuration changes. Verification uses
+isolated PostgreSQL, temporary FileStorage, synthetic inputs and fake/disabled
+providers. The original user worktree, lockfile and processes are untouched.
+No real messenger/provider APIs or production resources are used.
 
 ## Deferred
 

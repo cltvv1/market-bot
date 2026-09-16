@@ -1,10 +1,10 @@
 # Project status
 
-Last scoped frontend checkpoint: 2026-09-15. Full-system audit: 2026-09-02.
+Last scoped checkpoint: 2026-09-16 (customer mutation origin boundary). Full-system audit: 2026-09-02.
 
-Canonical main baseline: `54112d9dfeb48f47300d124593e158c0219f7caa` (FE-CAT-1 merged).
+Canonical merged main baseline: `2e1981bff6efd06f11d229707e828c5ef68e801a` (FE-STORE-1, PR #35 merged).
 
-Baseline CI: [run 34941653068](https://github.com/cltvv1/market-bot/actions/runs/34941653068), successful. Historical full-system evidence below is not a new security or provider audit.
+Baseline CI: [run 34952087372](https://github.com/cltvv1/market-bot/actions/runs/34952087372), successful. SEC-R3A implementation checkpoint: `edf9ac8a601fda449dd9dea7bce837f2dff6000d`, followed by documentation-only rebaseline on `codex/sec-r3a-customer-origin-boundary`. Its application HTTP boundary resolution applies to this draft and to main only after a separately approved merge. See the [current route audit and evidence](security/2026-09-16-customer-origin-boundary.md); exact final-head hosted checks are recorded with the PR. This is not a full-system security or provider reassessment.
 
 Detailed evidence: [2026-09-02 project status and roadmap rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
 
@@ -15,8 +15,8 @@ Staff service requests and KKT registration use the production admin shell;
 customers can use their service and registration/resume workflows. FE-REG-1
 also fixed owner authorization before lazy checklist initialization.
 FE-ORD-1 staff Orders workspace is merged as PR #33. FE-CAT-1 staff Catalog is
-merged as PR #34. FE-STORE-1 connects production customer Catalog/cart/checkout
-and owner Orders in a separate draft review, not merged or publicly deployed.
+merged as PR #34. FE-STORE-1 is merged as PR #35: real customer Catalog/cart/checkout
+and owner Orders are in main. The commercial vertical slice is not deployed.
 See [Store scope and verification](frontend/2026-09-15-client-store-order-intake.md).
 See the [Catalog scope and verification](frontend/2026-09-15-admin-catalog-workspace.md),
 [Orders scope and verification](frontend/2026-09-15-admin-orders-workspace.md)
@@ -24,7 +24,7 @@ and [Registration admin evidence](frontend/2026-09-10-admin-registration-workspa
 
 VITMA MARKET is a pre-production modular monolith for customer service, KKT registration, operator conversations, equipment data, a product catalog, support content, sales orders, and read-only equipment observations. One NestJS application and one PostgreSQL database serve the client React application, the staff React application, Telegram, and MAX.
 
-Support and Knowledge remain mostly backend-only. Service, registration, staff Orders and Catalog have merged production-oriented workflows. FE-STORE-1 replaces demonstration commerce with real public Catalog and owner Orders in its draft branch; main does not gain that client migration until separately approved merge.
+Support and Knowledge remain mostly backend-only. Service, registration, staff Orders and Catalog have merged production-oriented workflows. FE-STORE-1 has replaced demonstration commerce with real public Catalog and owner Orders in main.
 
 ## Architecture summary
 
@@ -62,9 +62,9 @@ Evidence labels used below: `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI`, `MOCK`, an
 | Durable outbound delivery | `CODE`, `TEST`, `MIGRATION` | READY | At-least-once provider duplicate window; Orders do not enqueue |
 | Audit Log | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Older mutations do not always share the business transaction |
 | File lifecycle and hosted delivery | `CODE`, `TEST`, `MIGRATION` | READY | Production schedule, capacity, antivirus, and remote storage are deferred |
-| Catalog metadata and publication | `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI` | MERGED_STAFF_CLIENT_REVIEW | FE-CAT-1 staff workspace merged; FE-STORE-1 real public storefront and bounded cart resolver in draft |
+| Catalog metadata and publication | `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI` | MERGED_SCOPE | FE-CAT-1 staff workspace and FE-STORE-1 real public storefront/bounded cart resolver merged; no stock synchronization or deployment |
 | Support and Knowledge backend | `CODE`, `TEST`, `MIGRATION` | BACKEND_ONLY | No client or admin product screens, SSR, sitemap, or SEO rendering |
-| Order intake and full-order sales workflow | `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI` | MERGED_STAFF_CLIENT_REVIEW | Staff workspace merged in FE-ORD-1; canonical checkout/owner documents and status in FE-STORE-1 draft |
+| Order intake and full-order sales workflow | `CODE`, `TEST`, `MIGRATION`, `HOSTED_CI` | MERGED_SCOPE | FE-ORD-1 staff workspace and FE-STORE-1 canonical checkout/owner documents/status merged; no acquiring, 1C, EDO or deployment |
 | ATOL/Platforma observations and opportunities | `CODE`, `TEST`, `MIGRATION` | PARTIAL | Private provider contracts, manual scheduling, and stale-data semantics |
 | Renewals and proactive notifications | Existing CH-R2 delivery only | DEFERRED | No deadline scheduler, consent eligibility, escalation, or fallback task |
 | 1C UT 11.5 exchange | `DEFERRED` | DEFERRED | Contract, mapping, reconciliation, and ownership not designed |
@@ -81,21 +81,18 @@ The following flows have real backend persistence and at least one usable channe
 4. A customer opens a ticket and exchanges text/media with an operator through web or a messenger.
 5. Business-significant service, ticket, and registration messages are committed as CH-R2 delivery rows and sent by the bounded worker.
 6. Staff can run read-only ATOL Connect or Platforma OFD imports, inspect observations, manage service opportunities, and convert an opportunity to a ServiceRequest.
-7. The Orders backend can accept an authenticated idempotent order, assign a manager, build and confirm a quote, issue an invoice, accept payment proof, confirm payment, record fulfillment, and record completion.
+7. Customers use the real public Catalog, hydrated cart and canonical idempotent checkout. Staff assigns a manager, builds/confirms a quote, issues an invoice, confirms payment, and records fulfillment/completion; customers see owner Orders, quote, invoice, payment proof and timeline through real APIs.
 
 ## Backend-only capabilities
 
-- Public Catalog publication/search/VAT/availability APIs are connected to merged staff management; FE-STORE-1 connects the client Store in draft review.
 - Product Support profiles, versioned external/hosted resources, and Knowledge articles.
 - Context-bound hosted Support downloads up to the configured limit.
-- Customer order list/detail, confirmed quote, invoice download, and payment-proof APIs are connected in FE-STORE-1 draft review.
-- Staff Orders APIs are connected to the merged FE-ORD-1 production shell workspace.
 
 ## Mock or missing UI
 
-- FE-STORE-1 removes the static Catalog source and fake local order generator on its draft branch; main retains the pre-merge implementation.
-- Draft cart persistence is IDs/quantities only, with current server hydration and explicit unavailable entries.
-- Draft checkout calls canonical idempotent Order intake; client owner list/detail, quote, invoice, proof and timeline use real APIs.
+- FE-STORE-1 removed the static Catalog source and fake local order generator from main.
+- Cart persistence is IDs/quantities only, with current server hydration and explicit unavailable entries.
+- Checkout calls canonical idempotent Order intake; client owner list/detail, quote, invoice, proof and timeline use real APIs.
 - There are no client Support Center or Knowledge routes.
 - Admin Support and Knowledge workspaces are still absent. Orders and Catalog management are merged.
 - Service, Registration, Orders and Catalog retain their contract/browser gates; FE-STORE-1 adds the customer commerce vertical slice gate. Content screens remain deferred.
@@ -111,24 +108,25 @@ Runs, mappings, exclusions, errors, observations, and opportunities are persiste
 
 ## Known production blockers
 
-1. Four medium security findings remain affected or partially affected: customer mutation origin protection, ServiceRequest bearer entropy/exposure, and permissive legacy file-content fallback.
+1. The current SEC-R3A inventory finds 30 customer-cookie mutations: 18 protected at baseline and 12 missing the guard. SEC-004 is resolved for application HTTP routes in the SEC-R3A draft, not yet merged. ServiceRequest bearer lifecycle (SEC-005/006, SEC-R3B) and permissive legacy file-content fallback (SEC-007) remain separate blockers.
 2. FE-REG-1 fixed registration owner-before-lazy-read ordering. The historical closed-ticket and last-superadmin findings require their own follow-up; FE-ORD-1 does not claim to resolve them.
 3. MAX media download has no explicit provider-host egress allowlist.
-4. FE-STORE-1 customer commerce awaits draft review/merge. Staff Support/Knowledge UI is absent; Catalog and Orders are merged, with no production deployment implied.
+4. Client and staff Support/Knowledge UI is absent. Customer commerce, staff Catalog and Orders are merged, with no production deployment implied.
 5. `/health/ready` checks only the original baseline migration rather than proving the full current migration chain.
 6. Deployment, reverse proxy, TLS, centralized rate limiting, capacity monitoring, backup retention/encryption/off-host copy, and production restore rehearsal are not finalized.
-7. `npm audit --omit=dev` reports 22 production advisories. Reachability and upgrades require a separate bounded package.
+7. The September 2 audit recorded 22 production advisories; that is historical evidence, not a fresh dependency assessment. Reachability, upgrades and CSP require a separate bounded package.
 8. ATOL/Platforma rely on undocumented provider interfaces and have incomplete stale-observation/contact semantics.
 
 ## Current roadmap
 
-1. `EM-0`: rebaseline Equipment Monitoring contracts and stale-data lifecycle. This remains the next package and should be audit/design-first.
-2. `EM-1`: normalize equipment health, issue severity, recommendation, and resolution.
-3. `EM-2`: unify contact sources, freshness, confidence, verification, deduplication, consent, and do-not-contact state.
-4. `NR-1`: schedule FN/OFD/ITS renewals with eligibility, CH-R2 delivery, dedupe, and operator fallback.
-5. In parallel, `FE-1` connects Catalog, Support, and Orders to real APIs; security and deployment hardening continue as isolated packages.
-6. `FE-2` redesigns the complete customer information architecture only after the real data flows are active.
-7. `INT-1` designs 1C UT 11.5 exchange after the manual order workflow and identifiers are stable. EDO follows a separately approved provider contract.
+1. Finish review of `SEC-R3A` only. Further security work (`SEC-R3B`, `SEC-007`) and `OPS-1` need separate authorization; no deployment follows this draft automatically.
+2. `EM-0`: later rebaseline Equipment Monitoring contracts and stale-data lifecycle, audit/design-first. Not started by SEC-R3A.
+3. `EM-1`: normalize equipment health, issue severity, recommendation, and resolution.
+4. `EM-2`: unify contact sources, freshness, confidence, verification, deduplication, consent, and do-not-contact state.
+5. `NR-1`: schedule FN/OFD/ITS renewals with eligibility, CH-R2 delivery, dedupe, and operator fallback.
+6. `FE-1` still needs client/staff Support and Knowledge UI; Catalog and Orders are already connected to real APIs.
+7. `FE-2` redesigns the complete customer information architecture only after the real data flows are active.
+8. `INT-1` designs 1C UT 11.5 exchange after the manual order workflow and identifiers are stable. EDO follows a separately approved provider contract.
 
 ## Explicitly deferred
 
