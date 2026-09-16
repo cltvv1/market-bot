@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentWebSession } from 'src/web-session/web-session.decorators';
 import { WebSessionGuard } from 'src/web-session/web-session.guard';
+import { WebMutationOriginGuard } from 'src/web-session/web-mutation-origin.guard';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import {
     LinkOrganizationDto,
@@ -31,6 +32,7 @@ export class OrganizationsController {
     }
 
     @Post('link-by-inn')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     linkByInn(
         @CurrentWebSession() session: WebSessionPrincipal,
@@ -72,6 +74,7 @@ export class OrganizationsController {
     }
 
     @Post('access-requests/:id/cancel')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     @ApiCreatedResponse({ type: OrganizationAccessPublicResponseDto })
     cancelAccessRequest(

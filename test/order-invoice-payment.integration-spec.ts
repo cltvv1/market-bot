@@ -98,6 +98,7 @@ describe('CO-3B invoice and payment workflow on migrated PostgreSQL', () => {
         const ip = nextIp();
         await agent
             .post('/api/client/session')
+            .set('Origin', ORIGIN)
             .set('X-Forwarded-For', ip)
             .send({})
             .expect(201);

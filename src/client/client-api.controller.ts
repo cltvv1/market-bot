@@ -68,6 +68,7 @@ export class ClientApiController {
     ) {}
 
     @Post('users')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     upsertUser(
         @CurrentWebSession() session: WebSessionPrincipal,
@@ -168,6 +169,7 @@ export class ClientApiController {
     }
 
     @Post('tickets/open')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-message', 60, 600)
     openTicket(
         @CurrentWebSession() session: WebSessionPrincipal,
@@ -195,6 +197,7 @@ export class ClientApiController {
     }
 
     @Post('tickets/messages')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-message', 60, 600)
     submitTicketMessage(
         @CurrentWebSession() session: WebSessionPrincipal,
@@ -207,6 +210,7 @@ export class ClientApiController {
     }
 
     @Post('tickets/media')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-message', 60, 600)
     @UseInterceptors(
         FileInterceptor(
@@ -245,6 +249,7 @@ export class ClientApiController {
     }
 
     @Post('tickets/:id/messages')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-message', 60, 600)
     async submitTicketMessageAlias(
         @CurrentWebSession() session: WebSessionPrincipal,

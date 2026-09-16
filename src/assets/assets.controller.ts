@@ -9,6 +9,7 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentWebSession } from 'src/web-session/web-session.decorators';
 import { WebSessionGuard } from 'src/web-session/web-session.guard';
+import { WebMutationOriginGuard } from 'src/web-session/web-mutation-origin.guard';
 import type { WebSessionPrincipal } from 'src/web-session/web-session.types';
 import {
     CashRegisterDto,
@@ -39,6 +40,7 @@ export class AssetsController {
     }
 
     @Post('cash-registers')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     upsertCashRegister(
         @CurrentWebSession() session: WebSessionPrincipal,
@@ -54,6 +56,7 @@ export class AssetsController {
     }
 
     @Post('fiscal-drives')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     upsertFiscalDrive(
         @CurrentWebSession() session: WebSessionPrincipal,
@@ -69,6 +72,7 @@ export class AssetsController {
     }
 
     @Post('ofd-subscriptions')
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('public-form', 30, 600)
     upsertOfdSubscription(
         @CurrentWebSession() session: WebSessionPrincipal,

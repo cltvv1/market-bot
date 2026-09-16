@@ -135,7 +135,11 @@ describe('FE-STORE-1 public cart and canonical intake on PostgreSQL', () => {
     it('same-user exact replay after lost response retains one order, one event and one Audit', async () => {
         const row = await published();
         const agent = request.agent(app.getHttpServer());
-        await agent.post('/api/client/session').send({}).expect(201);
+        await agent
+            .post('/api/client/session')
+            .set('Origin', f.origin)
+            .send({})
+            .expect(201);
         const payload = {
             customerType: 'individual',
             contact: { name: 'Synthetic customer', phone: '12345' },
@@ -178,7 +182,11 @@ describe('FE-STORE-1 public cart and canonical intake on PostgreSQL', () => {
         const second = await submit(payload, randomUUID()).expect(201);
         expect(second.body).not.toMatchObject({ id: firstBody.id });
         const other = request.agent(app.getHttpServer());
-        await other.post('/api/client/session').send({}).expect(201);
+        await other
+            .post('/api/client/session')
+            .set('Origin', f.origin)
+            .send({})
+            .expect(201);
         await other.get(`/api/client/orders/${firstBody.id}`).expect(404);
     });
     it.each(['in_stock', 'low_stock', 'on_request', 'unavailable'] as const)(
@@ -190,7 +198,11 @@ describe('FE-STORE-1 public cart and canonical intake on PostgreSQL', () => {
                 displayPriceMinor: null,
             });
             const agent = request.agent(app.getHttpServer());
-            await agent.post('/api/client/session').send({}).expect(201);
+            await agent
+                .post('/api/client/session')
+                .set('Origin', f.origin)
+                .send({})
+                .expect(201);
             const result = await agent
                 .post('/api/client/orders')
                 .set('Origin', f.origin)
