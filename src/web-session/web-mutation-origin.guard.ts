@@ -17,14 +17,25 @@ export class WebMutationOriginGuard implements CanActivate {
 
     canActivate(context: ExecutionContext) {
         const request = context.switchToHttp().getRequest<Request>();
-        const source = request.header('origin') || request.header('referer');
+        const origin = this.singleHeader(request, 'origin');
+        // Referer is a fallback only for an absent Origin, never an invalid one.
+        const source = origin ?? this.singleHeader(request, 'referer');
         if (!source) {
             throw new ForbiddenException('A same-origin request is required');
         }
 
         let sourceOrigin: string;
         try {
-            sourceOrigin = new URL(source).origin;
+            const parsed = new URL(source);
+            if (
+                !['http:', 'https:'].includes(parsed.protocol) ||
+                parsed.username ||
+                parsed.password ||
+                (origin !== undefined && parsed.origin !== origin)
+            ) {
+                throw new Error('Invalid origin header');
+            }
+            sourceOrigin = parsed.origin;
         } catch {
             throw new ForbiddenException('A valid request origin is required');
         }
@@ -43,5 +54,17 @@ export class WebMutationOriginGuard implements CanActivate {
             );
         }
         return true;
+    }
+
+    private singleHeader(request: Request, name: 'origin' | 'referer') {
+        const value = request.headers[name];
+        let count = 0;
+        for (let index = 0; index < request.rawHeaders.length; index += 2) {
+            if (request.rawHeaders[index].toLowerCase() === name) count += 1;
+        }
+        if (count > 1 || (value !== undefined && typeof value !== 'string')) {
+            throw new ForbiddenException('A valid request origin is required');
+        }
+        return value;
     }
 }

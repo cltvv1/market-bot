@@ -478,6 +478,7 @@ describe('security foundation API contracts', () => {
         for (let index = 0; index < 21; index += 1) {
             last = await request(app.getHttpServer())
                 .post('/api/client/session')
+                .set('Origin', 'http://localhost:5174')
                 .set('X-Forwarded-For', ip)
                 .send({});
         }

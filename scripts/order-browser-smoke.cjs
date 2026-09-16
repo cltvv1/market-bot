@@ -74,7 +74,7 @@ async function main() {
             await page.waitForLoadState('networkidle');
         }
         const customer = await context();
-        assert.equal((await customer.request.post(base + '/api/client/session', { data: {} })).status(), 201);
+        assert.equal((await customer.request.post(base + '/api/client/session', { headers: { Origin: base }, data: {} })).status(), 201);
         const created = await customer.request.post(base + '/api/client/orders', { headers: { Origin: base, 'Idempotency-Key': randomUUID() }, data: { customerType: 'individual', contact: { name: 'Демо-мастерская «Контур»', phone: '+7 000 000-00-00', email: 'demo@example.test' }, delivery: { type: 'pickup' }, items: [{ productId: f.product.id, quantity: 1 }] } });
         assert.equal(created.status(), 201); const row = await created.json();
         for (let index = 0; index < 22; index++) await f.create(`Демо-клиент ${index + 1}`);

@@ -66,8 +66,12 @@ export async function orderWorkspaceFixture(app: INestApplication<App>) {
         packageContents: [],
     });
     const client = request.agent(app.getHttpServer());
-    await client.post('/api/client/session').send({}).expect(201);
     const origin = 'http://localhost:5173';
+    await client
+        .post('/api/client/session')
+        .set('Origin', origin)
+        .send({})
+        .expect(201);
     async function create(name = 'Демонстрационная мастерская «Контур»') {
         const response = await client
             .post('/api/client/orders')

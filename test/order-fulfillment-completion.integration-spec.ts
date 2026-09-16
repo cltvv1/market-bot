@@ -123,6 +123,7 @@ describe('CO-3C fulfillment and completion on migrated PostgreSQL', () => {
         const ip = nextIp();
         await agent
             .post('/api/client/session')
+            .set('Origin', ORIGIN)
             .set('X-Forwarded-For', ip)
             .send({})
             .expect(201);

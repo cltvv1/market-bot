@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Request, Response } from 'express';
 import { CurrentWebSession } from './web-session.decorators';
 import { WebSessionGuard } from './web-session.guard';
+import { WebMutationOriginGuard } from './web-mutation-origin.guard';
 import { WebSessionService } from './web-session.service';
 import type { WebSessionPrincipal } from './web-session.types';
 import { RateLimit } from 'src/security/rate-limit';
@@ -22,6 +23,7 @@ export class WebSessionController {
     ) {}
 
     @Post()
+    @UseGuards(WebMutationOriginGuard)
     @RateLimit('web-session-create', 20, 60)
     async createOrRestore(
         @Req() request: Request,
@@ -48,7 +50,7 @@ export class WebSessionController {
     }
 
     @Post('revoke')
-    @UseGuards(WebSessionGuard)
+    @UseGuards(WebMutationOriginGuard, WebSessionGuard)
     async revoke(
         @Req() request: Request,
         @Res({ passthrough: true }) response: Response,
