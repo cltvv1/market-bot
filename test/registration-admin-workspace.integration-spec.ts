@@ -1,3 +1,4 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { randomBytes } from 'node:crypto';
@@ -35,7 +36,7 @@ import * as policy from '../src/registrations/registration-admin-policy';
 type Detail = Awaited<ReturnType<RegistrationAdminReadService['details']>>;
 type Queue = Awaited<ReturnType<RegistrationAdminReadService['list']>>;
 const origin = 'http://localhost:5173';
-const syntheticPdf = Buffer.from(
+const syntheticPdf = pdfFixture(
     '%PDF-1.4\nsynthetic registration evidence\n%%EOF',
 );
 

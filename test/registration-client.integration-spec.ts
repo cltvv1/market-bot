@@ -1,3 +1,9 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
+import { uploadEffects } from './upload-effects';
+import {
+    FILE_STORAGE_PORT,
+    type FileStoragePort,
+} from '../src/files/file-storage.types';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getBotToken } from 'nestjs-telegraf';
@@ -34,7 +40,7 @@ import { OrganizationEntity } from '../src/organizations/entities/organization.e
 import { OrganizationMemberEntity } from '../src/organizations/entities/organization-member.entity';
 
 const origin = 'http://localhost:5173';
-const pdf = Buffer.from('%PDF-1.4\nSynthetic registration\n%%EOF');
+const pdf = pdfFixture('%PDF-1.4\nSynthetic registration\n%%EOF');
 type Detail = Awaited<ReturnType<RegistrationClientReadService['details']>>;
 type OwnerList = Awaited<ReturnType<RegistrationClientReadService['list']>>;
 function gate() {
@@ -1393,6 +1399,47 @@ describe('FE-REG-2 owned registrations', () => {
             expect(storage).not.toHaveBeenCalled();
         },
     );
+    it('SEC-007 rejects unknown registration evidence without storage, evidence, transition or notification', async () => {
+        const { agent, base, data } = await fixture(true);
+        const before = await uploadEffects(db);
+        const requirements = await db.manager.find(
+            RegistrationRequirementEntity,
+        );
+        const write = jest.spyOn(
+            app.get<FileStoragePort>(FILE_STORAGE_PORT),
+            'write',
+        );
+        await agent
+            .post(`${base}/requirements/kkt_serial/evidence`)
+            .field(
+                'expectedRequirementVersion',
+                String(data.requirements[0].version),
+            )
+            .attach('file', Buffer.from([0, 1, 2, 3]), {
+                filename: 'claimed.pdf',
+                contentType: 'application/pdf',
+            })
+            .expect(400);
+        expect(write).not.toHaveBeenCalled();
+        expect(await uploadEffects(db)).toEqual(before);
+        expect(await db.manager.find(RegistrationRequirementEntity)).toEqual(
+            requirements,
+        );
+        const accepted = await agent
+            .post(`${base}/requirements/kkt_serial/evidence`)
+            .field(
+                'expectedRequirementVersion',
+                String(data.requirements[0].version),
+            )
+            .attach('file', pdf, 'valid.pdf')
+            .expect(201);
+        expect(write).toHaveBeenCalledTimes(1);
+        const download = await agent
+            .get((accepted.body as Detail).evidence[0].downloadUrl)
+            .expect(200);
+        expect(download.body).toEqual(pdf);
+    });
+
     it('customer evidence is context-bound, downloadable, private and masked in the projection', async () => {
         const { agent, id, base, data } = await fixture(true);
         const result = await agent

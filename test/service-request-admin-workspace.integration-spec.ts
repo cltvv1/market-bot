@@ -1,3 +1,4 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -24,7 +25,7 @@ import { ServiceRequestsService } from '../src/service-requests/service-requests
 
 const origin = 'http://localhost:5173';
 const password = 'Fe1b!TestPassword2026';
-const pdf = Buffer.from(
+const pdf = pdfFixture(
     '%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF',
 );
 

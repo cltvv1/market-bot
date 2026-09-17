@@ -1,3 +1,9 @@
+import { fixture as fileFixture } from './fixtures/files.cjs';
+import { uploadEffects } from './upload-effects';
+import {
+    FILE_STORAGE_PORT,
+    type FileStoragePort,
+} from '../src/files/file-storage.types';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getBotToken } from 'nestjs-telegraf';
@@ -288,6 +294,37 @@ describe('security foundation API contracts', () => {
         ).toBe('invalid_credentials');
     });
 
+    it.each([
+        ['image/jpeg', 'photo.jpg'],
+        ['application/pdf', 'document.pdf'],
+        ['audio/mpeg', 'audio.mp3'],
+        ['video/mp4', 'video.mp4'],
+    ])(
+        'SEC-007 rejects unknown ticket %s bytes without message or delivery',
+        async (mime, name) => {
+            const { agent } = await createBrowserSession();
+            await agent.post('/api/client/tickets/open').send({}).expect(201);
+            const before = await uploadEffects(dataSource);
+            const write = jest.spyOn(
+                app.get<FileStoragePort>(FILE_STORAGE_PORT),
+                'write',
+            );
+            try {
+                await agent
+                    .post('/api/client/tickets/media')
+                    .attach('file', Buffer.from([0, 1, 2, 3]), {
+                        filename: name,
+                        contentType: mime,
+                    })
+                    .expect(400);
+                expect(write).not.toHaveBeenCalled();
+                expect(await uploadEffects(dataSource)).toEqual(before);
+            } finally {
+                write.mockRestore();
+            }
+        },
+    );
+
     it('allows only the ticket owner or permitted staff to download a stored file', async () => {
         const operator = await createStaff('operator-one', ['operator']);
         await createStaff('engineer-one', ['engineer']);
@@ -301,13 +338,10 @@ describe('security foundation API contracts', () => {
 
         await browserA.agent
             .post('/api/client/tickets/media')
-            .attach(
-                'file',
-                Buffer.from([
-                    0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46,
-                ]),
-                { filename: 'photo.jpg', contentType: 'image/jpeg' },
-            )
+            .attach('file', fileFixture('image.jpg'), {
+                filename: 'photo.jpg',
+                contentType: 'image/jpeg',
+            })
             .expect(201);
         const messages = await browserA.agent
             .get(`/api/client/tickets/${ticketId}/messages`)

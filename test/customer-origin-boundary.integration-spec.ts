@@ -1,3 +1,4 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 import {
     INestApplication,
     NestInterceptor,
@@ -368,7 +369,7 @@ describe('SEC-R3A customer mutation origin boundary', () => {
             ]) {
                 const req = mutation(row.route, origin);
                 if (row.route.endsWith('/media'))
-                    req.attach('file', Buffer.from('%PDF-1.7\nsynthetic'), {
+                    req.attach('file', pdfFixture(), {
                         filename: 'test.pdf',
                         contentType: 'application/pdf',
                     });
@@ -387,7 +388,7 @@ describe('SEC-R3A customer mutation origin boundary', () => {
         async (row) => {
             const req = mutation(row.route, ORIGIN);
             if (row.route.endsWith('/media'))
-                req.attach('file', Buffer.from('%PDF-1.7\nsynthetic'), {
+                req.attach('file', pdfFixture(), {
                     filename: 'test.pdf',
                     contentType: 'application/pdf',
                 });

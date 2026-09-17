@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import * as path from 'node:path';
 import type { FilePurpose } from './file-storage.types';
+import { detectContent } from './file-content';
 
 export interface FilePolicy {
     maxBytes: number;
@@ -160,6 +161,8 @@ export const FILE_POLICIES: Record<FilePurpose, FilePolicy> = {
         ],
         false,
         true,
+        false,
+        false,
     ),
 };
 
@@ -170,7 +173,7 @@ function policy(
     inline: boolean,
     customerReadable: boolean,
     serverGeneratedOnly = false,
-    strictContent = false,
+    strictContent = true,
 ): FilePolicy {
     return {
         maxBytes,
@@ -185,34 +188,9 @@ function policy(
     };
 }
 
-export function detectMime(header: Buffer): string | null {
-    if (header.subarray(0, 5).toString('ascii') === '%PDF-')
-        return 'application/pdf';
-    if (header.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])))
-        return 'image/jpeg';
-    if (
-        header
-            .subarray(0, 8)
-            .equals(
-                Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-            )
-    )
-        return 'image/png';
-    if (header.subarray(0, 4).toString('ascii') === 'GIF8') return 'image/gif';
-    if (
-        header.subarray(0, 4).toString('ascii') === 'RIFF' &&
-        header.subarray(8, 12).toString('ascii') === 'WEBP'
-    )
-        return 'image/webp';
-    if (header.subarray(0, 4).toString('ascii') === 'OggS') return 'audio/ogg';
-    if (header.subarray(0, 3).toString('ascii') === 'ID3') return 'audio/mpeg';
-    if (header.subarray(4, 8).toString('ascii') === 'ftyp') return 'video/mp4';
-    if (header.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04])))
-        return 'application/zip';
-    return null;
-}
+export const detectMime = detectContent;
 
-export function assertFilePolicy(
+export async function assertFilePolicy(
     purpose: FilePurpose,
     buffer: Buffer,
     suppliedMime?: string,
@@ -220,54 +198,114 @@ export function assertFilePolicy(
     originalName?: string,
 ) {
     const policy = FILE_POLICIES[purpose];
+    if (purpose === 'support-resource')
+        throw new BadRequestException(
+            'Support resources require the streaming upload workflow',
+        );
     if (buffer.length > policy.maxBytes)
         throw new BadRequestException('File exceeds the configured size limit');
     if (policy.serverGeneratedOnly && !serverGenerated)
         throw new BadRequestException(
             'This file category is server-generated only',
         );
-    const detected = detectMime(buffer);
-    if (policy.strictContent) {
-        if (!detected || !policy.mimeTypes.includes(detected)) {
-            throw new BadRequestException('File content type is not allowed');
-        }
-        const declared = suppliedMime?.toLowerCase();
-        if (
-            declared &&
-            declared !== 'application/octet-stream' &&
-            declared !== detected
-        ) {
-            throw new BadRequestException(
-                'File content does not match its declared MIME type',
-            );
-        }
-        const extension = path.extname(originalName || '').toLowerCase();
-        const detectedExtensions = STRICT_EXTENSIONS_BY_MIME[detected] ?? [];
-        if (
-            !extension ||
-            !policy.extensions.includes(extension) ||
-            !detectedExtensions.includes(extension)
-        ) {
-            throw new BadRequestException(
-                'File extension does not match its content',
-            );
-        }
-        return { policy, mime: detected };
-    }
-    const mime = detected ?? suppliedMime?.toLowerCase();
-    if (!mime || !policy.mimeTypes.includes(mime))
+    const detected = await detectContent(buffer);
+    if (!detected || !policy.mimeTypes.includes(detected))
         throw new BadRequestException('File content type is not allowed');
-    if (detected && suppliedMime && detected !== suppliedMime.toLowerCase()) {
+    assertDeclaredMime(detected, suppliedMime);
+    const name = validatedFilename(originalName);
+    const extension = path.extname(name).toLowerCase();
+    if (
+        !policy.extensions.includes(extension) ||
+        !EXTENSIONS_BY_MIME[detected]?.includes(extension)
+    )
         throw new BadRequestException(
-            'File content does not match its declared MIME type',
+            'File extension does not match its content',
         );
-    }
-    return { policy, mime };
+    return { policy, mime: detected };
 }
 
-const STRICT_EXTENSIONS_BY_MIME: Record<string, readonly string[]> = {
+export const EXTENSIONS_BY_MIME: Record<string, readonly string[]> = {
     'application/pdf': ['.pdf'],
     'image/jpeg': ['.jpg', '.jpeg'],
     'image/png': ['.png'],
     'image/webp': ['.webp'],
+    'image/gif': ['.gif'],
+    'text/plain': ['.txt'],
+    'application/zip': ['.zip'],
+    'audio/mpeg': ['.mp3'],
+    'audio/ogg': ['.ogg'],
+    'audio/mp4': ['.m4a'],
+    'audio/webm': ['.webm'],
+    'video/mp4': ['.mp4'],
+    'video/webm': ['.webm'],
+    'video/quicktime': ['.mov'],
 };
+
+export function validatedFilename(value?: string) {
+    if (
+        !value ||
+        value.length > 255 ||
+        Array.from(value).some(
+            (character) =>
+                character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+        )
+    )
+        throw new BadRequestException('Invalid original filename');
+    const name = path.win32.basename(path.posix.basename(value)).trim();
+    if (!name || name === '.' || name === '..')
+        throw new BadRequestException('Invalid original filename');
+    return name;
+}
+
+function normalizeDeclaredMime(value?: string) {
+    if (!value?.trim()) return undefined;
+    const [mime, ...parameters] = value
+        .trim()
+        .toLowerCase()
+        .split(';')
+        .map((part) => part.trim());
+    if (
+        parameters.length &&
+        !(
+            mime === 'text/plain' &&
+            parameters.length === 1 &&
+            /^charset=(?:utf-8|"utf-8")$/.test(parameters[0])
+        )
+    )
+        throw new BadRequestException('Unsupported MIME parameters');
+    const aliases: Record<string, string> = {
+        'image/jpg': 'image/jpeg',
+        'image/pjpeg': 'image/jpeg',
+        'application/x-zip-compressed': 'application/zip',
+        'audio/mp3': 'audio/mpeg',
+        'audio/x-m4a': 'audio/mp4',
+        'application/ogg': 'audio/ogg',
+    };
+    return aliases[mime] ?? mime;
+}
+
+export function assertDeclaredMime(detected: string, supplied?: string) {
+    const declared = normalizeDeclaredMime(supplied);
+    if (
+        declared &&
+        declared !== 'application/octet-stream' &&
+        declared !== detected
+    )
+        throw new BadRequestException(
+            'File content does not match its declared MIME type',
+        );
+}
+
+// Only internal channel adapters call this for genuinely absent provider filenames.
+export async function channelFilename(
+    buffer: Buffer,
+    name?: string,
+    prefix = 'attachment',
+) {
+    if (name !== undefined && name !== '') return name;
+    const mime = await detectContent(buffer);
+    const extension = mime && EXTENSIONS_BY_MIME[mime]?.[0];
+    if (!extension)
+        throw new BadRequestException('File content type is not allowed');
+    return `${prefix}${extension}`;
+}

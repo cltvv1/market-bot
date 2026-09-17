@@ -27,6 +27,11 @@ import {
 import { ClientWorkflowService } from 'src/client/client-workflow.service';
 import { ServiceRequestsService } from 'src/service-requests/service-requests.service';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
+import {
+    assertDeclaredMime,
+    channelFilename,
+    detectMime,
+} from 'src/files/file-policies';
 import type { SimpleServiceRequestCode } from 'src/client/client-workflow.types';
 import { AdminNotificationsService } from 'src/admin/admin-notifications.service';
 import { FilesService } from 'src/files/files.service';
@@ -155,9 +160,7 @@ export class TelegramUpdate {
             await registrationReadiness!.provideActiveFile(
                 this.toClientIdentity(ctx),
                 {
-                    buffer: await this.downloadMediaBuffer(media),
-                    fileName: media.fileName || `${media.messageType}.jpg`,
-                    mimeType: media.mimeType,
+                    ...(await this.materializeTicketMedia(media)),
                 },
             );
             await ctx.reply(
@@ -184,8 +187,7 @@ export class TelegramUpdate {
             const result = await this.clientWorkflow.submitRegistrationPhoto(
                 this.toClientIdentity(ctx),
                 {
-                    buffer: await this.downloadMediaBuffer(media),
-                    fileName: media.fileName || `${media.messageType}.jpg`,
+                    ...(await this.materializeTicketMedia(media)),
                 },
             );
             if (result.status === 'completed') {
@@ -207,8 +209,7 @@ export class TelegramUpdate {
                 await this.clientWorkflow.submitAtolConsentSignedFile(
                     this.toClientIdentity(ctx),
                     {
-                        buffer: await this.downloadMediaBuffer(media),
-                        fileName: media.fileName || `${media.messageType}.jpg`,
+                        ...(await this.materializeTicketMedia(media)),
                     },
                 );
             if (result.status === 'not_found') {
@@ -1366,9 +1367,19 @@ export class TelegramUpdate {
     }
 
     private async materializeTicketMedia(media: TicketMediaInput) {
+        const buffer = await this.downloadMediaBuffer(media);
+        const mimeType = await detectMime(buffer);
+        if (!mimeType) throw new Error('File content type is not allowed');
+        assertDeclaredMime(mimeType, media.mimeType);
         return {
             ...media,
-            buffer: await this.downloadMediaBuffer(media),
+            buffer,
+            mimeType,
+            fileName: await channelFilename(
+                buffer,
+                media.fileName,
+                media.messageType,
+            ),
             fileId: undefined,
             fileUniqueId: undefined,
             externalUrl: undefined,

@@ -18,7 +18,7 @@ export interface PaymentProofInput {
     mimeType?: string;
 }
 
-export function preparePaymentProof(
+export async function preparePaymentProof(
     file: PaymentProofInput,
     requestId: number,
     source: 'web' | 'telegram' | 'max',
@@ -32,7 +32,7 @@ export function preparePaymentProof(
         'image/png': 'png',
         'image/webp': 'webp',
     };
-    const detected = detectMime(file.buffer);
+    const detected = await detectMime(file.buffer);
     const supplied = file.originalName;
     const generated =
         source !== 'web' && !supplied && detected && extensions[detected]
@@ -53,7 +53,7 @@ export function preparePaymentProof(
     ) {
         throw new BadRequestException('Invalid payment proof filename');
     }
-    const { mime } = assertFilePolicy(
+    const { mime } = await assertFilePolicy(
         'payment-proof',
         file.buffer,
         file.mimeType,

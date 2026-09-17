@@ -1,3 +1,7 @@
+import {
+    pdf as pdfFixture,
+    fixture as fileFixture,
+} from './fixtures/files.cjs';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { ConflictException, INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
@@ -41,7 +45,7 @@ import { getPermissions } from '../src/admin/admin.permissions';
 import { UserEntity } from '../src/users/entities/user.entity';
 
 const origin = 'http://localhost:5174';
-const pdf = Buffer.from('%PDF-1.4\nSynthetic payment example\n%%EOF');
+const pdf = pdfFixture('%PDF-1.4\nSynthetic payment example\n%%EOF');
 const input = {
     buffer: pdf,
     originalName: 'proof.pdf',
@@ -49,9 +53,9 @@ const input = {
 };
 const formats = [
     ['proof.pdf', 'application/pdf', pdf],
-    ['proof.jpg', 'image/jpeg', Buffer.from([255, 216, 255, 224])],
-    ['proof.png', 'image/png', Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])],
-    ['proof.webp', 'image/webp', Buffer.from('RIFF0000WEBPVP8 ')],
+    ['proof.jpg', 'image/jpeg', fileFixture('image.jpg')],
+    ['proof.png', 'image/png', fileFixture('image.png')],
+    ['proof.webp', 'image/webp', fileFixture('image.webp')],
 ] as const;
 
 describe('P-PROOF canonical owner upload', () => {

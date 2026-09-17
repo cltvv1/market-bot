@@ -13,7 +13,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import type { SupportResourceType } from 'src/support-knowledge/support-knowledge.types';
 import { type EntityManager, Repository } from 'typeorm';
 import { StoredFileEntity } from './entities/stored-file.entity';
-import { assertFilePolicy, FILE_POLICIES } from './file-policies';
+import {
+    assertFilePolicy,
+    FILE_POLICIES,
+    validatedFilename,
+} from './file-policies';
 import {
     FILE_STORAGE_PORT,
     FileSizeLimitError,
@@ -79,12 +83,15 @@ export class FilesService {
                 'Support resources require the streaming upload workflow',
             );
         }
-        const { policy, mime } = assertFilePolicy(
+        const { policy, mime } = await assertFilePolicy(
             input.purpose,
             input.buffer,
             input.mimeType,
             input.serverGenerated,
             input.originalName,
+        );
+        const originalName = this.safeOriginalName(
+            validatedFilename(input.originalName),
         );
         const now = new Date();
         const objectKey = [
@@ -103,7 +110,7 @@ export class FilesService {
                 this.files.create({
                     provider: 'local',
                     objectKey: stored.objectKey,
-                    originalName: this.safeOriginalName(input.originalName),
+                    originalName,
                     mimeType: mime,
                     sizeBytes: String(stored.sizeBytes),
                     sha256: stored.sha256,
