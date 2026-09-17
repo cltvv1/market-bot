@@ -1,3 +1,9 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
+import { uploadEffects } from './upload-effects';
+import {
+    FILE_STORAGE_PORT,
+    type FileStoragePort,
+} from '../src/files/file-storage.types';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { INestApplication } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -789,6 +795,73 @@ describe('canonical service requests', () => {
         ).toBe(1);
     });
 
+    it.each(['draft', 'owner-message', 'public-message'])(
+        'SEC-007 rejects unknown %s bytes without storage or success mutations',
+        async (kind) => {
+            const owner = await browser();
+            await owner.get('/api/client/service-requests/types').expect(200);
+            const draft = await owner
+                .post('/api/client/service-requests/drafts')
+                .send(completeDraft())
+                .expect(201);
+            if (kind !== 'draft') {
+                await owner
+                    .post(
+                        `/api/client/service-requests/drafts/${draft.body.id}/submit`,
+                    )
+                    .send({
+                        expectedVersion: draft.body.version,
+                        idempotencyKey: `sec007-${kind}-submit`,
+                    })
+                    .expect(201);
+            }
+            const agent =
+                kind === 'public-message'
+                    ? await publicBrowserFor(owner, Number(draft.body.id))
+                    : owner;
+            const url =
+                kind === 'draft'
+                    ? `/api/client/service-requests/drafts/${draft.body.id}/attachments`
+                    : kind === 'owner-message'
+                      ? `/api/client/service-requests/${draft.body.id}/messages/attachments`
+                      : '/api/public/service-requests/messages/attachments';
+            const before = await uploadEffects(dataSource);
+            const row = await dataSource
+                .getRepository(ServiceRequestEntity)
+                .findOneByOrFail({ id: Number(draft.body.id) });
+            const write = jest.spyOn(
+                app.get<FileStoragePort>(FILE_STORAGE_PORT),
+                'write',
+            );
+            try {
+                await agent
+                    .post(url)
+                    .attach('file', Buffer.from([0, 1, 2, 3]), {
+                        filename: 'claimed.pdf',
+                        contentType: 'application/pdf',
+                    })
+                    .expect(400);
+                expect(write).not.toHaveBeenCalled();
+                expect(await uploadEffects(dataSource)).toEqual(before);
+                expect(
+                    await dataSource
+                        .getRepository(ServiceRequestEntity)
+                        .findOneByOrFail({ id: row.id }),
+                ).toEqual(row);
+                await agent
+                    .post(url)
+                    .attach('file', pdfFixture(), {
+                        filename: 'valid.pdf',
+                        contentType: 'application/pdf',
+                    })
+                    .expect(201);
+                expect(write).toHaveBeenCalledTimes(1);
+            } finally {
+                write.mockRestore();
+            }
+        },
+    );
+
     it('validates complete forms and stores safe attachments through FileStorage', async () => {
         const client = await browser();
         await client.get('/api/client/service-requests/types').expect(200);
@@ -814,7 +887,7 @@ describe('canonical service requests', () => {
             .post(
                 `/api/client/service-requests/drafts/${incomplete.body.id}/attachments`,
             )
-            .attach('file', Buffer.from('%PDF-1.7\ntest'), {
+            .attach('file', pdfFixture('%PDF-1.7\ntest'), {
                 filename: '../../unsafe-name.pdf',
                 contentType: 'application/pdf',
             })
@@ -832,7 +905,7 @@ describe('canonical service requests', () => {
                 .post(
                     `/api/client/service-requests/drafts/${incomplete.body.id}/attachments`,
                 )
-                .attach('file', Buffer.from(`%PDF-1.7\n${index}`), {
+                .attach('file', pdfFixture(`%PDF-1.7\n${index}`), {
                     filename: `document-${index}.pdf`,
                     contentType: 'application/pdf',
                 })
@@ -842,7 +915,7 @@ describe('canonical service requests', () => {
             .post(
                 `/api/client/service-requests/drafts/${incomplete.body.id}/attachments`,
             )
-            .attach('file', Buffer.from('%PDF-1.7\nover-limit'), {
+            .attach('file', pdfFixture('%PDF-1.7\nover-limit'), {
                 filename: 'over-limit.pdf',
                 contentType: 'application/pdf',
             })
@@ -904,7 +977,7 @@ describe('canonical service requests', () => {
         );
         const uploaded = await publicBrowser
             .post('/api/public/service-requests/messages/attachments')
-            .attach('file', Buffer.from('%PDF-1.7\npayment'), {
+            .attach('file', pdfFixture('%PDF-1.7\npayment'), {
                 filename: 'payment.pdf',
                 contentType: 'application/pdf',
             })

@@ -1,3 +1,4 @@
+import { pdf as pdfFixture } from '../../test/fixtures/files.cjs';
 import { serviceButtons } from './keyboards/service.keyboard';
 import { TelegramUpdate } from './telegram.update';
 import { STALE_SERVICE_REQUEST_CALLBACK_MESSAGE } from 'src/inbound-commands/service-request-callback';
@@ -71,6 +72,52 @@ describe('TelegramUpdate admin callbacks', () => {
         serviceRequests.getLatestWaitingPaymentForClient.mockResolvedValue(
             null,
         );
+    });
+
+    it('SEC-007 Telegram adapter validates unnamed content and keeps contradictory names for rejection', async () => {
+        const fetch = jest
+            .spyOn(global, 'fetch')
+            .mockResolvedValue(new Response(pdfFixture()));
+        try {
+            const result = await update['materializeTicketMedia']({
+                messageType: 'document',
+                externalUrl: 'https://media.test/fixture',
+                mimeType: 'application/octet-stream',
+            });
+            expect(result).toMatchObject({
+                fileName: 'document.pdf',
+                mimeType: 'application/pdf',
+                externalUrl: undefined,
+            });
+            fetch.mockResolvedValueOnce(new Response(pdfFixture()));
+            const named = await update['materializeTicketMedia']({
+                messageType: 'document',
+                externalUrl: 'https://media.test/fixture',
+                fileName: 'wrong.jpg',
+            });
+            expect(named.fileName).toBe('wrong.jpg');
+            fetch.mockResolvedValueOnce(new Response(pdfFixture()));
+            await expect(
+                update['materializeTicketMedia']({
+                    messageType: 'document',
+                    externalUrl: 'https://media.test/fixture',
+                    mimeType: 'image/jpeg',
+                }),
+            ).rejects.toThrow('MIME');
+            fetch.mockResolvedValueOnce(new Response(Buffer.from([0, 1, 2])));
+            await expect(
+                update['materializeTicketMedia']({
+                    messageType: 'document',
+                    externalUrl: 'https://media.test/fixture',
+                    mimeType: 'application/pdf',
+                }),
+            ).rejects.toThrow();
+            expect(
+                clientWorkflow.submitServiceRequestPaymentProof,
+            ).not.toHaveBeenCalled();
+        } finally {
+            fetch.mockRestore();
+        }
     });
 
     it('allows an authorized operator callback and records success', async () => {
@@ -184,7 +231,7 @@ describe('TelegramUpdate admin callbacks', () => {
             version: 4,
         });
         jest.spyOn(global, 'fetch').mockResolvedValue(
-            new Response(Buffer.from('%PDF-1.7 payment')),
+            new Response(pdfFixture('%PDF-1.7 payment')),
         );
         const mediaCtx = {
             update: { update_id: 1002 },
@@ -215,7 +262,7 @@ describe('TelegramUpdate admin callbacks', () => {
             expect.objectContaining({ platform: 'telegram', chatId: '100' }),
             { requestId: 10, expectedVersion: 4 },
             expect.objectContaining({
-                buffer: Buffer.from('%PDF-1.7 payment'),
+                buffer: pdfFixture('%PDF-1.7 payment'),
                 fileName: 'payment.pdf',
                 mimeType: 'application/pdf',
             }),
@@ -237,7 +284,7 @@ describe('TelegramUpdate admin callbacks', () => {
                 selected.version = 7;
                 return Promise.resolve(new Response(pdfBytes));
             });
-            const pdfBytes = Buffer.from('%PDF-1.4 Synthetic');
+            const pdfBytes = pdfFixture('%PDF-1.4 Synthetic');
             clientWorkflow.submitServiceRequestPaymentProof.mockRejectedValueOnce(
                 new ErrorType('Synthetic rejection'),
             );

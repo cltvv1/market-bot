@@ -1,10 +1,14 @@
+import {
+    pdf as pdfFixture,
+    fixture as fileFixture,
+} from '../../test/fixtures/files.cjs';
 import { assertFilePolicy, FILE_POLICIES } from './file-policies';
 
 const samples = [
-    ['application/pdf', 'proof.pdf', Buffer.from('%PDF-1.4\nsynthetic\n%%EOF')],
-    ['image/jpeg', 'proof.jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xe0])],
-    ['image/png', 'proof.png', Buffer.from('89504e470d0a1a0a', 'hex')],
-    ['image/webp', 'proof.webp', Buffer.from('RIFF0000WEBPVP8 ')],
+    ['application/pdf', 'proof.pdf', pdfFixture('%PDF-1.4\nsynthetic\n%%EOF')],
+    ['image/jpeg', 'proof.jpeg', fileFixture('image.jpg')],
+    ['image/png', 'proof.png', fileFixture('image.png')],
+    ['image/webp', 'proof.webp', fileFixture('image.webp')],
 ] as const;
 
 describe('ServiceRequest payment-proof content policy', () => {
@@ -20,23 +24,25 @@ describe('ServiceRequest payment-proof content policy', () => {
 
     it.each(samples)(
         'accepts %s only with matching declared type and extension',
-        (mime, name, bytes) => {
+        async (mime, name, bytes) => {
             for (const declared of [
                 mime,
                 undefined,
                 'application/octet-stream',
             ]) {
                 expect(
-                    assertFilePolicy(
-                        'payment-proof',
-                        bytes,
-                        declared,
-                        false,
-                        name,
+                    (
+                        await assertFilePolicy(
+                            'payment-proof',
+                            bytes,
+                            declared,
+                            false,
+                            name,
+                        )
                     ).mime,
                 ).toBe(mime);
             }
-            expect(() =>
+            await expect(
                 assertFilePolicy(
                     'payment-proof',
                     bytes,
@@ -44,11 +50,11 @@ describe('ServiceRequest payment-proof content policy', () => {
                     false,
                     'proof.txt',
                 ),
-            ).toThrow();
-            expect(() =>
+            ).rejects.toThrow();
+            await expect(
                 assertFilePolicy('payment-proof', bytes, mime, false, 'proof'),
-            ).toThrow();
-            expect(() =>
+            ).rejects.toThrow();
+            await expect(
                 assertFilePolicy(
                     'payment-proof',
                     bytes,
@@ -56,7 +62,7 @@ describe('ServiceRequest payment-proof content policy', () => {
                     false,
                     name,
                 ),
-            ).toThrow();
+            ).rejects.toThrow();
         },
     );
 
@@ -66,8 +72,8 @@ describe('ServiceRequest payment-proof content policy', () => {
         Buffer.from('<html>'),
         Buffer.from('PK\x03\x04'),
         Buffer.from('MZ executable'),
-    ])('rejects disguised content before storage', (bytes) => {
-        expect(() =>
+    ])('rejects disguised content before storage', async (bytes) => {
+        await expect(
             assertFilePolicy(
                 'payment-proof',
                 bytes,
@@ -75,13 +81,13 @@ describe('ServiceRequest payment-proof content policy', () => {
                 false,
                 'proof.pdf',
             ),
-        ).toThrow();
+        ).rejects.toThrow();
     });
 
     it.each(samples.slice(1))(
         'rejects %s disguised as PDF',
-        (mime, _name, bytes) => {
-            expect(() =>
+        async (mime, _name, bytes) => {
+            await expect(
                 assertFilePolicy(
                     'payment-proof',
                     bytes,
@@ -89,7 +95,7 @@ describe('ServiceRequest payment-proof content policy', () => {
                     false,
                     'proof.pdf',
                 ),
-            ).toThrow();
+            ).rejects.toThrow();
         },
     );
 });

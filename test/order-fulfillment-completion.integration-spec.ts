@@ -1,3 +1,4 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import * as fs from 'node:fs';
 import type { INestApplication } from '@nestjs/common';
@@ -23,7 +24,7 @@ import { CustomerWebSessionEntity } from '../src/web-session/entities/customer-w
 
 const PASSWORD = 'Strong!Password2026';
 const ORIGIN = 'http://localhost:5173';
-const PDF = Buffer.from('%PDF-1.7\nsynthetic CO-3C invoice');
+const PDF = pdfFixture('%PDF-1.7\nsynthetic CO-3C invoice');
 
 interface Browser {
     agent: ReturnType<typeof request.agent>;

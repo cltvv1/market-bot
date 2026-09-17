@@ -139,7 +139,11 @@ export class ServiceRequestPaymentProofService {
         );
         this.assertId(initial.userId);
         this.assertState(initial);
-        const file = preparePaymentProof(input, target.requestId, actor.source);
+        const file = await preparePaymentProof(
+            input,
+            target.requestId,
+            actor.source,
+        );
         const stored = await this.files.savePendingBuffer({
             ...file,
             purpose: 'payment-proof',

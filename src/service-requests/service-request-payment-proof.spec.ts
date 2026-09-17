@@ -1,3 +1,7 @@
+import {
+    pdf as pdfFixture,
+    fixture as fileFixture,
+} from '../../test/fixtures/files.cjs';
 import { BadRequestException, PayloadTooLargeException } from '@nestjs/common';
 import {
     paymentProofContentDisposition,
@@ -6,68 +10,72 @@ import {
 } from './service-request-payment-proof';
 
 const formats = [
-    ['pdf', 'application/pdf', Buffer.from('%PDF-1.4\nSynthetic\n%%EOF')],
-    ['jpg', 'image/jpeg', Buffer.from([0xff, 0xd8, 0xff, 0xe0])],
-    ['png', 'image/png', Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])],
-    ['webp', 'image/webp', Buffer.from('RIFF0000WEBPVP8 ')],
+    ['pdf', 'application/pdf', pdfFixture('%PDF-1.4\nSynthetic\n%%EOF')],
+    ['jpg', 'image/jpeg', fileFixture('image.jpg')],
+    ['png', 'image/png', fileFixture('image.png')],
+    ['webp', 'image/webp', fileFixture('image.webp')],
 ] as const;
 
 describe('canonical payment proof preparation', () => {
     it.each(formats)(
         'generates provider %s names only from detected bytes',
-        (extension, mimeType, buffer) => {
+        async (extension, mimeType, buffer) => {
             for (const source of ['telegram', 'max'] as const) {
-                expect(preparePaymentProof({ buffer }, 42, source)).toEqual({
+                expect(
+                    await preparePaymentProof({ buffer }, 42, source),
+                ).toEqual({
                     buffer,
                     mimeType,
                     originalName: `payment_42.${extension}`,
                 });
             }
-            expect(() => preparePaymentProof({ buffer }, 42, 'web')).toThrow(
-                BadRequestException,
-            );
+            await expect(
+                preparePaymentProof({ buffer }, 42, 'web'),
+            ).rejects.toThrow(BadRequestException);
         },
     );
-    it('preserves and sanitizes a supplied browser filename without changing its extension', () => {
+    it('preserves and sanitizes a supplied browser filename without changing its extension', async () => {
         const buffer = formats[0][2];
         expect(
-            preparePaymentProof(
-                { buffer, originalName: 'C:\\fakepath\\Платёж.pdf' },
-                1,
-                'web',
+            (
+                await preparePaymentProof(
+                    { buffer, originalName: 'C:\\fakepath\\Платёж.pdf' },
+                    1,
+                    'web',
+                )
             ).originalName,
         ).toBe('Платёж.pdf');
-        expect(() =>
+        await expect(
             preparePaymentProof(
                 { buffer, originalName: 'payment.jpg' },
                 1,
                 'max',
             ),
-        ).toThrow(BadRequestException);
-        expect(() =>
+        ).rejects.toThrow(BadRequestException);
+        await expect(
             preparePaymentProof(
                 { buffer, originalName: 'payment.pdf.exe' },
                 1,
                 'web',
             ),
-        ).toThrow(BadRequestException);
-        expect(() =>
+        ).rejects.toThrow(BadRequestException);
+        await expect(
             preparePaymentProof(
                 { buffer, originalName: 'payment.pdf', mimeType: 'image/jpeg' },
                 1,
                 'web',
             ),
-        ).toThrow(BadRequestException);
-        expect(() =>
+        ).rejects.toThrow(BadRequestException);
+        await expect(
             preparePaymentProof(
                 { buffer, originalName: 'bad\nname.pdf' },
                 1,
                 'web',
             ),
-        ).toThrow(BadRequestException);
+        ).rejects.toThrow(BadRequestException);
     });
-    it('rejects more than 20 MiB', () => {
-        expect(() =>
+    it('rejects more than 20 MiB', async () => {
+        await expect(
             preparePaymentProof(
                 {
                     buffer: Buffer.alloc(20 * 1024 * 1024 + 1),
@@ -76,7 +84,7 @@ describe('canonical payment proof preparation', () => {
                 1,
                 'web',
             ),
-        ).toThrow(PayloadTooLargeException);
+        ).rejects.toThrow(PayloadTooLargeException);
     });
     it('projects only a version and safe workflow reasons', () => {
         const row = {
