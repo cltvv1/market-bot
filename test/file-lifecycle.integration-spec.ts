@@ -1,3 +1,4 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import * as fs from 'node:fs';
 import { Readable } from 'node:stream';
@@ -173,7 +174,7 @@ describe('file lifecycle reconciliation on migrated PostgreSQL', () => {
                     yield* [];
                 })(),
             );
-        const content = Buffer.from('%PDF-1.4\nconcurrent file');
+        const content = pdfFixture('%PDF-1.4\nconcurrent file');
 
         try {
             const reconciliation = lifecycle.reconcile({ apply: true });

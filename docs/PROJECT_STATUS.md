@@ -1,10 +1,10 @@
 # Project status
 
-Last scoped checkpoint: 2026-09-16 (ServiceRequest public access lifecycle). Full-system audit: 2026-09-02.
+Last scoped checkpoint: 2026-09-17 (SEC-007 buffered upload content policy, draft branch). Full-system audit: 2026-09-02.
 
-Canonical merged main baseline before SEC-R3B: `5b69f5fdeae2a67feaa26ef5925bcc7b3e5097b5` (SEC-R3A, PR #36 merged).
+Canonical merged main baseline: `53f0933fb46d89309b616a7595e701def6100a8e` (SEC-R3B, PR #37 merged).
 
-Baseline CI: [run 35052336657](https://github.com/cltvv1/market-bot/actions/runs/35052336657), successful. SEC-R3A is merged: SEC-004 is resolved for current application customer-cookie HTTP mutations. See the [route audit and evidence](security/2026-09-16-customer-origin-boundary.md). SEC-R3B is the current draft package on `codex/sec-r3b-service-request-public-access`: SEC-005/006 resolution applies to main only after a separately approved merge. See [public-access scope and verification](security/2026-09-16-service-request-public-access.md). This is not a full-system security or provider reassessment.
+Baseline CI: [run 35064353685](https://github.com/cltvv1/market-bot/actions/runs/35064353685), successful. SEC-R3A/SEC-R3B are merged: SEC-004/005/006 are resolved in their documented application HTTP scope. See the [origin audit](security/2026-09-16-customer-origin-boundary.md) and [public-access evidence](security/2026-09-16-service-request-public-access.md). SEC-007 is fixed in the separate draft branch `codex/sec-007-file-content-policy` in the [verified buffered-upload scope](security/2026-09-17-legacy-upload-content-policy.md); not yet closed on main. No deployment or full-system/provider reassessment is implied.
 
 Detailed evidence: [2026-09-02 project status and roadmap rebaseline](audits/2026-09-02-project-status-roadmap-rebaseline.md).
 
@@ -38,7 +38,7 @@ ATOL/Platforma - read-only bridge ------+
 ```
 
 - TypeORM uses `synchronize: false` and `migrationsRun: false`.
-- Main has 11 append-only migrations, 57 application entities/tables, and 12 foreign-key ownership surfaces for `stored_files`. SEC-R3B adds a twelfth, data-only migration revoking legacy public links without changing the schema.
+- Main has 12 append-only migrations, 57 application entities/tables, and 12 foreign-key ownership surfaces for `stored_files`. The twelfth migration revokes legacy public links without schema changes. SEC-007 adds no migration.
 - CH-R1 persists inbound command identity and dialog state. Interrupted commands fail closed.
 - CH-R2 persists business-significant outbound delivery intent with bounded retry and current staff reauthorization.
 - FileStorage is local behind a port, with lifecycle reconciliation and context-bound downloads.
@@ -108,7 +108,7 @@ Runs, mappings, exclusions, errors, observations, and opportunities are persiste
 
 ## Known production blockers
 
-1. SEC-R3A (PR #36) resolved SEC-004 for all 30 current-main customer-cookie mutations. The SEC-R3B draft adds two guarded owner access mutations (32 cookie, 35 customer/public, 110 total mutations), random explicit capability issuance, rotation/revocation, header transport and browser/log/cache controls. SEC-005/006 remain main blockers until separate SEC-R3B merge approval. Permissive legacy file-content fallback (SEC-007) remains deferred.
+1. SEC-R3A/SEC-R3B (PR #36/#37) resolved SEC-004/005/006 in scope: 32 guarded cookie mutations, 35 customer/public and 110 total mutations, explicit random capability issuance, rotation/revocation and header/browser/log/cache controls. SEC-007 closes permissive legacy buffered-file fallback only in its draft branch, pending separate merge approval. Existing files are not revalidated; antivirus remains deferred.
 2. FE-REG-1 fixed registration owner-before-lazy-read ordering. The historical closed-ticket and last-superadmin findings require their own follow-up; FE-ORD-1 does not claim to resolve them.
 3. MAX media download has no explicit provider-host egress allowlist.
 4. Client and staff Support/Knowledge UI is absent. Customer commerce, staff Catalog and Orders are merged, with no production deployment implied.
@@ -119,7 +119,7 @@ Runs, mappings, exclusions, errors, observations, and opportunities are persiste
 
 ## Current roadmap
 
-1. Finish review of the `SEC-R3B` draft only. `SEC-007` and `OPS-1` need separate authorization; no merge or deployment follows this draft automatically.
+1. Review the `SEC-007` draft and its format/compatibility evidence. No merge, deployment, OPS-1A or next feature follows automatically.
 2. `EM-0`: later rebaseline Equipment Monitoring contracts and stale-data lifecycle, audit/design-first. Not started by SEC-R3B.
 3. `EM-1`: normalize equipment health, issue severity, recommendation, and resolution.
 4. `EM-2`: unify contact sources, freshness, confidence, verification, deduplication, consent, and do-not-contact state.

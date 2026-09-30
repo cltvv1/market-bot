@@ -1,3 +1,7 @@
+import {
+    fixture as fileFixture,
+    pdf as pdfFixture,
+} from '../../test/fixtures/files.cjs';
 import { BadRequestException } from '@nestjs/common';
 import { extractMaxMedia, materializeMaxMedia } from './max-media';
 
@@ -12,6 +16,58 @@ function response(body: Uint8Array, status = 200, contentLength?: number) {
 }
 
 describe('MAX media normalization', () => {
+    it.each([
+        [Buffer.from([0, 1, 2]), 'application/pdf'],
+        [pdfFixture(), 'image/jpeg'],
+    ])(
+        'SEC-007 rejects unknown bytes and contradictory provider MIME',
+        async (buffer, mimeType) => {
+            await expect(
+                materializeMaxMedia(
+                    {
+                        messageType: 'document',
+                        fileId: 'synthetic',
+                        externalUrl: 'https://media.test/fixture',
+                        mimeType,
+                    },
+                    4096,
+                    () => Promise.resolve(response(buffer) as never),
+                ),
+            ).rejects.toThrow();
+        },
+    );
+    it('SEC-007 creates a missing provider filename from content, not transport MIME', async () => {
+        const result = await materializeMaxMedia(
+            {
+                messageType: 'document',
+                fileId: 'synthetic',
+                externalUrl: 'https://media.test/fixture',
+                mimeType: 'application/octet-stream',
+            },
+            4096,
+            () => Promise.resolve(response(pdfFixture()) as never),
+        );
+        expect(result).toMatchObject({
+            fileName: 'document.pdf',
+            mimeType: 'application/pdf',
+        });
+        await expect(
+            materializeMaxMedia(
+                {
+                    messageType: 'document',
+                    fileId: 'synthetic',
+                    externalUrl: 'https://media.test/fixture',
+                },
+                4096,
+                () =>
+                    Promise.resolve(
+                        new Response(pdfFixture(), {
+                            headers: { 'content-type': 'image/jpeg' },
+                        }) as never,
+                    ),
+            ),
+        ).rejects.toThrow('MIME');
+    });
     it('extracts photos and documents with provider IDs', () => {
         expect(
             extractMaxMedia({
@@ -80,16 +136,11 @@ describe('MAX media normalization', () => {
                 fileId: 'provider-id',
                 externalUrl: 'https://media.test/token-bearing-url',
             },
-            100,
-            () =>
-                Promise.resolve(
-                    response(
-                        Uint8Array.from([0xff, 0xd8, 0xff, 0x00]),
-                    ) as never,
-                ),
+            4096,
+            () => Promise.resolve(response(fileFixture('image.jpg')) as never),
         );
 
-        expect(media.buffer).toEqual(Buffer.from([0xff, 0xd8, 0xff, 0x00]));
+        expect(media.buffer).toEqual(fileFixture('image.jpg'));
         expect(media.mimeType).toBe('image/jpeg');
         expect(media.externalUrl).toBeUndefined();
         expect(JSON.stringify(media)).not.toContain('token-bearing-url');
@@ -103,8 +154,8 @@ describe('MAX media normalization', () => {
                 fileName: 'consent.pdf',
                 externalUrl: 'https://media.test/document',
             },
-            100,
-            () => Promise.resolve(response(Buffer.from('%PDF- test')) as never),
+            4096,
+            () => Promise.resolve(response(pdfFixture('%PDF- test')) as never),
         );
 
         expect(media).toMatchObject({

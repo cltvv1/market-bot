@@ -1,3 +1,4 @@
+const { pdf: pdfFixture } = require('../test/fixtures/files.cjs');
 require('reflect-metadata');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -206,7 +207,18 @@ async function main() {
         check('operator request -> customer value -> provided -> separate operator verification');
         await requestData(fn, 'Пришлите фото или документ с номером фискального накопителя.');
         await refresh(customer);
-        const file = { name: 'Демонстрационное-подтверждение-ФН.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\nSynthetic browser evidence\n%%EOF') };
+        const file = { name: 'Демонстрационное-подтверждение-ФН.pdf', mimeType: 'application/pdf', buffer: pdfFixture('%PDF-1.4\nSynthetic browser evidence\n%%EOF') };
+        const beforeInvalidUpload = await (await customer.request.get(api)).json();
+        await card(customer, fn).getByLabel('Передать номер', { exact: true }).fill('PRESERVED-AFTER-INVALID-FILE');
+        await card(customer, fn).getByLabel('Подтверждение: фото или документ').setInputFiles({ ...file, buffer: Buffer.from([0, 1, 2, 3]) });
+        const rejectedUpload = customer.waitForResponse(response => response.url().endsWith('/requirements/fiscal_drive_serial/evidence') && response.request().method() === 'POST');
+        await card(customer, fn).getByRole('button', { name: 'Передать файл', exact: true }).click();
+        assert.equal((await rejectedUpload).status(), 400);
+        await card(customer, fn).getByRole('button', { name: 'Передать файл', exact: true }).waitFor();
+        assert.equal(await card(customer, fn).getByLabel('Передать номер', { exact: true }).inputValue(), 'PRESERVED-AFTER-INVALID-FILE');
+        assert.deepEqual((await (await customer.request.get(api)).json()).evidence, beforeInvalidUpload.evidence);
+        await card(customer, fn).getByLabel('Передать номер', { exact: true }).fill('');
+        check('SEC-007 mismatched evidence is rejected without losing the form or creating an attachment');
         await card(customer, fn).getByLabel('Подтверждение: фото или документ').setInputFiles(file);
         let uploads = 0;
         const uploadUrl = `${api}/requirements/fiscal_drive_serial/evidence`;

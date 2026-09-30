@@ -238,7 +238,7 @@ export class ServiceRequestAdminCommandsService {
         file: { buffer: Buffer; originalname?: string; mimetype?: string },
     ) {
         // Reuse strict PDF signature/extension validation without changing other media purposes.
-        assertFilePolicy(
+        await assertFilePolicy(
             'order-invoice',
             file.buffer,
             file.mimetype,

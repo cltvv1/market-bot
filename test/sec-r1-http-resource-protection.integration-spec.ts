@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { INestApplication } from '@nestjs/common';
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 import { Test } from '@nestjs/testing';
 import { getBotToken } from 'nestjs-telegraf';
 import { Readable } from 'node:stream';
@@ -130,9 +131,14 @@ describe('SEC-R1 HTTP resource protection', () => {
     }
 
     function pdf(size: number) {
-        const value = Buffer.alloc(size);
-        value.write('%PDF-1.7\n', 0, 'ascii');
-        return value;
+        const valid = pdfFixture();
+        if (size < valid.length) return valid.subarray(0, size);
+        const tail = valid.indexOf('startxref');
+        return Buffer.concat([
+            valid.subarray(0, tail),
+            Buffer.alloc(size - valid.length, 32),
+            valid.subarray(tail),
+        ]);
     }
 
     async function counts() {

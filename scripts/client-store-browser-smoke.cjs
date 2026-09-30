@@ -1,4 +1,5 @@
 require('reflect-metadata');
+const { fixture: fileFixture } = require('../test/fixtures/files.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -54,7 +55,7 @@ async function main() {
             document.on('data', chunk => chunks.push(chunk)); document.on('end', () => resolve(Buffer.concat(chunks))); document.on('error', reject);
             document.text('SYNTHETIC INVOICE - NOT A REAL DOCUMENT'); document.end();
         });
-        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j3ioAAAAASUVORK5CYII=', 'base64');
+        const png = fileFixture('image.png');
         const executablePath = [process.env.CHROME_PATH, 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].filter(Boolean).find(file => fs.existsSync(file));
         assert.ok(executablePath, 'Chrome or Chromium is required');
         browser = await chromium.launch({ executablePath, headless: true });

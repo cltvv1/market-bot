@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import * as fs from 'node:fs';
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 import { Readable } from 'node:stream';
 import {
     type INestApplication,
@@ -463,7 +464,7 @@ describe('hosted support file streaming on migrated PostgreSQL', () => {
             .expect(201);
         const unrelated = await files.saveBuffer({
             purpose: 'service-attachment',
-            buffer: PDF,
+            buffer: pdfFixture(),
             originalName: 'unrelated.pdf',
             mimeType: 'application/pdf',
             createdByStaffId: user.id,

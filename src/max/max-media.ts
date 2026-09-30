@@ -1,6 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
 import type { TicketMediaInput } from 'src/tickets/tickets.service';
-import { detectMime } from 'src/files/file-policies';
+import {
+    assertDeclaredMime,
+    channelFilename,
+    detectMime,
+} from 'src/files/file-policies';
 
 type FetchLike = (input: string) => Promise<{
     ok: boolean;
@@ -98,50 +102,30 @@ export async function materializeMaxMedia(
     }
 
     const buffer = Buffer.concat(chunks, total);
-    const detectedMime =
-        detectMime(buffer) ??
-        detectPlainText(media.fileName, buffer) ??
-        media.mimeType;
+    const detectedMime = await detectMime(buffer);
+    if (!detectedMime)
+        throw new BadRequestException('File content type is not allowed');
+    assertDeclaredMime(detectedMime, media.mimeType);
+    assertDeclaredMime(
+        detectedMime,
+        response.headers.get('content-type') ?? undefined,
+    );
     return {
         ...media,
         buffer,
         externalUrl: undefined,
         fileSize: total,
         mimeType: detectedMime,
-        fileName:
-            media.fileName || defaultFileName(media.messageType, detectedMime),
+        fileName: await channelFilename(
+            buffer,
+            media.fileName,
+            media.messageType,
+        ),
     };
-}
-
-function defaultFileName(
-    messageType: TicketMediaInput['messageType'],
-    mimeType?: string,
-) {
-    const extensions: Record<string, string> = {
-        'image/jpeg': 'jpg',
-        'image/png': 'png',
-        'image/webp': 'webp',
-        'image/gif': 'gif',
-        'audio/mpeg': 'mp3',
-        'audio/ogg': 'ogg',
-        'video/mp4': 'mp4',
-        'application/pdf': 'pdf',
-    };
-    return `${messageType}.${extensions[mimeType || ''] || 'bin'}`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
     return typeof value === 'object' && value !== null
         ? (value as Record<string, unknown>)
         : null;
-}
-
-function detectPlainText(fileName: string | undefined, buffer: Buffer) {
-    if (!fileName?.toLowerCase().endsWith('.txt') || buffer.includes(0)) {
-        return undefined;
-    }
-    const decoded = buffer.toString('utf8');
-    return Buffer.from(decoded, 'utf8').equals(buffer)
-        ? 'text/plain'
-        : undefined;
 }

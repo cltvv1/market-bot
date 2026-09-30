@@ -1,3 +1,4 @@
+import { pdf as pdfFixture } from './fixtures/files.cjs';
 /* eslint-disable @typescript-eslint/unbound-method */
 import type { DataSource } from 'typeorm';
 import testDataSource from '../src/database/test-data-source';
@@ -76,10 +77,10 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
     const pdf = {
         generateRegistrationPdf: jest
             .fn()
-            .mockResolvedValue(Buffer.from('%PDF-registration')),
+            .mockResolvedValue(pdfFixture('%PDF-registration')),
         generateAtolConsentPdf: jest
             .fn()
-            .mockResolvedValue(Buffer.from('%PDF-atol-consent')),
+            .mockResolvedValue(pdfFixture('%PDF-atol-consent')),
     };
     const saveStoredFile = jest.fn(
         (_input: {
@@ -318,7 +319,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             .getRepository(RegistrationRequestEntity)
             .findOneByOrFail({ id: created.id });
 
-        expect(generatedPdf).toEqual(Buffer.from('%PDF-registration'));
+        expect(generatedPdf).toEqual(pdfFixture('%PDF-registration'));
         expect(persisted).toMatchObject({
             status: 'new',
             orgName: 'ООО Тест',
@@ -327,7 +328,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         expect(files.saveBuffer).toHaveBeenCalledWith(
             expect.objectContaining({
                 purpose: 'generated-pdf',
-                buffer: Buffer.from('%PDF-registration'),
+                buffer: pdfFixture('%PDF-registration'),
                 metadata: {
                     registrationId: created.id,
                     draft: true,
@@ -515,7 +516,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
 
         const invoice = await files.saveBuffer({
             purpose: 'invoice',
-            buffer: Buffer.from('%PDF-invoice'),
+            buffer: pdfFixture('%PDF-invoice'),
             originalName: 'invoice.pdf',
             mimeType: 'application/pdf',
         });
@@ -606,7 +607,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
         // prettier-ignore
         const paymentProof =
             await serviceRequestsService.attachPaymentProof(requestIdentity, { requestId: proofTarget!.id, expectedVersion: proofTarget!.version }, {
-                buffer: Buffer.from('%PDF-1.7 payment'),
+                buffer: pdfFixture('%PDF-1.7 payment'),
                 originalName: 'payment.pdf',
                 mimeType: 'application/pdf',
             });
@@ -688,7 +689,7 @@ describe('critical workflow characterization on migrated PostgreSQL', () => {
             true,
         );
         expect(saveStoredFile.mock.calls[0][0].buffer).toEqual(
-            Buffer.from('%PDF-atol-consent'),
+            pdfFixture('%PDF-atol-consent'),
         );
         expect(pdf.generateAtolConsentPdf).toHaveBeenCalledTimes(1);
         expect(messenger.sendMessage.mock.calls).toHaveLength(0);

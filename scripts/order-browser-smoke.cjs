@@ -1,4 +1,5 @@
 require('reflect-metadata');
+const { fixture: fileFixture } = require('../test/fixtures/files.cjs');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -143,7 +144,7 @@ async function main() {
         assert.equal(detail.documents.invoices.length, 2);
         assert.equal(detail.documents.invoices.filter(doc => doc.status === 'active').length, 1);
         check('invalid PDF rejected with retained File input; valid invoice and revision use real FileStorage');
-        const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j3ioAAAAASUVORK5CYII=', 'base64');
+        const png = fileFixture('image.png');
         const proof = await customer.request.post(`${base}/api/client/orders/${row.id}/payment-proofs`, { headers: { Origin: base }, multipart: { expectedVersion: String(detail.version), file: { name: 'Демо-платёжка.png', mimeType: 'image/png', buffer: png } } });
         assert.equal(proof.status(), 201); assert.equal((await proof.json()).status, 'waiting_payment');
         await refresh(page);

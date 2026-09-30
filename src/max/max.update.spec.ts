@@ -1,3 +1,4 @@
+import { fixture as fileFixture } from '../../test/fixtures/files.cjs';
 import {
     MAX_BOT_COMMANDS,
     MAX_OFD_CALLBACK,
@@ -88,7 +89,7 @@ describe('MaxUpdate media handling', () => {
             null,
         );
         jest.spyOn(global, 'fetch').mockResolvedValue(
-            new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0x00])),
+            new Response(fileFixture('image.jpg')),
         );
     });
 
@@ -104,7 +105,7 @@ describe('MaxUpdate media handling', () => {
         expect(clientWorkflow.submitTicketMedia).toHaveBeenCalledWith(
             expect.objectContaining({ platform: 'max', chatId: '55' }),
             expect.objectContaining({
-                buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+                buffer: fileFixture('image.jpg'),
                 externalUrl: undefined,
             }),
         );
@@ -129,7 +130,7 @@ describe('MaxUpdate media handling', () => {
             expect.objectContaining({ platform: 'max', chatId: '55' }),
             { requestId: 10, expectedVersion: 4 },
             expect.objectContaining({
-                buffer: Buffer.from([0xff, 0xd8, 0xff, 0x00]),
+                buffer: fileFixture('image.jpg'),
                 fileName: undefined,
             }),
         );
@@ -146,9 +147,7 @@ describe('MaxUpdate media handling', () => {
             jest.mocked(global.fetch).mockImplementationOnce(() => {
                 selected.id = 99;
                 selected.version = 7;
-                return Promise.resolve(
-                    new Response(Uint8Array.from([255, 216, 255, 0])),
-                );
+                return Promise.resolve(new Response(fileFixture('image.jpg')));
             });
             clientWorkflow.submitServiceRequestPaymentProof.mockRejectedValueOnce(
                 new ErrorType('Synthetic rejection'),
